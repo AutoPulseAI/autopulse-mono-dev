@@ -16,6 +16,7 @@ import Email from "@models/Email";
 import Lead from "@models/Lead";
 import ActivityLog from "@models/ActivityLog";
 import NotificationClear from "@models/NotificationClear";
+import LeadReminder from "@models/LeadReminder";
 import User from "@models/User";
 import { loadResponsibilityScope, newLeadFilter, responsibilityFor } from "@lib/responsibility";
 import {
@@ -102,6 +103,23 @@ async function takenFromMe(dealerId, userId, cleared) {
   return { count: items.length, items: items.slice(0, LIST) };
 }
 
+// Tasks staff escalated (Actions > Tasks > Escalate) and not yet done, last 14 days: the account admin hears about
+// every one, a manager about their team's and unowned ones. The person who escalated it is not told again.
+async function escalatedTasks(dealerId, scope, userId, cleared) {
+  if (scope.role === "staff") return { count: 0, items: [] };
+  const since = later(new Date(Date.now() - 14 * 24 * 3_600_000), cleared.allAt);
+  const rows = await LeadReminder.find({ dealer_id: dealerId, done_at: null, escalated_at: { $gte: since } })
+    .sort({ escalated_at: -1 }).limit(100).select("_id lead_id note assigned_to escalated_at escalated_by_name").lean();
+  const me = await User.findById(userId).select("name").lean();
+  const names = await leadSummaries(dealerId, rows.map((r) => String(r.lead_id)));
+  const items = rows.filter((r) => !cleared.keys.has(`esc:${r._id}`) && names[String(r.lead_id)]
+    && (scope.role === "admin" || !r.assigned_to || scope.team.has(String(r.assigned_to)))
+    && !(me?.name && r.escalated_by_name === me.name))
+    .map((r) => ({ key: `esc:${r._id}`, lead_id: String(r.lead_id), name: names[String(r.lead_id)].name, at: r.escalated_at,
+      by: r.escalated_by_name || null, text: r.note }));
+  return { count: items.length, items: items.slice(0, LIST) };
+}
+
 export async function GET(req) {
   const url = new URL(req.url);
   const session = await requireDealerSession(req, url.searchParams.get("dealer_id"));
@@ -121,6 +139,7 @@ export async function GET(req) {
     newLeads(dealerId, scope, cleared),
   ]);
   const taken = await takenFromMe(dealerId, user?._id, cleared).catch(() => ({ count: 0, items: [] }));
+  const escalated = await escalatedTasks(dealerId, scope, user?._id, cleared).catch(() => ({ count: 0, items: [] }));
   // Cleared from this user's bell only: the alert / task itself stays open on its page.
   const [myAlerts, myCalls] = await Promise.all([keepResponsible(allAlerts, dealerId, scope), keepResponsible(allCalls, dealerId, scope)]);
   const alerts = myAlerts && myAlerts.filter((a) => !cleared.keys.has(`alert:${a.id}`));
@@ -151,6 +170,7 @@ export async function GET(req) {
     new_leads: fresh,
     role: scope.role,
     taken,
+    escalated,
     clear_keys: [...(alerts || []).map((a) => `alert:${a.id}`), ...(calls || []).map((t) => `call:${t.id}`)].slice(0, 1000),
     ai_unavailable: !alerts || !calls,
   });

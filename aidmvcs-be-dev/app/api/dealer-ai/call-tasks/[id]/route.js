@@ -13,6 +13,7 @@ import { NextResponse } from "next/server";
 import mongoose from "mongoose";
 import { callTaskResolution } from "@lib/ai/aiCallOutcome.js";
 import { aiServiceError, callAiService, jsonError, requireDealerSession, staffName } from "../../_lib/dealerAi";
+import { canDismissTasks, DISMISS_TASKS } from "@lib/taskPermission";
 
 export async function POST(req, { params }) {
   const { id } = await params;
@@ -26,6 +27,10 @@ export async function POST(req, { params }) {
   const session = await requireDealerSession(req, body?.dealer_id);
   if (session.error) return session.error;
 
+  // Dismissing a call (and undoing a dismiss) needs "Dismiss Tasks" (app/lib/taskPermission.js).
+  if ((body?.action === "dismiss" || body?.action === "reopen") && !(await canDismissTasks(session.user))) {
+    return jsonError(`You need the "${DISMISS_TASKS}" permission to do this. Ask your admin.`, 403);
+  }
   if (body?.action === "reopen") {
     const back = await callAiService(`/v1/call-tasks/${id}/reopen`, { method: "POST",
       body: { dealer_id: session.dealerId, by: await staffName(session.user) } });

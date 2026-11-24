@@ -7,6 +7,7 @@ import jwt from "jsonwebtoken";
 import { renewedToken, SESSION_DAYS } from "@lib/session";
 import Subscription from "@models/Subscription";
 import Package from "@models/Package";
+import { DISMISS_TASKS, ensureDismissPermission } from "@lib/taskPermission";
 
 export async function GET(req) {
   try {
@@ -70,6 +71,10 @@ export async function GET(req) {
 
     // Extract permissions
     const permissions = user.role?.permissions?.map((p) => p.permission_name) || [];
+    // Dismiss Tasks (app/lib/taskPermission.js): the dealership account itself and a super admin signed in as it
+    // always hold it, as the server's check does.
+    await ensureDismissPermission().catch(() => null);
+    if (user.type === "dealer" && !user.parent_id && !permissions.includes(DISMISS_TASKS)) permissions.push(DISMISS_TASKS);
 
     // Prepare subscription data
     let subscriptionData = null;

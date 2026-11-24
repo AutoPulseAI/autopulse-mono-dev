@@ -169,7 +169,7 @@ export default function CustomerDetail({ customerId }) {
         onOpenTab={setActiveTab}
       />
 
-      <OpenTasks tasks={openTasks} />
+      <OpenTasks tasks={openTasks} dealerId={activeEntity?.id} onChanged={fetchCustomer360} />
       <DmsDetails dms={dms} />
 
       <Tabs activeKey={activeTab} onSelect={(key) => setActiveTab(key)} className="mb-3 cp_tabs" mountOnEnter unmountOnExit>

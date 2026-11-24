@@ -17,6 +17,10 @@ const leadReminderSchema = new mongoose.Schema({
   done_by_name: { type: String, default: null },
   escalated_at: { type: Date, default: null }, // staff escalated it (Actions > Tasks)
   escalated_by_name: { type: String, default: null },
+  // Closed without being done ("Dismiss Tasks" permission): done_at is set too, so it leaves every open list.
+  dismissed_at: { type: Date, default: null },
+  dismissed_by_name: { type: String, default: null },
+  dismiss_reason: { type: String, default: null },
 }, { timestamps: true });
 
 leadReminderSchema.index({ lead_id: 1, done_at: 1, due_at: 1 });
