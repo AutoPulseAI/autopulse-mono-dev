@@ -7,7 +7,7 @@ import { formatTimestamp } from "../../../../utils/dateUtils";
 import AppIcon from "../../../components/AppIcon";
 
 const KIND = {
-  call: { icon: "phone", href: () => "/dealer/ai/call-tasks" },
+  call: { icon: "phone", href: () => "/dealer/ai/actions?tab=tasks" },
   appt: { icon: "appointment", href: () => "/dealer/booking" },
   followup: { icon: "ai", href: (t) => `/dealer/leads?lead=${t.lead_id}` },
   reminder: { icon: "task", href: (t) => `/dealer/leads?lead=${t.lead_id}` },

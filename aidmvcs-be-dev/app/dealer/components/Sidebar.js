@@ -181,13 +181,8 @@ const Sidebar = ({ isOpen, onClose }) => {
                   </Link>
                 </li>
                 <li>
-                  <Link href="/dealer/ai/call-tasks" className={getLinkClass("/dealer/ai/call-tasks")}>
-                    <i className="fa-regular fa-phone"></i>Call Tasks
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/dealer/ai/alerts" className={getLinkClass("/dealer/ai/alerts")}>
-                    <i className="fa-regular fa-bell"></i>Dealer Action Required
+                  <Link href="/dealer/ai/actions" className={getLinkClass("/dealer/ai/actions")}>
+                    <i className="fa-regular fa-list-check"></i>Actions
                     {aiAlertCount > 0 && (
                       <span className="badge rounded-pill bg-danger ms-auto">{aiAlertCount}</span>
                     )}

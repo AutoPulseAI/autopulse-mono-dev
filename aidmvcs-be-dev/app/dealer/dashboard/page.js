@@ -889,7 +889,7 @@ function Dashboard() {
               count={aiAlertCount}
               label="Dealer Action Required"
               tone="red"
-              link="/dealer/ai/alerts"
+              link="/dealer/ai/actions?tab=dar"
               description={`Need attention now${managerialReviewCount ? ` · ${managerialReviewCount} in Managerial Review` : ""}`}
             />
             

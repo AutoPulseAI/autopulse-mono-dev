@@ -26,7 +26,7 @@ export default function DeskCards({ cards, dayWord = "TODAY", actionNow = null }
     <div className="dl_cards">
       {cards.map((card) => {
         const c = card.key === "action_required" && actionNow != null
-          ? { ...card, today: actionNow, today_link: "/dealer/ai/alerts", now: true } : card;
+          ? { ...card, today: actionNow, today_link: "/dealer/ai/actions?tab=dar", now: true } : card;
         const icon = ICON[c.key] || "fa-solid fa-circle";
         return (
           <div key={c.key} className={`dl_card dl_card_${c.key}`} style={{ "--card": CARD_COLOR[c.key] || "#0272b4" }}>

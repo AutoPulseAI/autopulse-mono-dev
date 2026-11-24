@@ -185,7 +185,7 @@ export default function TopbarTools({ storeName }) {
               )}
               {alerts && (
                 <Section title="Needs a person" icon="fa-regular fa-triangle-exclamation" count={alerts.count}
-                  more="/dealer/ai/alerts" empty="Nothing waiting">
+                  more="/dealer/ai/actions?tab=dar" empty="Nothing waiting">
                   {alerts.items.map((a) => (
                     <Row key={a.key} href={leadHref(a.lead_id)} title={a.name} text={a.text || alertKind(a.kind).label} at={a.at} whose={a.whose} onClear={() => clearOne(a.key)} />
                   ))}
@@ -193,7 +193,7 @@ export default function TopbarTools({ storeName }) {
               )}
               {calls && (
                 <Section title="Calls to make" icon="fa-regular fa-phone-volume" count={calls.count}
-                  more="/dealer/ai/call-tasks" empty="No calls due">
+                  more="/dealer/ai/actions?tab=tasks" empty="No calls due">
                   {calls.items.map((t) => (
                     <Row key={t.key} href={leadHref(t.lead_id)} title={t.name} text={t.reason} at={t.due_at} whose={t.whose} onClear={() => clearOne(t.key)} />
                   ))}

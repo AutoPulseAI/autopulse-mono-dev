@@ -71,7 +71,7 @@ export const BULK_ACTIONS = [
   { kind: "reassign", label: "Reassign", icon: "fa-user-pen", needs: "assign" },
   { kind: "status", label: "Change status", icon: "fa-flag", needs: "manage" },
   { kind: "department", label: "Department", icon: "fa-building", needs: "manage" },
-  { kind: "source", label: "Source / Campaign", icon: "fa-tag", needs: "manage" },
+  { kind: "source", label: "Lead details", icon: "fa-tag", needs: "manage" },
   { kind: "note", label: "Add note", icon: "fa-note-sticky", needs: "manage" },
   { kind: "task", label: "Call task", icon: "fa-phone", needs: "manage" },
   { kind: "export", label: "Export", icon: "fa-file-csv", needs: null },
@@ -244,7 +244,9 @@ export function BulkScope({ scope, count, pageCount, matching, capped, loading, 
 }
 
 // ---- the side panel ----
-const FIELD_OF = { department: "department", lead_source: "lead_source", campaign: "campaign" };
+const FIELD_OF = { department: "department", lead_source: "lead_source", sub_source: "sub_source", campaign: "campaign", contact_type: "contact_type" };
+const UP_TYPES = [["internet", "Internet"], ["phone", "Phone Up"], ["walk_in", "Walk-In"]];
+const upTypeName = (v) => UP_TYPES.find(([k]) => k === v)?.[1] || v;
 const DEPARTMENTS = [
   { key: "sales", name: "Sales", icon: "fa-car", hint: "Buying a vehicle" },
   { key: "service", name: "Service", icon: "fa-screwdriver-wrench", hint: "Repairs, maintenance" },
@@ -325,7 +327,7 @@ export function BulkPanel({ kind, show, dealerId, leads, staffList, timezone = "
   const targetName = isStatus ? statusLabel(status)
     : kind === "reassign" ? ((to ? staffList.find((s) => String(s._id) === String(to))?.name : "Unassigned") || "Unassigned")
       : kind === "department" ? deptName(dept)
-        : kind === "source" ? (fieldValue || (field === "campaign" ? "No campaign" : "None"))
+        : kind === "source" ? ((field === "contact_type" ? upTypeName(fieldValue) : fieldValue) || (field === "campaign" ? "No campaign" : "None"))
           : note.trim().slice(0, 60);
 
   // The source panel's choices: the dealer's lead sources and campaigns (Leads > Lead source > Edit list), most used first.
@@ -372,8 +374,8 @@ export function BulkPanel({ kind, show, dealerId, leads, staffList, timezone = "
     return ids.map((id) => {
       const l = byId.get(id) || { _id: id };
       if (editField) {
-        const now = editField === "department" ? deptName(l.department) : (l[FIELD_OF[editField]] || "None");
-        const next = editField === "department" ? deptName(dept) : (fieldValue || "None");
+        const now = editField === "department" ? deptName(l.department) : editField === "contact_type" ? (upTypeName(l.contact_type) || "None") : (l[FIELD_OF[editField]] || "None");
+        const next = editField === "department" ? deptName(dept) : editField === "contact_type" ? (upTypeName(fieldValue) || "None") : (fieldValue || "None");
         return { lead_id: id, name: l.name, current: now, will_be: next, change: now.toLowerCase() !== next.toLowerCase() };
       }
       const owner = l.owner || "Unassigned";
@@ -403,7 +405,7 @@ export function BulkPanel({ kind, show, dealerId, leads, staffList, timezone = "
   const pages = Math.max(1, Math.ceil(list.length / PANEL_PAGE));
   const shown = list.slice((page - 1) * PANEL_PAGE, page * PANEL_PAGE);
   const ready = rows && groups.change.length && !(isAdd && !note.trim()) && !(kind === "task" && !dueAt)
-    && !(kind === "source" && field === "lead_source" && !fieldValue);
+    && !(kind === "source" && ["lead_source", "contact_type"].includes(field) && !fieldValue);
 
   const bodyFor = (part, batchId, before) => {
     if (kind === "status") return { dealer_id: dealerId, lead_ids: part, status, confirm: true, batch_id: batchId,
@@ -488,17 +490,28 @@ export function BulkPanel({ kind, show, dealerId, leads, staffList, timezone = "
         )}
         {kind === "source" && (
           <>
-            <div className="btn-group w-100 mb-2" role="group" aria-label="What to set">
-              <Button size="sm" variant={field === "lead_source" ? "custom" : "outline-custom"} onClick={() => { setField("lead_source"); setFieldValue(""); setPage(1); }}>Lead source</Button>
-              <Button size="sm" variant={field === "campaign" ? "custom" : "outline-custom"} onClick={() => { setField("campaign"); setFieldValue(""); setPage(1); }}>Campaign</Button>
+            <div className="btn-group w-100 mb-2 flex-wrap" role="group" aria-label="What to set">
+              {[["contact_type", "Up type"], ["lead_source", "Source"], ["sub_source", "Sub-source"], ["campaign", "Campaign"]].map(([k, label]) => (
+                <Button key={k} size="sm" variant={field === k ? "custom" : "outline-custom"} onClick={() => { setField(k); setFieldValue(""); setPage(1); }}>{label}</Button>
+              ))}
             </div>
-            {!options ? <SkeletonRows rows={6} cols={2} /> : (
+            {field === "contact_type" && (
+              <Form.Select size="sm" className="mb-2" aria-label="Up type" value={fieldValue} onChange={(e) => { setFieldValue(e.target.value); setPage(1); }}>
+                <option value="">Pick an up type</option>
+                {UP_TYPES.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+              </Form.Select>
+            )}
+            {field === "sub_source" && (
+              <Form.Control size="sm" className="mb-2" maxLength={80} aria-label="Sub-source" placeholder="Sub-source (empty clears it)"
+                value={fieldValue} onChange={(e) => { setFieldValue(e.target.value); setPage(1); }} />
+            )}
+            {(field === "lead_source" || field === "campaign") && (!options ? <SkeletonRows rows={6} cols={2} /> : (
               <PickList key={field} items={field === "campaign" ? options.campaigns : options.sources} value={fieldValue}
                 onChange={(v) => { setFieldValue(v); setPage(1); }}
                 placeholder={field === "campaign" ? `Search ${options.campaigns.length} campaigns` : `Search ${options.sources.length} lead sources`}
                 empty={field === "campaign" ? "No campaigns yet (Leads > Add lead > Lead source > Edit list > Campaigns)." : "No lead sources yet."}
                 noneLabel={field === "campaign" ? "No campaign" : null} />
-            )}
+            ))}
           </>
         )}
         {kind === "note" && (

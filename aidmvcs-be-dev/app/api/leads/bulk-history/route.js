@@ -45,7 +45,7 @@ export async function GET(req) {
   const by = url.searchParams.get('by');
   if (by) match.by_name = by;
   const action = url.searchParams.get('action');
-  if (['reassign', 'status', 'department', 'lead_source', 'campaign', 'note', 'task'].includes(action)) match.action = action;
+  if (['reassign', 'status', 'department', 'lead_source', 'sub_source', 'contact_type', 'campaign', 'note', 'task'].includes(action)) match.action = action;
   const result = url.searchParams.get('result');
   if (result === 'failed') match.failed = { $gt: 0 };
   if (result === 'undone') match.undone_at = { $ne: null };

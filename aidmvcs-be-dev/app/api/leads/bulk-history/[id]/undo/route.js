@@ -24,7 +24,7 @@ import { PATCH as editDetails } from '../../../[id]/details/route.js';
 
 export const runtime = 'nodejs';
 const fail = (error, status) => Response.json({ error, message: error }, { status });
-const FIELDS = { department: 'department', lead_source: 'lead_source', campaign: 'campaign' };
+const FIELDS = { department: 'department', lead_source: 'lead_source', sub_source: 'sub_source', contact_type: 'contact_type', campaign: 'campaign' };
 
 export async function POST(req, { params }) {
   await dbConnect();

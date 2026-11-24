@@ -6,7 +6,7 @@ import { Accordion, Alert, Button, Col, Pagination, Row, Spinner } from "react-b
 import { useUser } from "../../../context/UserContext";
 import { formatTimestamp } from "../../../../utils/dateUtils";
 import ViewConversations from "../../../leads/components/viewConversations";
-import { leadTypeName } from "../../../leads/components/LeadInfoCard";
+import { LeadFacts, leadTypeName } from "../../../leads/components/LeadInfoCard";
 import { DEPARTMENT_NAMES, leadDepartment } from "@lib/departmentNames";
 import ViewAdfModal, { isAdfLead } from "../../../leads/components/ViewAdfModal";
 import { Modal } from "react-bootstrap";
@@ -21,11 +21,6 @@ const defaultLeadsPagination = {
   hasNextPage: false,
   hasPreviousPage: false,
 };
-
-// The lead's type and source, as on the lead card (LeadInfoCard): "Internet · CarGurus".
-function getLeadSource(lead) {
-  return `${leadTypeName(lead)} · ${lead.lead_source || lead.source || "Unknown"}`;
-}
 
 // Unchanged from the pre-360 CustomerDetail.js, per
 // docs/dealer-360-customer-view-spec.md §4: "existing lead + conversation
@@ -64,8 +59,6 @@ function OpportunityHeader({ lead, owner, onHot }) {
   return (
     <div className="cp_opp mb-2">
       <span className="fw-semibold">Opportunity #{String(lead._id).slice(-6).toUpperCase()}</span>
-      <span className="badge text-bg-light">{DEPARTMENT_NAMES[leadDepartment(lead)]}</span>
-      <span className="small text-muted">{getLeadSource(lead)}</span>
       {owner && <span className="small"><i className="fa-solid fa-user-tie me-1" />{owner}</span>}
       <button type="button" className={`cp_hot${lead.hot ? " on" : ""}`} onClick={() => onHot(!lead.hot)}
         title={lead.hot ? "Marked hot - click to unmark" : "Mark this lead hot"}>
@@ -178,8 +171,8 @@ export default function LeadsTab({ customerId, onChanged }) {
         {/* 13 Nov 2026 meeting (10.10, DealerSocket's Sales tab): the customer's leads as a table - status, department,
             created, source, vehicle, owner; click a row to open that lead. */}
         <Row className="cp_leads_head d-none d-md-flex small text-muted mx-0 me-2 px-3">
-          <Col md={2}>Status</Col><Col md={1}>Dept</Col><Col md={2}>Created</Col><Col md={2}>Type · Source</Col>
-          <Col md={3}>Vehicle</Col><Col md={2}>Owner</Col>
+          <Col md={2}>Status</Col><Col md={1}>Dept</Col><Col md={2}>Created</Col><Col md={1}>Up type</Col><Col md={2}>Source</Col>
+          <Col md={1}>Sub-source</Col><Col md={2}>Vehicle</Col><Col md={1}>Owner</Col>
         </Row>
         <Accordion activeKey={activeLeadId} onSelect={(key) => setActiveLeadId(key)}>
           {leads.map((lead) => {
@@ -192,13 +185,16 @@ export default function LeadsTab({ customerId, onChanged }) {
                       {lead.hot && <span className="cp_hot on ms-1 py-0"><i className="fa-solid fa-fire" /></span>}</Col>
                     <Col md={1}>{DEPARTMENT_NAMES[leadDepartment(lead)]}</Col>
                     <Col md={2} className="text-muted">{lead.createdAt ? formatTimestamp(lead.createdAt) : "N/A"}</Col>
-                    <Col md={2}>{getLeadSource(lead)}</Col>
-                    <Col md={3}>{vehicle || <span className="text-muted">No vehicle</span>}</Col>
-                    <Col md={2}>{details[lead._id]?.owner || <span className="text-muted">Unassigned</span>}</Col>
+                    <Col md={1}>{leadTypeName(lead)}</Col>
+                    <Col md={2}>{lead.lead_source || lead.source || "Unknown"}</Col>
+                    <Col md={1}>{lead.sub_source || <span className="text-muted">None</span>}</Col>
+                    <Col md={2}>{vehicle || <span className="text-muted">No vehicle</span>}</Col>
+                    <Col md={1}>{details[lead._id]?.owner || <span className="text-muted">Unassigned</span>}</Col>
                   </Row>
                 </Accordion.Header>
                 <Accordion.Body>
                   <OpportunityHeader lead={lead} owner={details[lead._id]?.owner} onHot={(hot) => setHot(lead, hot)} />
+                  <LeadFacts lead={lead} />
                   {activeLeadId === lead._id && <OpportunityActions lead={lead} onChanged={onChanged} />}
                   <Milestones times={milestones[lead._id]} />
                   {/* The lead's showroom visits (Desk Log), and checking the customer in from here. */}

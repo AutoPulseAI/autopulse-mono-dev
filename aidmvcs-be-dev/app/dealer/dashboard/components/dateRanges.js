@@ -4,7 +4,7 @@ import moment from "moment-timezone";
 // [start, end] as dealer-timezone moments (start of day), or null for all time.
 export function presetRange(key, tz, n = 30) {
   const today = moment.tz(tz).startOf("day");
-  const days = Math.max(1, parseInt(n, 10) || 1);
+  const days = Math.min(3650, Math.max(1, parseInt(n, 10) || 1)); // a huge typed number is not a date
   switch (key) {
     case "today": return [today, today];
     case "yesterday": return [today.clone().subtract(1, "day"), today.clone().subtract(1, "day")];

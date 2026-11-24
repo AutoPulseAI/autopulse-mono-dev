@@ -28,7 +28,9 @@ const fail = (error, status) => Response.json({ error }, { status });
 async function summary(c, dealerId) {
   const family = await customerFamily(c._id, dealerId);
   const where = { dealer_id: dealerId, customer_id: { $in: family } };
-  const [leads, openLeads, deals, serviceVisits, tradeIns, owner] = await Promise.all([
+  const [list, leads, openLeads, deals, serviceVisits, tradeIns, owner] = await Promise.all([
+    Lead.find(where).select('vehicle_year vehicle_make vehicle_model lead_source source fe_lead_status assigned_to createdAt')
+      .populate({ path: 'assigned_to', select: 'name', strictPopulate: false }).sort({ createdAt: -1 }).limit(25).lean(),
     Lead.countDocuments(where),
     Lead.countDocuments({ ...where, fe_lead_status: { $not: /sold|closed|lost|opted out|dnd/i } }),
     Deal.countDocuments(where), RepairOrder.countDocuments(where), TradeIn.countDocuments(where),
@@ -36,7 +38,9 @@ async function summary(c, dealerId) {
   ]);
   return { _id: String(c._id), name: c.name || null, emails: (c.emails || []).map((e) => e.value),
     phones: (c.phones || []).map((p) => p.value), owner: owner?.name || null, leads, open_leads: openLeads, deals,
-    service_visits: serviceVisits, trade_ins: tradeIns };
+    service_visits: serviceVisits, trade_ins: tradeIns,
+    opportunities: list.map((l) => ({ id: String(l._id), vehicle: [l.vehicle_year, l.vehicle_make, l.vehicle_model].filter(Boolean).join(' ') || null,
+      source: l.lead_source || l.source || null, status: l.fe_lead_status || null, owner: l.assigned_to?.name || null })) };
 }
 
 export async function POST(req) {
