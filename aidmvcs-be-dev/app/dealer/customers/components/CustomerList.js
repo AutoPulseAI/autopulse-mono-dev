@@ -8,6 +8,7 @@ import CustomerForm from "./CustomerForm";
 import { lastFirst } from "../../../lib/personName";
 import DateRangePickerComponent from "../../components/DateRangePicker";
 import AppIcon, { Avatar, IconLabel } from "../../components/AppIcon";
+import { rememberCustomerList } from "../[id]/components/CustomerSideList";
 
 const defaultPagination = {
   currentPage: 1,
@@ -100,7 +101,18 @@ export default function CustomerList() {
     return () => clearTimeout(searchDebounceRef.current);
   }, [inputValues]);
 
+  // The 360 profile shows this same list on its left (search, source, dates, page) - CustomerSideList.js.
   const openCustomer = (customerId) => {
+    const query = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => { if (key !== "dateRange" && value) query.set(key, value); });
+    if (filters.dateRange.startDate && filters.dateRange.endDate) {
+      query.set("startDate", filters.dateRange.startDate.toISOString());
+      query.set("endDate", filters.dateRange.endDate.toISOString());
+    }
+    const at = ((pagination.currentPage || 1) - 1) * pagination.itemsPerPage
+      + Math.max(0, customers.findIndex((c) => c._id === customerId));
+    const listedPage = Math.floor(at / 15) + 1; // the side list shows 15 a page
+    rememberCustomerList(query.toString(), listedPage);
     router.push(`/dealer/customers/${customerId}`);
   };
 
