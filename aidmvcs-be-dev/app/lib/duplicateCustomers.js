@@ -12,7 +12,7 @@ const digits = (v) => String(v || '').replace(/\D/g, '').slice(-10);
 
 export async function duplicateGroups(dealerId, { limit = 100 } = {}) {
   const docs = await Customer.find({ dealer_id: String(dealerId), merged_into: { $in: [null] } })
-    .select('name emails phones createdAt assigned_to').lean();
+    .select('name emails phones addresses createdAt assigned_to').lean();
   const owners = new Map();
   for (const c of docs) {
     const keys = new Set([
@@ -64,6 +64,7 @@ export async function duplicateGroups(dealerId, { limit = 100 } = {}) {
       const c = byId.get(id) || {};
       return { _id: id, name: c.name || null, emails: (c.emails || []).map((e) => e.value),
         phones: (c.phones || []).map((p) => p.value), created_at: c.createdAt || null,
+        address: (() => { const a = (c.addresses || []).find((x) => x.is_primary) || (c.addresses || [])[0]; return a ? [a.line1, a.city, a.state, a.zip].filter(Boolean).join(', ') : null; })(),
         leads: leadInfo.get(id)?.leads || 0, last_lead_at: leadInfo.get(id)?.last_lead_at || null };
     }).sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
     const pairs = [];

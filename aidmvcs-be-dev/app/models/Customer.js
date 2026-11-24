@@ -41,6 +41,7 @@ const mergeHistorySchema = new mongoose.Schema(
       ref: "Customer",
       required: true,
     },
+    replaced: { type: mongoose.Schema.Types.Mixed, default: undefined }, // merge review: what the picked fields replaced (Undo)
     merged_by: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

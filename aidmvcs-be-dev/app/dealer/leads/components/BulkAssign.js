@@ -638,7 +638,7 @@ export function BulkPanel({ kind, show, dealerId, leads, staffList, timezone = "
 // ---- the notice at the top right ----
 const DONE_TEXT = {
   reassign: (r) => `reassigned to ${r.targetName}`, status: (r) => `set to ${r.targetName}`, department: (r) => `moved to ${r.targetName}`,
-  source: (r) => `set to ${r.targetName}`, note: () => "got the note", task: () => "got the call task",
+  source: (r) => `updated: ${r.targetName}`, note: () => "got the note", task: () => "got the call task",
 };
 
 export function BulkNotice({ result, onClose, onUndo, onRetry }) {

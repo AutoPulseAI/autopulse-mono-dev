@@ -33,6 +33,8 @@ const STATUS_META = Object.fromEntries(TASK_STATUS.map(([k, label, icon, bg]) =>
 const DEPT = { sales: "Sales", service: "Service", parts: "Parts" };
 const REASON_ICON = { "First response late": "overdue", "No owner": "noOwner", "No-show recovery": "missed", "Possible duplicate": "customers", "No next step": "stuck", "Unsold follow-up": "history" };
 const REASON_BG = { "First response late": "danger", "No owner": "warning", "No-show recovery": "primary", "Possible duplicate": "info", "No next step": "secondary", "Unsold follow-up": "dark" };
+const FIX_ICON = { Assign: "fa-user-plus", "Add task": "fa-plus", "Review merge": "fa-code-merge", "Open lead": "fa-arrow-up-right-from-square" };
+const AGE = (at, now) => { const d = (now - new Date(at)) / 86400000; return d <= 7 ? "Up to 7 days" : d <= 30 ? "8-30 days" : "Over 30 days"; };
 const PENDING_KEY = "aiPendingCallTask"; // shared with the call prompt, so a call survives a reload
 const read = () => { try { return JSON.parse(localStorage.getItem(PENDING_KEY) || "null"); } catch { return null; } };
 const write = (t) => { try { if (t) localStorage.setItem(PENDING_KEY, JSON.stringify(t)); else localStorage.removeItem(PENDING_KEY); } catch { /* the prompt still opens */ } };
@@ -138,6 +140,54 @@ function ReminderModal({ item, staff, onHide, onSaved }) {
   );
 }
 
+// Stuck leads: assign an owner, or add the next step, without leaving the list. No customer is messaged.
+function FixModal({ item, staff, dealerId, onHide, onSaved }) {
+  const [owner, setOwner] = useState("");
+  const [note, setNote] = useState("");
+  const [due, setDue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (!item) return;
+    setOwner(item.owner_id || ""); setNote(item.reason === "No-show recovery" ? "Call to rebook the missed visit" : item.reason === "Unsold follow-up" ? "Unsold showroom follow-up" : "");
+    setDue(moment().add(1, "hour").format("YYYY-MM-DDTHH:mm")); setError("");
+  }, [item]);
+  const assign = item?.fix === "Assign";
+  const save = async () => {
+    setBusy(true); setError("");
+    try {
+      if (assign) {
+        const r = await aiFetch("/api/leads/bulk-assign", { method: "POST", body: JSON.stringify({ dealer_id: dealerId, lead_ids: [item.lead_id], assigned_to: owner, confirm: true,
+          batch_id: `b_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}` }) });
+        if (r.failed?.length) throw new Error(r.failed[0].reason || "Could not assign this lead");
+        onSaved(`${item.name} assigned.`);
+      } else {
+        await aiFetch(`/api/leads/${item.lead_id}/opportunity`, { method: "POST", body: JSON.stringify({ action: "reminder", note, due_at: new Date(due).toISOString(), assigned_to: owner || undefined }) });
+        onSaved(`Task added for ${item.name}.`);
+      }
+    } catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
+  return (
+    <Modal show={!!item} onHide={onHide} centered>
+      <Modal.Header closeButton><Modal.Title as="h6">{assign ? "Assign an owner" : "Add the next step"} · {item?.name}</Modal.Title></Modal.Header>
+      <Modal.Body className="small">
+        {error && <Alert variant="danger" className="py-2">{error}</Alert>}
+        {!assign && <><Form.Label>What needs doing</Form.Label><Form.Control size="sm" className="mb-2" maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} />
+          <Form.Label>Due</Form.Label><Form.Control size="sm" type="datetime-local" className="mb-2" value={due} onChange={(e) => setDue(e.target.value)} /></>}
+        <Form.Label>{assign ? "Owner" : "Assigned to"}</Form.Label>
+        <Form.Select size="sm" value={owner} onChange={(e) => setOwner(e.target.value)}>
+          <option value="">{assign ? "Pick a person" : "Lead owner"}</option>
+          {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </Form.Select>
+      </Modal.Body>
+      <Modal.Footer>
+        <Button size="sm" variant="outline-custom" onClick={onHide}>Cancel</Button>
+        <Button size="sm" variant="custom" disabled={busy || (assign ? !owner : !note.trim() || !due)} onClick={save}>{busy ? <Spinner size="sm" /> : assign ? "Assign" : "Add task"}</Button>
+      </Modal.Footer>
+    </Modal>
+  );
+}
+
 function ActionsContent() {
   const params = useSearchParams();
   const { dealerParent } = useUser();
@@ -160,6 +210,7 @@ function ActionsContent() {
   const [pending, setPending] = useState(null);
   const [drawer, setDrawer] = useState(null);
   const [editing, setEditing] = useState(null);
+  const [fixing, setFixing] = useState(null);
 
   const [scope, setScope] = useState("all");
   const [ownerF, setOwnerF] = useState("");
@@ -236,9 +287,9 @@ function ActionsContent() {
   const deptOf = (r) => DEPT[r.department] || "Sales";
   const lsOf = (r) => leadStatusLabelFrom(r.lead_status);
   const FILTERS = {
-    dar: [["kind", "All types", (r) => r.kindLabel], ["dept", "All departments", deptOf], ["src", "All lead sources", (r) => r.source], ["ls", "All lead statuses", lsOf]],
-    tasks: [["why", "All task types", (r) => r.why], ["pri", "All priorities", (r) => r.priority], ["dept", "All departments", deptOf], ["made", "Made by: anyone", (r) => r.made], ["src", "All lead sources", (r) => r.source], ["ls", "All lead statuses", lsOf]],
-    stuck: [["why", "All reasons", (r) => r.reason], ["dept", "All departments", deptOf], ["src", "All lead sources", (r) => r.source], ["ls", "All lead statuses", lsOf]],
+    dar: [["kind", "All types", (r) => r.kindLabel], ["dept", "All departments", deptOf], ["src", "All lead sources", (r) => r.source], ["ls", "All lead statuses", lsOf], ["pri", "All priorities", (r) => (r.escalated ? "Escalated" : "Normal")]],
+    tasks: [["why", "All task types", (r) => r.why], ["pri", "All priorities", (r) => r.priority], ["dept", "All departments", deptOf], ["made", "Made by: anyone", (r) => r.made], ["src", "All lead sources", (r) => r.source], ["ls", "All lead statuses", lsOf], ...(status.tasks === "done" ? [["out", "All outcomes", (r) => r.outcome]] : [])],
+    stuck: [["why", "All reasons", (r) => r.reason], ["dept", "All departments", deptOf], ["src", "All lead sources", (r) => r.source], ["ls", "All lead statuses", lsOf], ["age", "Any age", (r) => AGE(r.since, now)]],
   };
   const keys = FILTERS[tab] || [];
   const statusOK = { dar: (a) => (status.dar === "handled" ? a.handled : !a.handled), tasks: (t) => t.status === status.tasks, stuck: () => true };
@@ -273,7 +324,7 @@ function ActionsContent() {
     setScope("all"); setOwnerF(id); if (st) setStatus((s) => ({ ...s, tasks: st })); setSort("");
     showTab(key);
   };
-  const done = (message) => { setSuccess(message); setEditing(null); load({ silent: true }); };
+  const done = (message) => { setSuccess(message); setEditing(null); setFixing(null); load({ silent: true }); };
   const markHandled = async (item) => {
     setBusy(item.id); setError("");
     try {
@@ -392,16 +443,34 @@ function ActionsContent() {
                         {!a.handled && <Icon title="Mark handled" name="done" variant="custom" disabled={busy === a.id} onClick={() => markHandled(a)} />}</td>
                     </tr>); })}</tbody>
                 </>}
-                {tab === "tasks" && <>
-                  <thead><tr><th><IconLabel name="status">Status</IconLabel></th><th><IconLabel name="priority">Priority</IconLabel></th><th><IconLabel name="date">{status.tasks === "done" ? "Completed" : "Due"}</IconLabel></th><th><IconLabel name="customer">Customer</IconLabel></th><th><IconLabel name="phone">Phone</IconLabel></th><th><IconLabel name="task">Task</IconLabel></th><th><IconLabel name="status">Lead status</IconLabel></th><th><IconLabel name="owner">Owner</IconLabel></th><th><IconLabel name={status.tasks === "done" ? "outcome" : "ai"}>{status.tasks === "done" ? "Outcome" : "Made by"}</IconLabel></th><th /></tr></thead>
+                {tab === "tasks" && ["done", "missed", "cancelled"].includes(status.tasks) && <>
+                  <thead><tr><th><IconLabel name={status.tasks === "done" ? "done" : "overdue"}>{status.tasks === "done" ? "Completed" : status.tasks === "missed" ? "Was due" : "Closed"}</IconLabel></th><th><IconLabel name="customer">Customer</IconLabel></th><th><IconLabel name="task">Task</IconLabel></th><th><IconLabel name="outcome">{status.tasks === "done" ? "Outcome" : status.tasks === "missed" ? "Why missed" : "Why closed"}</IconLabel></th><th><IconLabel name="done">{status.tasks === "done" ? "Completed by" : "Closed by"}</IconLabel></th><th><IconLabel name="owner">Owner</IconLabel></th><th><IconLabel name="ai">Made by</IconLabel></th><th><IconLabel name="note">Note</IconLabel></th><th /></tr></thead>
+                  <tbody>{shown.map((t) => (
+                    <tr key={t.key}>
+                      <td><When at={status.tasks === "missed" ? t.due : t.done_at} name={status.tasks === "done" ? "done" : "overdue"} /></td>
+                      <td><Customer name={t.name} vehicle={t.vehicle} href={leadHref(t.lead_id)} /></td>
+                      <td className="act_wide"><span className="ap_label"><AppIcon name={t.kind === "call" ? "phone" : "note"} />{t.why}</span></td>
+                      <td>{status.tasks === "done" ? <Badge bg="success" className="act_badge"><AppIcon name="done" plain />{t.outcome || "Completed"}</Badge> : <span className="ap_label"><AppIcon name="info" />{t.raw.closed_reason || (status.tasks === "missed" ? "Not called in time" : t.raw.status === "dismissed" ? "Dismissed" : "No longer needed")}</span>}</td>
+                      <td><Person name={t.done_by || (status.tasks === "cancelled" ? "AI" : null)} /></td><td><Person name={t.owner} /></td>
+                      <td><span className="ap_label"><AppIcon name={t.made === "AI" ? "ai" : "staff"} />{t.made}</span></td>
+                      <td className="act_wide small">{t.note ? <span className="ap_label"><AppIcon name="note" />{t.note}</span> : <span className="text-muted">-</span>}</td>
+                      <td className="act_row_btns">
+                        {t.kind === "call" && t.status === "missed" && <Icon title="Record late call" name="outcome" onClick={() => recordOutcome(t)} />}
+                        {t.kind === "call" && t.raw.status === "dismissed" && <Icon title="Undo dismiss" name="history" onClick={() => bringBack(t)} />}
+                        <Button as={Link} size="sm" variant="outline-custom" className="act_btn" title="Open lead" aria-label="Open lead" href={leadHref(t.lead_id)}><i className="fa-solid fa-arrow-up-right-from-square" aria-hidden="true" /></Button>
+                      </td>
+                    </tr>))}</tbody>
+                </>}
+                {tab === "tasks" && !["done", "missed", "cancelled"].includes(status.tasks) && <>
+                  <thead><tr><th><IconLabel name="status">Status</IconLabel></th><th><IconLabel name="priority">Priority</IconLabel></th><th><IconLabel name="date">Due</IconLabel></th><th><IconLabel name="customer">Customer</IconLabel></th><th><IconLabel name="phone">Phone</IconLabel></th><th><IconLabel name="task">Task</IconLabel></th><th><IconLabel name="status">Lead status</IconLabel></th><th><IconLabel name="owner">Owner</IconLabel></th><th><IconLabel name="ai">Made by</IconLabel></th><th /></tr></thead>
                   <tbody>{shown.map((t) => { const m = STATUS_META[t.status]; return (
                     <tr key={t.key}>
                       <td><Badge bg={m.bg} className="act_badge"><AppIcon name={m.icon} plain />{m.label}</Badge>{t.escalated && <div className="mt-1"><Badge bg="danger" className="act_badge"><AppIcon name="escalated" plain />Escalated</Badge></div>}</td>
-                      <td><Priority value={t.priority} /></td><td><When at={status.tasks === "done" ? t.done_at : t.due} /></td>
+                      <td><Priority value={t.priority} /></td><td><When at={t.due} /></td>
                       <td><Customer name={t.name} vehicle={t.vehicle} href={leadHref(t.lead_id)} /></td><td><Phone value={t.phone} /></td>
                       <td className="act_wide"><span className="ap_label"><AppIcon name={t.kind === "call" ? "phone" : "note"} />{t.why}</span>{t.note && <small className="d-block text-muted">{t.note}</small>}</td>
                       <td><LeadStatus status={t.lead_status} /></td><td><Person name={t.owner} /></td>
-                      <td>{status.tasks === "done" ? <><span className="ap_label"><AppIcon name="done" />{t.outcome || "Completed"}</span>{t.done_by && <small className="d-block text-muted">{t.done_by}</small>}</> : <span className="ap_label"><AppIcon name={t.made === "AI" ? "ai" : "staff"} />{t.made}</span>}</td>
+                      <td><span className="ap_label"><AppIcon name={t.made === "AI" ? "ai" : "staff"} />{t.made}</span></td>
                       <td className="act_row_btns">
                         {t.kind === "call" && ["open", "overdue"].includes(t.status) && <><Icon title="Call" name="phone" variant="custom" disabled={!telHref(t.phone)} onClick={() => startCall(t)} /><Icon title="Record outcome" name="outcome" onClick={() => recordOutcome(t)} /></>}
                         {t.kind === "call" && t.status === "missed" && <Icon title="Record late call" name="outcome" onClick={() => recordOutcome(t)} />}
@@ -419,7 +488,12 @@ function ActionsContent() {
                       <td><Customer name={x.name} vehicle={x.vehicle} href={leadHref(x.lead_id)} /></td><td className="act_wide small">{x.detail}</td>
                       <td><LeadStatus status={x.lead_status} /></td><td><Source value={x.source} /></td>
                       <td><span className="ap_label"><AppIcon name="department" />{deptOf(x)}</span></td><td><Person name={x.owner} /></td><td><When at={x.since} name="age" /></td>
-                      <td className="act_row_btns"><Button as={Link} size="sm" variant="custom" className="act_btn" title={x.fix} aria-label={x.fix} href={fixHref(x)}><i className="fa-solid fa-arrow-up-right-from-square" aria-hidden="true" /></Button></td>
+                      <td className="act_row_btns">
+                        {x.fix === "Assign" || x.fix === "Add task"
+                          ? <Button size="sm" variant="custom" className="act_btn" title={x.fix} aria-label={x.fix} onClick={() => setFixing(x)}><i className={`fa-solid ${FIX_ICON[x.fix]}`} aria-hidden="true" /></Button>
+                          : <Button as={Link} size="sm" variant="custom" className="act_btn" title={x.fix} aria-label={x.fix} href={fixHref(x)}><i className={`fa-solid ${FIX_ICON[x.fix]}`} aria-hidden="true" /></Button>}
+                        {x.fix !== "Open lead" && <Button as={Link} size="sm" variant="outline-custom" className="act_btn" title="Open lead" aria-label="Open lead" href={leadHref(x.lead_id)}><i className="fa-solid fa-arrow-up-right-from-square" aria-hidden="true" /></Button>}
+                      </td>
                     </tr>))}</tbody>
                 </>}
                 {tab === "board" && <>
@@ -442,6 +516,7 @@ function ActionsContent() {
         </div>
       </div>
       <ReminderModal item={editing} staff={staff} onHide={() => setEditing(null)} onSaved={done} />
+      <FixModal item={fixing} staff={staff} dealerId={dealerParent?.id} onHide={() => setFixing(null)} onSaved={done} />
       <CallOutcomeModal show={Boolean(pending)} task={pending} dealerId={dealerParent?.id}
         onDone={() => { const n = pending?.customer_name || "the customer"; write(null); setPending(null); done(`Saved the call outcome for ${n}.`); }}
         onNotCalled={() => { write(null); setPending(null); }} />

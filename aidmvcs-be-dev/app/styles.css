@@ -2077,3 +2077,37 @@ a .d_counts_card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgb
 /* A very long name or unbroken text on the customer profile wraps instead of pushing the page sideways. */
 .cust_profile .accordion-body { min-width: 0; overflow-wrap: anywhere; }
 .cust_profile .accordion-body .badge { white-space: normal; max-width: 100%; overflow-wrap: anywhere; }
+
+/* Row buttons that are links keep their own colours inside a card (.w_card a would turn them blue on blue). */
+.w_card a.btn.btn-custom, .w_card a.btn.btn-custom:visited, .w_card a.btn.btn-custom i { color: #fff; }
+.w_card a.btn.btn-custom:hover, .w_card a.btn.btn-custom:hover i { color: #fff; }
+.act_row_btns a.btn { word-break: normal; }
+.w_card a.btn.btn-outline-custom:hover, .w_card a.btn.btn-outline-custom:hover i { color: #fff; }
+
+/* Next step on the lead card */
+.lead_next { display: flex; gap: 7px; align-items: flex-start; background: #f1f7fb; border-left: 3px solid var(--primary); border-radius: 4px; padding: 6px 8px; margin-bottom: 8px; font-size: 12.5px; }
+.lead_next > i { color: var(--primary); margin-top: 2px; }
+.lead_next.none { background: #fdf0f0; border-left-color: #e5383b; }
+.lead_next.none > i { color: #e5383b; }
+
+/* Bulk Lead details */
+.ld_row { display: grid; grid-template-columns: 105px 1fr; gap: 8px; align-items: center; margin-bottom: 8px; }
+.ld_row .form-label { font-weight: 600; margin-bottom: 0; }
+.ld_sum { background: #f1f7fb; border-left: 3px solid var(--primary); border-radius: 4px; padding: 8px 10px; margin-top: 10px; }
+
+/* Recent Activity: the approved layout */
+.ra_types { padding: 8px 0; border-top: 1px solid #edf0f3; border-bottom: 1px solid #edf0f3; }
+.ra_types button { color: #334; font-size: 12.5px; }
+.ra_types button b { margin-left: 3px; }
+.ra_types button.on, .ra_types button.on i { background: var(--primary); border-color: var(--primary); color: #fff !important; }
+.ra_day { color: #015688; background: #f3f7fb; padding: 4px 8px; margin: 8px 0 2px; border-radius: 4px; }
+.ra_row { display: grid; grid-template-columns: 30px minmax(220px, 1fr) 150px 125px 72px 14px; gap: 9px; padding: 7px 6px; }
+.ra_icon { width: 28px; height: 28px; font-size: 12px; }
+.ra_main { white-space: normal; overflow: visible; }
+.ra_main b, .ra_main span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ra_main span { color: #667; font-size: 12px; }
+.ra_opp { color: #667; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ra_who { font-weight: 600; color: #334; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ra_time { min-width: 0; color: #667; text-align: left; }
+.ra_detail { background: #f8fafc; border: 0; border-left: 3px solid var(--primary); padding: 8px 12px; font-size: 12.5px; margin: 0 0 6px 38px; }
+@media (max-width: 767px) { .ra_row { grid-template-columns: 30px minmax(0, 1fr) 62px 14px; } .ra_opp, .ra_who { display: none; } .ra_detail { margin-left: 0; } }
