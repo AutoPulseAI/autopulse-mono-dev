@@ -22,6 +22,8 @@ import { Alert, Button, Col, Form, Modal, Row, Spinner } from "react-bootstrap";
 import { bookingConflictFrom } from "@lib/bookingConflict";
 import SlotFullNotice from "../../components/SlotFullNotice";
 import { CALL_OUTCOMES, CHANNEL_LABELS, aiFetch, callOutcomeLabel } from "./aiShared";
+import { useCan } from "../../../hooks/PermissionsContext";
+import { DISMISS_TASKS } from "../../components/DismissTaskModal";
 
 const LEAD_OUTCOMES = [
   { value: "appointment", label: "Booked an appointment", needsContact: true },
@@ -44,6 +46,8 @@ export default function CallOutcomeModal({ show, task, dealerId, onDone, onNotCa
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [dismissMode, setDismissMode] = useState(false);
+  // Only people whose role has "Dismiss Tasks" (app/lib/taskPermission.js) see the dismiss link.
+  const canDismiss = useCan(DISMISS_TASKS);
   const [conflict, setConflict] = useState(null); // a full appointment slot
 
   useEffect(() => {
@@ -310,9 +314,11 @@ export default function CallOutcomeModal({ show, task, dealerId, onDone, onNotCa
                 I didn&apos;t make the call
               </Button>
             )}
-            <Button variant="link" className="px-0" onClick={() => setDismissMode(true)} disabled={saving}>
-              Won&apos;t call - dismiss
-            </Button>
+            {canDismiss && (
+              <Button variant="link" className="px-0" onClick={() => setDismissMode(true)} disabled={saving}>
+                Won&apos;t call - dismiss
+              </Button>
+            )}
           </div>
         )}
         <Button variant="custom" onClick={() => submit()} disabled={saving || Boolean(missing)}>

@@ -7,7 +7,7 @@ import NotificationClear from "@models/NotificationClear";
 import { jsonError, requireDealerSession } from "../../dealer-ai/_lib/dealerAi";
 
 export const dynamic = "force-dynamic";
-const KEY = /^(alert|call|new|moved|taken):[A-Za-z0-9_-]{1,64}$/;
+const KEY = /^(alert|call|new|moved|taken|esc):[A-Za-z0-9_-]{1,64}$/;
 const MAX = 1000;
 
 export async function POST(req) {

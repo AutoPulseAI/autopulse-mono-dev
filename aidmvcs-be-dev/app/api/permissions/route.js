@@ -3,6 +3,7 @@ import Permission from "@models/Permission";
 import { EXPORT_DETAIL } from "next/dist/shared/lib/constants";
 import { REPL_MODE_SLOPPY } from "repl";
 import { requireUser } from "@lib/apiGuard";
+import { ensureDismissPermission } from "@lib/taskPermission";
 
 export async function GET(request) {
   // Security fix (Nov 2026): the role screens (signed in) read this; it had no sign-in check.
@@ -10,6 +11,7 @@ export async function GET(request) {
   if (guard.response) return guard.response;
   try {
     await dbConnect();
+    await ensureDismissPermission().catch(() => null); // "Dismiss Tasks" listed for every dealer
     const { searchParams } = new URL(request.url);
     const type = searchParams.get("type"); // Get the type parameter from the request
 

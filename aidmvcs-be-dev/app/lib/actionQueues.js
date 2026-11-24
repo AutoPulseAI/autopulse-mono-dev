@@ -132,7 +132,8 @@ export async function reminderRows(dealerId, scope) {
       name: lead.name || lead.phone || 'Unknown customer', phone: lead.phone || null,
       vehicle: [lead.vehicle_year, lead.vehicle_make, lead.vehicle_model].filter(Boolean).join(' ') || null,
       note: r.note, due_at: r.due_at, done_at: r.done_at, done_by_name: r.done_by_name || null, owner_id: ownerId,
-      created_by_name: r.created_by_name || null, escalated_at: r.escalated_at || null, department: leadDepartment(lead) };
+      created_by_name: r.created_by_name || null, escalated_at: r.escalated_at || null, department: leadDepartment(lead),
+      dismissed_at: r.dismissed_at || null, dismiss_reason: r.dismiss_reason || null };
   }).filter(canSee(scope));
 }
 

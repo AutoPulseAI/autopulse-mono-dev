@@ -17,6 +17,8 @@ import DashboardDatePicker from "../../dashboard/components/DashboardDatePicker"
 import { ListPages } from "../../leads/components/BulkAssign";
 import { leadStatusLabelFrom } from "./labels";
 import CallOutcomeModal from "../components/CallOutcomeModal";
+import DismissTaskModal, { DISMISS_TASKS } from "../../components/DismissTaskModal";
+import { useCan } from "../../../hooks/PermissionsContext";
 import LeadAiDrawer from "../components/LeadAiDrawer";
 import { ALERTS_CHANGED_EVENT, aiFetch, alertKind, callOutcomeLabel, formatDateTime, fromNow, leadHref, telHref } from "../components/aiShared";
 
@@ -53,8 +55,10 @@ const fromCall = (view, t, now) => {
 const fromReminder = (r, now) => {
   const late = !r.done_at && new Date(r.due_at) < now;
   return { key: `rem-${r.id}`, kind: "reminder", id: r.id, raw: r, lead_id: r.lead_id, customer_id: r.customer_id, name: r.name, vehicle: r.vehicle, phone: r.phone,
-    why: r.note, status: r.done_at ? "done" : late ? "overdue" : "waiting", due: r.due_at, priority: r.escalated_at || late ? "High" : "Normal",
-    made: r.created_by_name || "Staff", owner_id: r.owner_id, done_at: r.done_at, done_by: r.done_by_name, outcome: r.done_at ? "Completed" : null, note: null, escalated: !!r.escalated_at };
+    why: r.note, status: r.dismissed_at ? "cancelled" : r.done_at ? "done" : late ? "overdue" : "waiting", due: r.due_at, priority: r.escalated_at || late ? "High" : "Normal",
+    made: r.created_by_name || "Staff", owner_id: r.owner_id, done_at: r.done_at, done_by: r.done_by_name,
+    outcome: r.dismissed_at ? "Dismissed" : r.done_at ? "Completed" : null, note: r.dismiss_reason || null, escalated: !!r.escalated_at,
+    dismissed: !!r.dismissed_at };
 };
 
 const Person = ({ name }) => (name
@@ -222,6 +226,9 @@ function ActionsContent() {
   const [sort, setSort] = useState("");
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
+  // "Dismiss Tasks" (app/lib/taskPermission.js): only these people see Dismiss and Undo dismiss.
+  const canDismiss = useCan(DISMISS_TASKS);
+  const [dismissing, setDismissing] = useState(null);
   const [moreFilters, setMoreFilters] = useState(false); // phones: the filters fold away so the list stays in view
 
   const load = useCallback(async ({ silent = false } = {}) => {
@@ -327,7 +334,7 @@ function ActionsContent() {
     setScope("all"); setOwnerF(id); if (st) setStatus((s) => ({ ...s, tasks: st })); setSort("");
     showTab(key);
   };
-  const done = (message) => { setSuccess(message); setEditing(null); setFixing(null); load({ silent: true }); };
+  const done = (message) => { setSuccess(message); setEditing(null); setFixing(null); setDismissing(null); load({ silent: true }); };
   const markHandled = async (item) => {
     setBusy(item.id); setError("");
     try {
@@ -342,6 +349,13 @@ function ActionsContent() {
       await aiFetch(`/api/leads/${t.lead_id}/opportunity`, { method: "POST", body: JSON.stringify({ action: "reminder_done", reminder_id: t.id }) });
       done("Task done.");
     } catch (e) { setError(e.message); } finally { setBusy(null); }
+  };
+  const undismissReminder = async (t) => {
+    setError("");
+    try {
+      await aiFetch(`/api/leads/${t.lead_id}/opportunity`, { method: "POST", body: JSON.stringify({ action: "reminder_undismiss", reminder_id: t.id }) });
+      done("The task is open again.");
+    } catch (e) { setError(e.message); }
   };
   const bringBack = async (t) => {
     setError("");
@@ -453,13 +467,14 @@ function ActionsContent() {
                       <td><When at={status.tasks === "missed" ? t.due : t.done_at} name={status.tasks === "done" ? "done" : "overdue"} /></td>
                       <td><Customer name={t.name} vehicle={t.vehicle} href={leadHref(t.lead_id)} /></td>
                       <td className="act_wide"><span className="ap_label"><AppIcon name={t.kind === "call" ? "phone" : "note"} />{t.why}</span></td>
-                      <td>{status.tasks === "done" ? <Badge bg="success" className="act_badge"><AppIcon name="done" plain />{t.outcome || "Completed"}</Badge> : <span className="ap_label"><AppIcon name="info" />{t.raw.closed_reason || (status.tasks === "missed" ? "Not called in time" : t.raw.status === "dismissed" ? "Dismissed" : "No longer needed")}</span>}</td>
+                      <td>{status.tasks === "done" ? <Badge bg="success" className="act_badge"><AppIcon name="done" plain />{t.outcome || "Completed"}</Badge> : <span className="ap_label"><AppIcon name="info" />{t.raw.closed_reason || (status.tasks === "missed" ? "Not called in time" : t.raw.status === "dismissed" || t.dismissed ? "Dismissed" : "No longer needed")}</span>}</td>
                       <td><Person name={t.done_by || (status.tasks === "cancelled" ? "AI" : null)} /></td><td><Person name={t.owner} /></td>
                       <td><span className="ap_label"><AppIcon name={t.made === "AI" ? "ai" : "staff"} />{t.made}</span></td>
                       <td className="act_wide small">{t.note ? <span className="ap_label"><AppIcon name="note" />{t.note}</span> : <span className="text-muted">-</span>}</td>
                       <td className="act_row_btns">
                         {t.kind === "call" && t.status === "missed" && <Icon title="Record late call" name="outcome" onClick={() => recordOutcome(t)} />}
-                        {t.kind === "call" && t.raw.status === "dismissed" && <Icon title="Undo dismiss" name="history" onClick={() => bringBack(t)} />}
+                        {canDismiss && t.kind === "call" && t.raw.status === "dismissed" && <Icon title="Undo dismiss" name="history" onClick={() => bringBack(t)} />}
+                        {canDismiss && t.kind === "reminder" && t.dismissed && <Icon title="Undo dismiss" name="history" onClick={() => undismissReminder(t)} />}
                         <Button as={Link} size="sm" variant="outline-custom" className="act_btn" title="Open lead" aria-label="Open lead" href={leadHref(t.lead_id)}><i className="fa-solid fa-arrow-up-right-from-square" aria-hidden="true" /></Button>
                       </td>
                     </tr>))}</tbody>
@@ -477,8 +492,9 @@ function ActionsContent() {
                       <td className="act_row_btns">
                         {t.kind === "call" && ["open", "overdue"].includes(t.status) && <><Icon title="Call" name="phone" variant="custom" disabled={!telHref(t.phone)} onClick={() => startCall(t)} /><Icon title="Record outcome" name="outcome" onClick={() => recordOutcome(t)} /></>}
                         {t.kind === "call" && t.status === "missed" && <Icon title="Record late call" name="outcome" onClick={() => recordOutcome(t)} />}
-                        {t.kind === "call" && t.raw.status === "dismissed" && <Icon title="Undo dismiss" name="history" onClick={() => bringBack(t)} />}
-                        {t.kind === "reminder" && t.status !== "done" && <><Icon title="Mark done" name="done" variant="custom" disabled={busy === t.key} onClick={() => finishReminder(t)} /><Icon title="Reschedule, reassign or escalate" name="date" onClick={() => setEditing(t)} /></>}
+                        {canDismiss && t.kind === "call" && t.raw.status === "dismissed" && <Icon title="Undo dismiss" name="history" onClick={() => bringBack(t)} />}
+                        {canDismiss && t.kind === "reminder" && t.dismissed && <Icon title="Undo dismiss" name="history" onClick={() => undismissReminder(t)} />}
+                        {t.kind === "reminder" && t.status !== "done" && <><Icon title="Mark done" name="done" variant="custom" disabled={busy === t.key} onClick={() => finishReminder(t)} /><Icon title="Reschedule, reassign or escalate" name="date" onClick={() => setEditing(t)} />{canDismiss && <Icon title="Dismiss (close without doing it)" name="cancelled" onClick={() => setDismissing(t)} />}</>}
                         <Button as={Link} size="sm" variant="outline-custom" className="act_btn" title="Open lead" aria-label="Open lead" href={leadHref(t.lead_id)}><i className="fa-solid fa-arrow-up-right-from-square" aria-hidden="true" /></Button>
                       </td>
                     </tr>); })}</tbody>
@@ -523,6 +539,8 @@ function ActionsContent() {
       <CallOutcomeModal show={Boolean(pending)} task={pending} dealerId={dealerParent?.id}
         onDone={() => { const n = pending?.customer_name || "the customer"; write(null); setPending(null); done(`Saved the call outcome for ${n}.`); }}
         onNotCalled={() => { write(null); setPending(null); }} />
+      <DismissTaskModal task={dismissing} dealerId={dealerParent?.id} onHide={() => setDismissing(null)}
+        onDone={() => done("Task dismissed.")} />
       <LeadAiDrawer show={Boolean(drawer)} onHide={() => setDrawer(null)} leadId={drawer?.lead_id} customerId={drawer?.customer_id} title={drawer?.customer_name || "Lead"} />
     </div>
   );
