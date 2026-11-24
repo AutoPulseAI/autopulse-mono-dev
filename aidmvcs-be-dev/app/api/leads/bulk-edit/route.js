@@ -3,6 +3,8 @@
 //     action 'department'  { value: 'sales' | 'service' | 'parts' }
 //     action 'lead_source' { value }            one of the dealer's lead sources (empty = none)
 //     action 'campaign'    { value }            one of the dealer's campaigns (empty = none)
+//     action 'sub_source'  { value }            free text (empty = none)
+//     action 'contact_type' { value }           internet | phone | walk_in
 //     action 'note'        { note, internal }   a note on each lead's conversation (internal = staff only, as the note box)
 //     action 'task'        { note, due_at, assigned_to? | assign: 'owner' }   a reminder for staff on each lead (Open tasks
 //                          on the profile); 'owner' = each lead's owner, or the person doing it when the lead has none
@@ -25,8 +27,8 @@ import { POST as opportunityAction } from '../[id]/opportunity/route.js';
 
 export const runtime = 'nodejs';
 const MAX = 100;
-const ACTIONS = Object.freeze(['department', 'lead_source', 'campaign', 'note', 'task']);
-const FIELDS = Object.freeze({ department: 'department', lead_source: 'lead_source', campaign: 'campaign' });
+const ACTIONS = Object.freeze(['department', 'lead_source', 'sub_source', 'contact_type', 'campaign', 'note', 'task']);
+const FIELDS = Object.freeze({ department: 'department', lead_source: 'lead_source', sub_source: 'sub_source', contact_type: 'contact_type', campaign: 'campaign' });
 const fail = (error, status) => Response.json({ error }, { status });
 const clean = (v, max) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 
@@ -53,7 +55,7 @@ export async function POST(req) {
   const due = action === 'task' ? new Date(body.due_at) : null;
   if (action === 'task' && Number.isNaN(due.getTime())) return fail('Pick when the task is due', 400);
 
-  const leads = await Lead.find({ _id: { $in: ids } }).select('_id name dealer_id department lead_source campaign assigned_to').lean();
+  const leads = await Lead.find({ _id: { $in: ids } }).select('_id name dealer_id department lead_source sub_source contact_type campaign assigned_to').lean();
   const byId = new Map(leads.map((l) => [String(l._id), l]));
   const headers = new Headers({ 'Content-Type': 'application/json' });
   for (const h of ['authorization', 'cookie']) if (req.headers.get(h)) headers.set(h, req.headers.get(h));

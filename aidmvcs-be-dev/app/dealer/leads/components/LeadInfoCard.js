@@ -51,7 +51,7 @@ const str = (v) => (v == null ? "" : String(v));
 const auth = () => ({ "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("dealertoken")}` });
 
 // One labelled field of where the lead came from: icon, small label, value (a colour dot when the value has one).
-function LeadFact({ icon, label, color, muted, children }) {
+export function LeadFact({ icon, label, color, muted, children }) {
   const text = typeof children === "string" ? children : undefined;
   return (
     <div className="lead_fact">
@@ -60,6 +60,50 @@ function LeadFact({ icon, label, color, muted, children }) {
         {color && <span className="lead_fact_dot" style={{ background: color }} />}<span className="text-truncate">{children}</span>
       </dd>
     </div>
+  );
+}
+
+// Where the lead came from, each in its own labelled field; the lead card and the customer profile show the same block.
+export function LeadFacts({ lead }) {
+  const type = leadTypeName(lead);
+  return (
+    <dl className="lead_facts">
+      <LeadFact icon="fa-solid fa-tag" label="Up type" color={TYPE_COLOR[type]}>{type}</LeadFact>
+      <LeadFact icon="fa-solid fa-building" label="Department" color={DEPT_COLOR[leadDepartment(lead)]}>
+        {DEPARTMENT_NAMES[leadDepartment(lead)]}</LeadFact>
+      <LeadFact icon="fa-solid fa-signs-post" label="Source">{lead?.lead_source || lead?.source || "Unknown source"}</LeadFact>
+      <LeadFact icon="fa-solid fa-sitemap" label="Sub-source" muted={!lead?.sub_source}>{lead?.sub_source || "No sub-source"}</LeadFact>
+      {lead?.campaign && <LeadFact icon="fa-solid fa-bullhorn" label="Campaign">{lead.campaign}</LeadFact>}
+    </dl>
+  );
+}
+
+// SOW B2, read only: the sales type and new / used the AI works from, and what happens next on this lead.
+function LeadPlan({ lead, timezone }) {
+  const [plan, setPlan] = useState(null);
+  const id = lead?._id;
+  const dealerId = lead?.dealer_id;
+  useEffect(() => {
+    if (!id) return undefined;
+    let live = true;
+    setPlan(null);
+    fetch(`/api/dealer-ai/actions?tab=lead&lead_id=${id}${dealerId ? `&dealer_id=${encodeURIComponent(dealerId)}` : ""}`, { headers: auth() })
+      .then((r) => (r.ok ? r.json() : null)).then((d) => { if (live) setPlan(d); }).catch(() => {});
+    return () => { live = false; };
+  }, [id, dealerId, lead?.fe_lead_status]);
+  if (!plan) return null;
+  const next = plan.next_step;
+  return (
+    <>
+      <dl className="lead_facts">
+        <LeadFact icon="fa-solid fa-robot" label="Sales type">{plan.sales_type}</LeadFact>
+        <LeadFact icon="fa-solid fa-car-side" label="Vehicle wanted" muted={!plan.vehicle_wanted}>{plan.vehicle_wanted || "Not known yet"}</LeadFact>
+      </dl>
+      <p className={`small mb-2 ${next ? "" : "text-danger"}`}>
+        <i className={`fa-solid ${next?.who === "AI" ? "fa-robot" : "fa-list-check"} me-1`} aria-hidden="true" />
+        <strong>Next step:</strong> {next ? `${next.text}${next.at ? `, ${formatTimestamp(next.at, timezone)}` : ""}${next.who && next.who !== "AI" ? ` (${next.who})` : ""}` : "None planned"}
+      </p>
+    </>
   );
 }
 
@@ -358,14 +402,8 @@ export default function LeadInfoCard({ lead: given, dealerTimezone, onSaved, onS
       </div>
       {/* Where the lead came from, each in its own labelled field (23 Nov 2026), named as the source / sub-source
           report names them: Up Type > Source > Sub-Source, plus department and campaign. */}
-      <dl className="lead_facts">
-        <LeadFact icon="fa-solid fa-tag" label="Up type" color={TYPE_COLOR[type]}>{type}</LeadFact>
-        <LeadFact icon="fa-solid fa-building" label="Department" color={DEPT_COLOR[leadDepartment(lead)]}>
-          {DEPARTMENT_NAMES[leadDepartment(lead)]}</LeadFact>
-        <LeadFact icon="fa-solid fa-globe" label="Source">{lead?.lead_source || lead?.source || "Unknown source"}</LeadFact>
-        <LeadFact icon="fa-solid fa-sitemap" label="Sub-source" muted={!lead?.sub_source}>{lead?.sub_source || "No sub-source"}</LeadFact>
-        {lead?.campaign && <LeadFact icon="fa-solid fa-bullhorn" label="Campaign">{lead.campaign}</LeadFact>}
-      </dl>
+      <LeadFacts lead={lead} />
+      <LeadPlan lead={lead} timezone={dealerTimezone} />
       {lead?._id && <LeadJourney key={`${lead._id}-${lead.fe_lead_status || ""}`} leadId={lead._id} timezone={dealerTimezone} />}
       <p className="mb-1 small text-break"><i className="fa-solid fa-phone me-2 text-muted" />{lead?.phone || "No phone"}</p>
       <p className="mb-1 small text-break"><i className="fa-solid fa-envelope me-2 text-muted" />{lead?.email || "No email"}</p>

@@ -19,6 +19,8 @@ const changeText = (r) => ({
   department: `Department → ${r.to_label}`,
   lead_source: `Lead source → ${r.to_label || "None"}`,
   campaign: `Campaign → ${r.to_label || "None"}`,
+  sub_source: `Sub-source → ${r.to_label || "None"}`,
+  contact_type: `Up type → ${({ internet: "Internet", phone: "Phone Up", walk_in: "Walk-In" })[r.to_label] || r.to_label || "None"}`,
   note: `Note: "${r.to_label || ""}"`,
   task: `Call task: "${r.to_label || ""}"`,
 }[r.action] || r.action);
@@ -124,6 +126,8 @@ export default function BulkHistoryPage() {
                 <option value="status">Status</option>
                 <option value="department">Department</option>
                 <option value="lead_source">Lead source</option>
+                <option value="sub_source">Sub-source</option>
+                <option value="contact_type">Up type</option>
                 <option value="campaign">Campaign</option>
                 <option value="note">Note</option>
                 <option value="task">Call task</option>

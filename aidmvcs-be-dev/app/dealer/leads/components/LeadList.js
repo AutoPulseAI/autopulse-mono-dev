@@ -600,7 +600,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     || (assignmentFilter && assignmentFilter !== 'all'));
   const lightRow = (l) => ({ _id: String(l._id), name: l.name || null, owner: l.assigned_to?.name || null,
     status: l.fe_lead_status || null, department: l.department || null, lead_source: l.lead_source || null,
-    campaign: l.campaign || null });
+    campaign: l.campaign || null, sub_source: l.sub_source || null, contact_type: l.contact_type || null });
   const [bulkExporting, setBulkExporting] = useState(false);
   const bulkAction = async (kind) => {
     if (kind !== 'export') { setBulkPanel(kind); return; }

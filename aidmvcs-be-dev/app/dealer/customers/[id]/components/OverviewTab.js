@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { Badge, Button, ButtonGroup, Form, ListGroup } from "react-bootstrap";
+import { useEffect, useMemo, useState } from "react";
+import { Button, ButtonGroup, Form } from "react-bootstrap";
+import moment from "moment-timezone";
+import { ListPages } from "../../../leads/components/BulkAssign";
 import { formatTimestamp } from "../../../../utils/dateUtils";
 import { formatCurrency } from "../../../../utils/formatCurrency";
 import { leadTypeName } from "../../../leads/components/LeadInfoCard";
@@ -37,7 +39,7 @@ const ACTOR_META = {
   system: { label: "System", variant: "secondary", icon: "fa-gear" },
 };
 const FILTERS = [["all", "All"], ["staff", "Staff"], ["ai", "AI"], ["customer", "Customer"]];
-const PAGE = 50;
+const PAGE = 20;
 
 function describeEntry(entry) {
   const { type, record } = entry;
@@ -67,86 +69,118 @@ function describeEntry(entry) {
   return "Activity";
 }
 
+// Recent Activity, organized (approved 24 Nov 2026): grouped by day, one kind of thing per chip, one line per entry that
+// opens for the detail, with pages.
+const KINDS = {
+  text: ["Texts", "fa-comment-sms", "#0f8f83"], email: ["Emails", "fa-envelope", "#6f42c1"], call: ["Calls", "fa-phone", "#0272b4"],
+  note: ["Notes", "fa-note-sticky", "#d97706"], appointment: ["Appointments", "fa-calendar-check", "#2fb344"],
+  status: ["Status", "fa-circle-half-stroke", "#5f7890"], owner: ["Owner", "fa-user-tie", "#5f7890"], lead: ["Leads", "fa-user-plus", "#0272b4"],
+  sale: ["Sales", "fa-handshake", "#2fb344"], service: ["Service", "fa-wrench", "#0f8f83"], other: ["Other", "fa-circle-info", "#5f7890"],
+};
+function kindOf(e) {
+  if (e.type === "lead") return "lead";
+  if (e.type === "deal") return "sale";
+  if (e.type === "repair_order") return "service";
+  if (e.type === "appointment") return "appointment";
+  if (e.type === "assignment") return "owner";
+  const k = String(e.kind || "");
+  if (k === "note" || k === "note_removed") return "note";
+  if (k === "message_in" || k === "message_out") return /(^|\] )Email/.test(e.text || "") ? "email" : "text";
+  if (k === "lead_edited" || k === "hot_changed") return "lead";
+  if (/call/.test(k)) return "call";
+  if (/stage|status/.test(k)) return "status";
+  if (/assign/.test(k)) return "owner";
+  if (/appointment|booking/.test(k)) return "appointment";
+  return "other";
+}
+const whoOf = (e) => (e.type === "activity" ? (ACTOR_META[e.actor] || ACTOR_META.system) : e.type === "assignment" ? ACTOR_META.staff : ACTOR_META.system);
+const dayLabel = (at) => {
+  if (!at) return "Date unknown";
+  const d = moment(at);
+  if (d.isSame(moment(), "day")) return "Today";
+  if (d.isSame(moment().subtract(1, "day"), "day")) return "Yesterday";
+  return d.format("MMM D, YYYY");
+};
+
 export default function OverviewTab({ overview, activity = [] }) {
   const [filter, setFilter] = useState("all");
-  const [shown, setShown] = useState(PAGE);
-  // G-026: narrow the timeline to one lead and / or a recent period; open a long message in full.
+  const [kind, setKind] = useState("all");
+  const [page, setPage] = useState(1);
   const [leadFilter, setLeadFilter] = useState("");
   const [days, setDays] = useState("");
-  const [open, setOpen] = useState(() => new Set());
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(null);
   const leadOptions = overview.filter((e) => e.type === "lead" && e.record?._id)
-    .map((e) => ({ id: String(e.record._id), label: `${e.record.source || e.record.lead_source || "Lead"}${e.at ? ` · ${new Date(e.at).toLocaleDateString()}` : ""}` }));
+    .map((e) => ({ id: String(e.record._id), label: `${e.record.lead_source || e.record.source || "Lead"}${e.at ? ` · ${moment(e.at).format("MMM D, YYYY")}` : ""}` }));
   const leadOf = (e) => String(e.type === "lead" ? e.record?._id : e.lead_id || "");
+  const textOf = (e) => (e.type === "activity" ? e.text : describeEntry(e));
+  const all = useMemo(() => [...overview, ...activity].map((e, i) => ({ ...e, _key: `${e.type}-${e.record?._id || e.kind || ""}-${i}`, _kind: kindOf(e) }))
+    .sort((a, b) => (a.at && b.at ? new Date(b.at) - new Date(a.at) : a.at ? -1 : b.at ? 1 : 0)), [overview, activity]);
   const since = days ? Date.now() - Number(days) * 864e5 : null;
-  const merged = [...overview, ...activity]
+  const needle = query.trim().toLowerCase();
+  const base = all
     .filter((e) => filter === "all" || (e.type === "activity" ? e.actor === filter : filter === "staff" && e.type === "assignment"))
     .filter((e) => !leadFilter || leadOf(e) === leadFilter)
     .filter((e) => !since || (e.at && new Date(e.at).getTime() >= since))
-    .sort((a, b) => (a.at && b.at ? new Date(b.at) - new Date(a.at) : a.at ? -1 : b.at ? 1 : 0));
-  const visible = merged.slice(0, shown);
+    .filter((e) => !needle || String(e.full || textOf(e)).toLowerCase().includes(needle));
+  const rows = base.filter((e) => kind === "all" || e._kind === kind);
+  const pages = Math.max(1, Math.ceil(rows.length / PAGE));
+  const current = Math.min(page, pages);
+  const visible = rows.slice((current - 1) * PAGE, current * PAGE);
+  useEffect(() => { setPage(1); setOpen(null); }, [filter, kind, leadFilter, days, needle]);
+  const present = Object.keys(KINDS).filter((k) => base.some((e) => e._kind === k));
+  let lastDay = null;
   return (
     <div className="w_card">
-      <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
-        <h3 className="w_card_title mb-0 me-auto">Recent Activity</h3>
+      <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
+        <h3 className="w_card_title mb-0 me-auto"><i className="fa-solid fa-clock-rotate-left me-2" style={{ color: "#5f7890" }} aria-hidden="true" />Recent Activity</h3>
+        <Form.Control size="sm" style={{ width: 220 }} placeholder="Search recent activity" aria-label="Search recent activity" value={query} onChange={(e) => setQuery(e.target.value)} />
         {leadOptions.length > 1 && (
-          <Form.Select size="sm" className="w-auto" value={leadFilter} aria-label="Show one lead"
-            onChange={(e) => { setLeadFilter(e.target.value); setShown(PAGE); }}>
-            <option value="">All leads</option>
+          <Form.Select size="sm" className="w-auto" value={leadFilter} aria-label="Show one lead" onChange={(e) => setLeadFilter(e.target.value)}>
+            <option value="">All opportunities</option>
             {leadOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
           </Form.Select>
         )}
-        <Form.Select size="sm" className="w-auto" value={days} aria-label="Period"
-          onChange={(e) => { setDays(e.target.value); setShown(PAGE); }}>
-          <option value="">All time</option>
-          <option value="7">Last 7 days</option>
-          <option value="30">Last 30 days</option>
-          <option value="90">Last 90 days</option>
+        <Form.Select size="sm" className="w-auto" value={days} aria-label="Period" onChange={(e) => setDays(e.target.value)}>
+          <option value="">All time</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option>
         </Form.Select>
         <ButtonGroup size="sm">
-          {FILTERS.map(([key, label]) => (
-            <Button key={key} variant={filter === key ? "custom" : "outline-custom"}
-              onClick={() => { setFilter(key); setShown(PAGE); }}>{label}</Button>
-          ))}
+          {FILTERS.map(([key, label]) => <Button key={key} variant={filter === key ? "custom" : "outline-custom"} onClick={() => setFilter(key)}>{label}</Button>)}
         </ButtonGroup>
       </div>
-      {merged.length === 0 ? (
-        <div className="text-center py-4 text-muted">{leadFilter || days ? "Nothing for this lead or period." : "No activity found for this customer yet."}</div>
-      ) : (
-        <ListGroup variant="flush">
-          {visible.map((entry, index) => {
-            const meta = entry.type === "activity"
-              ? (ACTOR_META[entry.actor] || ACTOR_META.system)
-              : entry.type === "lead" ? leadMeta(entry.record)
-              : TYPE_META[entry.type] || { label: entry.type, variant: "secondary", icon: "fa-circle" };
-            return (
-              <ListGroup.Item key={`${entry.type}-${entry.record?._id || entry.kind || ""}-${index}`} className="px-0">
-                <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
-                  <div>
-                    <Badge bg={meta.variant} className="me-2">
-                      <i className={`fa-solid ${meta.icon} me-1`} />{meta.label}
-                    </Badge>
-                    {entry.type === "activity" ? (open.has(index) && entry.full ? entry.full : entry.text) : describeEntry(entry)}
-                    {entry.full && (
-                      <Button variant="link" size="sm" className="p-0 ms-1 align-baseline"
-                        onClick={() => setOpen((cur) => { const next = new Set(cur); next.has(index) ? next.delete(index) : next.add(index); return next; })}>
-                        {open.has(index) ? "less" : "more"}
-                      </Button>
-                    )}
-                  </div>
-                  <small className="text-muted">{entry.at ? formatTimestamp(entry.at) : "Date unknown"}</small>
-                </div>
-              </ListGroup.Item>
-            );
-          })}
-        </ListGroup>
-      )}
-      {merged.length > shown && (
-        <div className="text-center mt-3 mb-2">
-          <Button size="sm" variant="outline-custom" onClick={() => setShown(shown + PAGE)}>
-            Show more ({merged.length - shown} older)
-          </Button>
-        </div>
-      )}
+      <div className="ra_types">
+        <button type="button" className={kind === "all" ? "on" : ""} onClick={() => setKind("all")}>All <b>{base.length}</b></button>
+        {present.map((k) => (
+          <button type="button" key={k} className={kind === k ? "on" : ""} onClick={() => setKind(k)}>
+            <i className={`fa-solid ${KINDS[k][1]} me-1`} style={{ color: KINDS[k][2] }} aria-hidden="true" />{KINDS[k][0]} <b>{base.filter((e) => e._kind === k).length}</b>
+          </button>
+        ))}
+      </div>
+      {rows.length === 0 ? (
+        <div className="text-center py-4 text-muted">{all.length ? "No activity matches these filters." : "No activity found."}</div>
+      ) : visible.map((entry) => {
+        const day = dayLabel(entry.at);
+        const showDay = day !== lastDay;
+        lastDay = day;
+        const k = KINDS[entry._kind];
+        const who = whoOf(entry);
+        const isOpen = open === entry._key;
+        const detail = entry.full || textOf(entry);
+        return (
+          <div key={entry._key}>
+            {showDay && <div className="ra_day">{day}</div>}
+            <button type="button" className={`ra_row${isOpen ? " on" : ""}`} aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : entry._key)}>
+              <span className="ra_icon" style={{ background: k[2] }}><i className={`fa-solid ${k[1]}`} aria-hidden="true" /></span>
+              <span className="ra_main">{textOf(entry)}</span>
+              <span className="ra_who"><i className={`fa-solid ${who.icon} me-1`} aria-hidden="true" />{who.label}</span>
+              <span className="ra_time">{entry.at ? moment(entry.at).format("h:mm A") : ""}</span>
+              <i className={`fa-solid fa-chevron-${isOpen ? "up" : "down"} text-muted`} aria-hidden="true" />
+            </button>
+            {isOpen && <div className="ra_detail">{detail}<div className="text-muted mt-1">{entry.at ? formatTimestamp(entry.at) : "Date unknown"} · {who.label}</div></div>}
+          </div>
+        );
+      })}
+      {pages > 1 && <div className="mt-3"><ListPages current={current} total={pages} onPage={setPage} /></div>}
     </div>
   );
 }

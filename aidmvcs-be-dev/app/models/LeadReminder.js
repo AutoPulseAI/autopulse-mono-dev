@@ -15,8 +15,11 @@ const leadReminderSchema = new mongoose.Schema({
   created_by_name: { type: String, default: null },
   done_at: { type: Date, default: null },
   done_by_name: { type: String, default: null },
+  escalated_at: { type: Date, default: null }, // staff escalated it (Actions > Tasks)
+  escalated_by_name: { type: String, default: null },
 }, { timestamps: true });
 
 leadReminderSchema.index({ lead_id: 1, done_at: 1, due_at: 1 });
+leadReminderSchema.index({ dealer_id: 1, done_at: 1, due_at: 1 });
 
 export default mongoose.models.LeadReminder || mongoose.model('LeadReminder', leadReminderSchema);

@@ -28,6 +28,8 @@ import {
 } from "./assemble.js";
 import { dmsProfile } from "@lib/dmsProfile";
 import { openTasks } from "@lib/customerTasks";
+import Booking from "@models/Booking";
+import User from "@models/User";
 import { applyOwnership, overridesByVin } from "@lib/ownership";
 
 // Caps how many of this customer's own records feed the Overview feed / value
@@ -167,8 +169,29 @@ export async function GET(req, { params }) {
       console.error("[activity] timeline build failed", { customer_id: String(customer._id), error: error?.message });
     }
 
+    // Sales and service bookings of this customer's leads, for the Appointments tab (SOW D2).
+    let bookings = [];
+    try {
+      const rows = await Booking.find({ lead_id: { $in: leads.map((l) => String(l._id)) } })
+        .select("lead_id bookingDate bookingTime booking_status showed appointment_type created_by created_by_name").sort({ bookingDate: -1 }).limit(200).lean();
+      const ownerIds = [...new Set(leads.map((l) => l.assigned_to?._id || l.assigned_to).filter(Boolean).map(String))];
+      const names = new Map((ownerIds.length ? await User.find({ _id: { $in: ownerIds } }).select("name").lean() : []).map((u) => [String(u._id), u.name]));
+      const byLead = new Map(leads.map((l) => [String(l._id), l]));
+      bookings = rows.map((b) => {
+        const lead = byLead.get(String(b.lead_id)) || {};
+        return { _id: String(b._id), lead_id: String(b.lead_id), at: b.bookingDate, time: b.bookingTime, type: b.appointment_type || "sales",
+          status: b.showed === true ? "Shown" : b.showed === false ? "No show" : b.booking_status === "cancelled" ? "Cancelled" : b.booking_status === "confirmed" ? "Confirmed" : b.booking_status === "completed" ? "Completed" : "Scheduled",
+          set_by: b.created_by === "ai" ? "AI" : b.created_by_name || (b.created_by === "customer" ? "Customer" : "Staff"),
+          vehicle: [lead.vehicle_year, lead.vehicle_make, lead.vehicle_model].filter(Boolean).join(" ") || null,
+          owner: names.get(String(lead.assigned_to?._id || lead.assigned_to)) || null };
+      });
+    } catch (error) {
+      console.error("[customer360] bookings failed", { customer_id: String(customer._id), error: error?.message });
+    }
+
     return NextResponse.json({
       data: {
+        bookings,
         customer: { ...customer, origin_badge: getOriginBadge(customer, { hasLinkedLeads: leads.length > 0 }) },
         value_snapshot: valueSnapshot,
         overview: overviewFeed,

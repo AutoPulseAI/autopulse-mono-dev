@@ -17,7 +17,7 @@ const itemSchema = new mongoose.Schema({
 const bulkChangeSchema = new mongoose.Schema({
   dealer_id: { type: String, required: true },
   batch_id: { type: String, required: true },
-  action: { type: String, enum: ['reassign', 'status', 'department', 'lead_source', 'campaign', 'note', 'task'], required: true },
+  action: { type: String, enum: ['reassign', 'status', 'department', 'lead_source', 'sub_source', 'contact_type', 'campaign', 'note', 'task'], required: true },
   to_id: { type: mongoose.Schema.Types.ObjectId, default: null }, // reassign: the new owner (null = unassigned)
   to_label: { type: String, default: null }, // new owner's name / new status (shown)
   to_value: { type: String, default: null }, // department / source / campaign: the value stored (Undo puts the old one back)

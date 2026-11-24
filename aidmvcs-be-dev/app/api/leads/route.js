@@ -563,7 +563,7 @@ export async function GET(req) {
         ordered = repliedOrder.slice(0, BULK_IDS_MAX).map((r) => r._id);
       }
       const rows = await Lead.find(ordered ? { ...query, _id: { $in: ordered } } : query)
-        .select('_id name assigned_to fe_lead_status department lead_source campaign createdAt')
+        .select('_id name assigned_to fe_lead_status department lead_source sub_source contact_type campaign createdAt')
         .populate({ path: 'assigned_to', select: 'name', strictPopulate: false })
         .sort({ createdAt: sort === 'created_asc' ? 1 : -1 })
         .limit(BULK_IDS_MAX + 1)
