@@ -11,6 +11,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Alert, Badge, Button, ButtonGroup, Form, Modal, Spinner, Table } from "react-bootstrap";
 import { useUser } from "../../context/UserContext";
+import useLiveRefresh from "../../../hooks/useLiveRefresh";
 import AppIcon, { Avatar, IconLabel, iconColor, statusIconName } from "../../components/AppIcon";
 import DashboardDatePicker from "../../dashboard/components/DashboardDatePicker";
 import { ListPages } from "../../leads/components/BulkAssign";
@@ -250,7 +251,9 @@ function ActionsContent() {
     setLoading(false);
   }, [tzOffset]);
 
-  useEffect(() => { load(); const t = setInterval(() => load({ silent: true }), 60000); return () => clearInterval(t); }, [load]);
+  useEffect(() => { load(); }, [load]);
+  // Refreshes every 2 minutes while the tab is in view (not in a hidden tab), and at once when it comes back.
+  useLiveRefresh(() => load({ silent: true }), { everyMs: 120000, paused: loading || !!pending || !!editing || !!fixing });
   useEffect(() => { setPending(read()); }, []);
   useEffect(() => { setPage(1); }, [tab, scope, ownerF, query, range, status, f, perPage, sort]);
 

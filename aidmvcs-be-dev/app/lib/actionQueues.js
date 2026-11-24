@@ -19,7 +19,17 @@ const WINDOW_DAYS = 90;
 const MAX_LEADS = 1500;
 const FIRST_RESPONSE_MS = 5 * 60000; // the first-response target
 const FIRST_RESPONSE_DAYS = 7;
-const CACHE_MS = 60000; // the list is worked out at most once a minute per dealership
+const CACHE_MS = 5 * 60000; // the list is worked out at most every 5 minutes per dealership (it reads many records)
+const DUP_CACHE_MS = 15 * 60000; // possible duplicates change slowly and read every customer
+const dupCache = new Map();
+async function duplicateCustomerIds(dealerId, now) {
+  const hit = dupCache.get(dealerId);
+  if (hit && now - hit.at < DUP_CACHE_MS) return hit.ids;
+  const groups = await duplicateGroups(dealerId).catch(() => ({ groups: [] }));
+  const ids = new Set((groups.groups || []).flatMap((g) => g.customers.map((c) => String(c._id))));
+  dupCache.set(dealerId, { at: now, ids });
+  return ids;
+}
 const CLOSED_CALL = ['completed', 'dismissed', 'cancelled', 'missed'];
 const NEXT_STEP_KINDS = ['cadence_touch', 'next_action', 'visit_followup', 'owner_touch', 'channel_switch'];
 const cache = new Map();
@@ -60,21 +70,21 @@ async function workOutStuck(dealerId, now) {
   const db = mongoose.connection.db;
   const recent = list.filter((l) => now - new Date(l.createdAt) <= FIRST_RESPONSE_DAYS * DAY).map((l) => l._id);
   const [calls, followups, reminders, booked, noShows, sent, dupes] = await Promise.all([
-    db.collection('ai_call_tasks').distinct('lead_id', { lead_id: { $in: ids }, status: { $nin: CLOSED_CALL } }).catch(() => []),
-    db.collection('scheduled_followups').distinct('lead_id', { lead_id: { $in: ids }, status: 'pending', kind: { $in: NEXT_STEP_KINDS } }).catch(() => []),
+    db.collection('ai_call_tasks').distinct('lead_id', { dealer_id: dealerId, lead_id: { $in: ids }, status: { $nin: CLOSED_CALL } }).catch(() => []),
+    db.collection('scheduled_followups').distinct('lead_id', { dealer_id: dealerId, lead_id: { $in: ids }, status: 'pending', kind: { $in: NEXT_STEP_KINDS } }).catch(() => []),
     LeadReminder.distinct('lead_id', { lead_id: { $in: oids }, done_at: null }),
     Booking.distinct('lead_id', { lead_id: { $in: ids }, bookingDate: { $gte: now }, booking_status: { $ne: 'cancelled' } }),
     Booking.distinct('lead_id', { lead_id: { $in: ids }, showed: false, bookingDate: { $gte: new Date(now - 14 * DAY) } }),
     recent.length ? Email.distinct('lead_id', { lead_id: { $in: [...recent, ...recent.map(String)] },
       status: { $nin: ['received', 'incoming', 'note'] }, is_note: { $ne: true }, is_lead_email: { $ne: true } }) : [],
-    duplicateGroups(dealerId).catch(() => ({ groups: [] })),
+    duplicateCustomerIds(dealerId, now),
   ]);
   const bookedSet = new Set(booked.map(String));
   const facts = {
     responded: new Set(sent.map(String)),
     booked: bookedSet,
     noShow: new Set(noShows.map(String)),
-    duplicates: new Set((dupes.groups || []).flatMap((g) => g.customers.map((c) => String(c._id)))),
+    duplicates: dupes,
     hasNext: new Set([...calls, ...followups, ...reminders, ...booked].map(String)),
   };
   const rows = [];
@@ -191,12 +201,13 @@ export async function leadRowFacts(dealerId, ids) {
 /** Read-only type, new/used and next step for the lead card. */
 export async function leadCardFacts(dealerId, leadId) {
   if (!mongoose.isValidObjectId(leadId)) return null;
-  const lead = await Lead.findOne({ _id: leadId, dealer_id: String(dealerId) }).select('source lead_source department data').lean();
+  const lead = await Lead.findOne({ _id: leadId, dealer_id: String(dealerId) }).select('source lead_source department data customer_id').lean();
   if (!lead) return null;
   const db = mongoose.connection.db;
   const [fact, tasks] = await Promise.all([
-    db.collection('qualification_facts').findOne({ lead_id: String(leadId), path: 'interest.new_or_used', valid_to: null, pending: { $ne: true } }).catch(() => null),
-    openTasks({ leadIds: [String(leadId)] }).catch(() => []),
+    lead.customer_id ? db.collection('qualification_facts').findOne({ dealer_id: String(dealerId), customer_id: String(lead.customer_id),
+      path: 'interest.new_or_used', valid_to: null, lead_id: String(leadId), pending: { $ne: true } }).catch(() => null) : null,
+    openTasks({ leadIds: [String(leadId)], dealerId }).catch(() => []),
   ]);
   const wanted = { new: 'New', used: 'Used', either: 'New or used' }[fact?.value] || null;
   const next = tasks[0] ? { text: tasks[0].text, at: tasks[0].at, who: tasks[0].who, kind: tasks[0].kind } : null;
