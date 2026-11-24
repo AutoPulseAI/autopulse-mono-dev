@@ -218,6 +218,9 @@ export default function CustomerList() {
           <Form.Select size="sm" value={filters.source} onChange={handleSourceChange}>
             <option value="">All Sources</option>
             <option value="inbound">Inbound Lead</option>
+            <option value="internet">Internet</option>
+            <option value="phone">Phone</option>
+            <option value="imports">Imports</option>
             <option value="dealervault">DealerVault</option>
             <option value="both">Inbound & DealerVault</option>
             <option value="manual">Manual</option>

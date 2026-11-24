@@ -2111,3 +2111,12 @@ a .d_counts_card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgb
 .ra_time { min-width: 0; color: #667; text-align: left; }
 .ra_detail { background: #f8fafc; border: 0; border-left: 3px solid var(--primary); padding: 8px 12px; font-size: 12.5px; margin: 0 0 6px 38px; }
 @media (max-width: 767px) { .ra_row { grid-template-columns: 30px minmax(0, 1fr) 62px 14px; } .ra_opp, .ra_who { display: none; } .ra_detail { margin-left: 0; } }
+.kpi_click { cursor: pointer; }
+.kpi_click:hover .d_counts_info p { color: var(--primary); }
+.kpi_click:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 6px; }
+.dl_card_click { cursor: pointer; transition: box-shadow .15s ease; }
+.dl_card_click:hover { box-shadow: 0 4px 12px rgba(16, 42, 67, .14); }
+.dl_card_click:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.dashboard_counts .col > a.d-block { height: calc(100% - 0.6rem); }
+.dashboard_counts .col > a.d-block > .d_counts_card { height: 100%; }
+.lead_main_col > .row > .col-xl-1:last-child { padding-right: 8px; }

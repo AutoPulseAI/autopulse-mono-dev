@@ -16,6 +16,10 @@ import Customer360Panel from "../../components/Customer360Panel";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
 import { BulkBar, BulkScope, BulkPanel, BulkNotice, undoBulk, exportBulk } from "./BulkAssign";
 import LeadDetailsPanel from "./LeadDetailsPanel";
+// Source type (24 Nov 2026: it listed the same names as Lead source): how the lead came in, as on each row.
+const UP_TYPE_OPTIONS = [["up:internet", "Internet"], ["up:phone", "Phone-up"], ["up:walk_in", "Walk-in"], ["up:not_set", "Not set"]];
+const DEPT_TABS = [["", "All departments", "fa-layer-group"], ["sales", "Sales", "fa-car"], ["service", "Service", "fa-screwdriver-wrench"], ["parts", "Parts", "fa-gears"]];
+
 import moment from 'moment-timezone';
 import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R: full-slot answer
 import { contactTypeLabel, leadContactType } from "../../../lib/leadContactType";
@@ -677,7 +681,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     ['department', 'Department'], ['source', 'Source type'], ['message_filter', 'Messages'],
   ];
   const filterChips = [
-    ...FILTER_CHIPS.filter(([key]) => filters[key]).map(([key, label]) => ({ key, text: `${label}: ${key === 'status' ? statusLabel(filters[key]) : filters[key]}` })),
+    ...FILTER_CHIPS.filter(([key]) => filters[key]).map(([key, label]) => ({ key, text: `${label}: ${key === 'status' ? statusLabel(filters[key]) : key === 'source' ? (UP_TYPE_OPTIONS.find(([v]) => v === filters[key])?.[1] || filters[key]) : key === 'department' ? (DEPT_TABS.find(([v]) => v === filters[key])?.[1] || filters[key]) : filters[key]}` })),
     ...(filters.dateRange.startDate ? [{ key: 'dateRange', text: `Dates: ${moment(filters.dateRange.startDate).format('MMM D')} – ${moment(filters.dateRange.endDate || filters.dateRange.startDate).format('MMM D, YYYY')}` }] : []),
     ...(filters.stopped ? [{ key: 'stopped', text: 'Stopped' }] : []),
   ];
@@ -1524,6 +1528,18 @@ useImperativeHandle(ref, () => ({
             ))}
           </div>
         )}
+        {/* Sales vs service (24 Nov 2026): the same Department filter, as tabs above the list. */}
+        {!compact && (
+          <div className="btn-group mb-3 ms-md-2 lead_fltr" role="group" aria-label="Department">
+            {DEPT_TABS.map(([key, label, icon]) => (
+              <Button key={key || "all"} size="sm" aria-pressed={(inputValues.department || "") === key}
+                variant={(inputValues.department || "") === key ? "custom" : "outline-custom"}
+                onClick={() => setInputValues((prev) => ({ ...prev, department: key }))}>
+                <i className={`fa-solid ${icon} me-1`} aria-hidden="true"></i>{label}
+              </Button>
+            ))}
+          </div>
+        )}
 
       {!compact && (
         <Row className="align-items-center g-0">
@@ -1656,11 +1672,8 @@ useImperativeHandle(ref, () => ({
                   size="sm"
                 >
                   <option value="">All Source Types</option>
-                  {sourceOptions.map(source => (
-                    <option key={source} value={source}>
-                      {source.charAt(0).toUpperCase() + source.slice(1).toLowerCase()}
-                    </option>
-                  ))}
+                  {UP_TYPE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  {inputValues.source && !inputValues.source.startsWith("up:") && <option value={inputValues.source}>{inputValues.source}</option>}
                 </Form.Select>
               </Col>
               {/*<Col xxl={6} xl={6} lg={6} md={6} xs={6}>
@@ -1776,11 +1789,8 @@ useImperativeHandle(ref, () => ({
                   size="sm"
                 >
                   <option value="">All Source Types</option>
-                  {sourceOptions.map(source => (
-                    <option key={source} value={source}>
-                      {source.charAt(0).toUpperCase() + source.slice(1).toLowerCase()}
-                    </option>
-                  ))}
+                  {UP_TYPE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  {inputValues.source && !inputValues.source.startsWith("up:") && <option value={inputValues.source}>{inputValues.source}</option>}
                 </Form.Select>
               </Col>
               <Col xxl={1} xl={2} lg={2} md={2} xs={6}>
@@ -1921,13 +1931,13 @@ useImperativeHandle(ref, () => ({
                     <Col xl={1} lg={1} sm={1} xs={12}>
                       <p className="label"><small><IconLabel name="source">Source</IconLabel></small></p>
                     </Col>
-                    <Col xl={2} lg={2} sm={2} xs={12}>
+                    <Col xl={1} lg={2} sm={2} xs={12}>
                       <p className="label"><small><IconLabel name="sender">Sender</IconLabel></small></p>
                     </Col>
                     <Col xl={2} lg={2} sm={2} xs={12}>
                       <p className="label"><small><IconLabel name="owner">Assigned To</IconLabel></small></p>
                     </Col>
-                    <Col xl={1} lg={1} sm={1} xs={12}>
+                    <Col xl={2} lg={1} sm={1} xs={12}>
                       <p className="label"><small><IconLabel name="date">Created</IconLabel></small></p>
                     </Col>
                   </Row>
@@ -2046,7 +2056,7 @@ useImperativeHandle(ref, () => ({
                             title="How the lead came in">{contactTypeLabel(lead)}</small>
                           </div>
                         </Col>
-                        <Col xl={2} lg={2} sm={2} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
+                        <Col xl={1} lg={2} sm={2} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
                           <div className="w_card_list_box_label">
                           <p className="label"><small>Sender:</small></p>
                           <p className="text-truncate">
@@ -2082,10 +2092,10 @@ useImperativeHandle(ref, () => ({
                             )}
                           </div>
                         </Col>
-                        <Col xl={1} lg={1} sm={1} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
+                        <Col xl={2} lg={1} sm={1} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
                           <div className="w_card_list_box_label">
                             <p className="label"><small>Created:</small></p>
-                            <p className="ap_field ap_wrap"><AppIcon name="date" /><span>{formatTimestamp(lead.createdAt, dealerTimezone)}</span></p>
+                            <p className="ap_field ap_wrap" title={formatTimestamp(lead.createdAt, dealerTimezone)}><AppIcon name="date" /><span>{moment(lead.createdAt).tz(dealerTimezone).format("MMM D, YYYY")}<small className="d-block text-muted">{moment(lead.createdAt).tz(dealerTimezone).format("h:mm A")}</small></span></p>
                             {lead.last_reply_at && (
                               <small className="text-success d-block text-truncate"><AppIcon name="reply" className="me-1" />Replied {formatTimestamp(lead.last_reply_at, dealerTimezone)}</small>
                             )}
