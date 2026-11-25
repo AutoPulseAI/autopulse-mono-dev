@@ -1,6 +1,7 @@
 "use client";
 import { leadStatusLabel } from "@lib/statusLabels";
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { formatTimestamp } from "../../../utils/dateUtils";
 import useFetch from "../../../hooks/useFetch";
 import { Col, Row, Button, Spinner, Nav, Badge } from "react-bootstrap";
@@ -72,6 +73,8 @@ export default function ViewConversations({
   embedded = false,
   // Called after the lead card saves an edit (the customer profile reloads, so its name / phone / email follow).
   onLeadSaved,
+  // A DOM element (the customer profile's opportunity row): the action buttons are shown there instead of here.
+  actionsTarget = null,
 }) {
   const AGENT_VIEW_LANGUAGE_STORAGE_KEY = "dealer_agent_view_language";
   const [emails, setEmails] = useState([]);
@@ -866,8 +869,11 @@ export default function ViewConversations({
                     </div>
                   )}
 
-                  {/* Every action on the lead in one place (BB, 17 Nov 2026: "all call to action should be in one place"). */}
-                  <div className="lead_actions mt-2">
+                  {/* Every action on the lead in one place (BB, 17 Nov 2026: "all call to action should be in one place").
+                      On the customer profile they sit in the opportunity's own action row instead (Bibi, 25 Nov 2026:
+                      "this way all communication is in one place") - actionsTarget is that row. */}
+                  {(() => { const actions = (
+                  <div className={actionsTarget ? "lead_actions_row" : "lead_actions mt-2"}>
                     {selectedConversation && getReplyChannel(lead, activeChannelTab, stoppedChannels) && !replyAllowed && (
                       <span className="small text-muted align-self-center" title="Reply from the department's own staff">
                         <i className="fa-solid fa-lock me-1" />{DEPARTMENT_NAMES[leadDepartment(lead)]} lead - {DEPARTMENT_NAMES[leadDepartment(lead)]} staff reply
@@ -904,6 +910,7 @@ export default function ViewConversations({
                       </Button>
                     )}
                   </div>
+                  ); return actionsTarget ? createPortal(actions, actionsTarget) : actions; })()}
                 </div>
                 {/* What the AI is doing with this lead (stage, next touch, call task, consent; on/off) */}
                 {lead?._id && <AiLeadPanel key={`${lead._id}-${lead.fe_lead_status || lead.status || ""}`} leadId={lead._id} />}

@@ -2120,3 +2120,17 @@ a .d_counts_card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgb
 .dashboard_counts .col > a.d-block { height: calc(100% - 0.6rem); }
 .dashboard_counts .col > a.d-block > .d_counts_card { height: 100%; }
 .lead_main_col > .row > .col-xl-1:last-child { padding-right: 8px; }
+
+/* Customer profile, opportunity row (Bibi, 25 Nov 2026): every action as a small solid blue block - icon on top, white
+   label under it - like SMS Reply; the lead's own actions are placed in .opp_slot so all of them are in one row. */
+.opp_tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: stretch; }
+.opp_tools .opp_slot, .opp_tools .lead_actions_row { display: contents; }
+.opp_tools .btn {
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  min-width: 78px; padding: 6px 8px; font-size: 12px; line-height: 1.15; white-space: nowrap !important;
+  background: #1d4ed8 !important; border: 1px solid #1d4ed8 !important; color: #fff !important; border-radius: 6px;
+}
+.opp_tools .btn:hover { background: #1e40af !important; border-color: #1e40af !important; }
+.opp_tools .btn:disabled, .opp_tools .btn.disabled { background: #94a3b8 !important; border-color: #94a3b8 !important; }
+.opp_tools .btn > i, .opp_tools .btn i { margin: 0 !important; font-size: 16px; color: #fff !important; }
+.opp_tools .lead_actions_row > span.small { align-self: center; }

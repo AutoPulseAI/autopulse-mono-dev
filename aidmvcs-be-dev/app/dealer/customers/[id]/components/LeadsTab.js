@@ -71,7 +71,7 @@ function OpportunityHeader({ lead, owner, onHot }) {
   );
 }
 
-export default function LeadsTab({ customerId, onChanged }) {
+export default function LeadsTab({ customerId, onChanged, initialLeadId = null }) {
   const { dealerParent, user, loadingParent } = useUser();
   const activeEntity = dealerParent || (user?.parent_id ? null : user);
 
@@ -80,6 +80,8 @@ export default function LeadsTab({ customerId, onChanged }) {
   const [leadsLoading, setLeadsLoading] = useState(true);
   const [leadsError, setLeadsError] = useState(null);
   const [activeLeadId, setActiveLeadId] = useState(null);
+  // The opportunity row's slot for the lead's SMS Reply / Call / Note / Status / Check in (OpportunityActions).
+  const [actionsEl, setActionsEl] = useState(null);
   const [adfModalLeadId, setAdfModalLeadId] = useState(null);
   const [milestones, setMilestones] = useState({});
   const [details, setDetails] = useState({});
@@ -129,7 +131,7 @@ export default function LeadsTab({ customerId, onChanged }) {
   useEffect(() => {
     if (!hasAutoOpenedRef.current && leads.length > 0) {
       hasAutoOpenedRef.current = true;
-      setActiveLeadId(leads[0]._id);
+      setActiveLeadId(leads.some((l) => String(l._id) === String(initialLeadId)) ? initialLeadId : leads[0]._id);
     }
   }, [leads]);
 
@@ -200,7 +202,7 @@ export default function LeadsTab({ customerId, onChanged }) {
           <div key={lead._id}>
                   <OpportunityHeader lead={lead} owner={details[lead._id]?.owner} onHot={(hot) => setHot(lead, hot)} />
                   <LeadFacts lead={lead} />
-                  {activeLeadId === lead._id && <OpportunityActions lead={lead} onChanged={onChanged} />}
+                  {activeLeadId === lead._id && <OpportunityActions lead={lead} onChanged={onChanged} actionsRef={setActionsEl} />}
                   <Milestones times={milestones[lead._id]} />
                   {/* The lead's showroom visits (Desk Log), and checking the customer in from here. */}
                   <div className="small mb-2 d-flex flex-wrap align-items-center gap-2">
@@ -231,7 +233,7 @@ export default function LeadsTab({ customerId, onChanged }) {
                   )}
                   {/* Only mount the (self-fetching, self-polling) conversation panel while
                       this accordion item is actually open. */}
-                  {activeLeadId === lead._id && <ViewConversations lead={lead} embedded onLeadSaved={onChanged} />}
+                  {activeLeadId === lead._id && <ViewConversations lead={lead} embedded onLeadSaved={onChanged} actionsTarget={actionsEl} />}
                   {isAdfLead(lead) && (
                     <div className="d-flex justify-content-end mt-3">
                       <Button
