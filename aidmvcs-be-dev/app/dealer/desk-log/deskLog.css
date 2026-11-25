@@ -141,7 +141,7 @@
 .desk_log .dl_clear .btn-link { color: var(--primary, #0272b4); text-decoration: none; }
 .desk_log .dl_filter_bar .dl_filters { display: flex; flex-wrap: wrap; gap: 8px; }
 .desk_log .dl_filter_bar .dl_filters > div { flex: 1 1 130px; min-width: 0; }
-.desk_log .dl_filter_bar .dl_filters > .dl_clear { flex: 0 0 auto; }
+.desk_log .dl_filter_bar .dl_filters > .dl_clear { flex: 0 0 auto; min-height: 31px; }
 /* Responsive (24 Nov 2026): Actions sits just left of Outcome whatever width Outcome has; bigger screens get bigger
    text, small ones keep everything reachable. */
 .desk_log .dl_table .dl_pin_out { width: auto; }
@@ -155,6 +155,9 @@
 }
 .desk_log .dl_filter_bar .dl_filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 .desk_log .dl_filter_bar .dl_filters > div { flex: none; }
+/* Clear Filters sits at the right end of the filter rows (26 Nov 2026), not in the next free cell. */
+.desk_log .dl_filter_bar .dl_filters > .dl_clear { grid-column: -2 / -1; justify-content: flex-end; }
+@media (max-width: 767px) { .desk_log .dl_filter_bar .dl_filters > .dl_clear { grid-column: 1 / -1; } }
 @media (max-width: 767px) { .desk_log .dl_filter_bar .dl_filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 /* Stage / outcome menus (ColorPick): coloured button, calm white list. */
 .desk_log .dl_cpick { width: 100%; }

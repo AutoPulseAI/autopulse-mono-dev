@@ -44,6 +44,17 @@ export default function DeskLogPage() {
   const [q, setQ] = useState("");
   const [data, setData] = useState(null);
   const [staff, setStaff] = useState([]);
+  // Lead Sources filter (26 Nov 2026): the dealer's whole lead source list, as on the Leads page - not only the
+  // sources of visits already in the picked dates (empty on a day with no check-ins).
+  const [sourceList, setSourceList] = useState([]);
+  useEffect(() => {
+    if (!dealerId) return;
+    fetch(`/api/lead-sources?dealer_id=${encodeURIComponent(dealerId)}`,
+      { headers: { Authorization: `Bearer ${localStorage.getItem("dealertoken")}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setSourceList([...(d?.sources || []), ...(d?.used || [])].map((x) => x?.name).filter(Boolean)))
+      .catch(() => {});
+  }, [dealerId]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [checkIn, setCheckIn] = useState(false);
@@ -199,7 +210,7 @@ export default function DeskLogPage() {
             {[
               ["department", "All Departments", [["sales", "Sales"], ["service", "Service"]]],
               ["lead_type", "All Lead Types", LEAD_TYPES],
-              ["source", "All Lead Sources", [...new Set([...(data?.sources || []), filters.source].filter(Boolean))].map((x) => [x, x])],
+              ["source", "All Lead Sources", [...new Set([...sourceList, ...(data?.sources || []), filters.source].filter(Boolean))].sort((a, b) => a.localeCompare(b)).map((x) => [x, x])],
               ["salesperson_id", "All Salespeople", staffPairs],
               ["sales_manager_id", "All Sales Managers", staffPairs],
               ["bdc_agent_id", "All BDC Agents", staffPairs],
