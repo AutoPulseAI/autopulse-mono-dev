@@ -8,7 +8,7 @@ import AppIcon, { IconLabel, statusIconName } from "../../../components/AppIcon"
 import { useUser } from "../../../context/UserContext";
 import { formatTimestamp } from "../../../../utils/dateUtils";
 import ViewConversations from "../../../leads/components/viewConversations";
-import { leadTypeName } from "../../../leads/components/LeadInfoCard";
+import { LeadFacts, leadTypeName } from "../../../leads/components/LeadInfoCard";
 import { DEPARTMENT_NAMES, leadDepartment } from "@lib/departmentNames";
 import ViewAdfModal, { isAdfLead } from "../../../leads/components/ViewAdfModal";
 import { Modal } from "react-bootstrap";
@@ -199,8 +199,18 @@ export default function LeadsTab({ customerId, onChanged, initialLeadId = null }
           </Table>
         </div>
         {leads.filter((lead) => lead._id === activeLeadId).map((lead) => (
-          <div key={lead._id}>
+          // 25 Nov 2026 ("are these buttons per lead or per customer?"): everything in this box is for the one lead
+          // picked in the table above; the heading says which.
+          <div key={lead._id} className="cp_selected_lead">
+            <div className="cp_selected_head">
+              <i className="fa-solid fa-arrow-turn-down-right" aria-hidden="true" />
+              <span><strong>Selected lead</strong> - everything below is for this lead only
+                <span className="text-muted"> · {lead.fe_lead_status || "New Lead"} · {DEPARTMENT_NAMES[leadDepartment(lead)]}
+                  {lead.createdAt ? ` · ${new Date(lead.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : ""}</span></span>
+              <span className="ms-auto small text-muted">Pick another lead in the table to switch</span>
+            </div>
                   <OpportunityHeader lead={lead} owner={details[lead._id]?.owner} onHot={(hot) => setHot(lead, hot)} />
+                  <LeadFacts lead={lead} />
                   {activeLeadId === lead._id && <OpportunityActions lead={lead} onChanged={onChanged} actionsRef={setActionsEl} />}
                   <Milestones times={milestones[lead._id]} />
                   {/* The lead's showroom visits (Desk Log), and checking the customer in from here. */}

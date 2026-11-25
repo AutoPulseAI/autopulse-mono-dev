@@ -832,7 +832,7 @@ export default function ViewConversations({
                 <div className="w_card leadinfo_card mb-2 row gx-1">
                   {/* The lead's details, editable in one click (LeadInfoCard: 13 Nov 2026 meeting / BB 17 Nov). */}
                   <div className="col-12">
-                    <LeadInfoCard lead={lead} dealerTimezone={dealerTimezone} onStatusClick={() => setShowStatusModal(true)} compact={embedded}
+                    <LeadInfoCard lead={lead} dealerTimezone={dealerTimezone} onStatusClick={() => setShowStatusModal(true)}
                       onSaved={(saved) => { if (!embedded && onLeadSelected) onLeadSelected({ ...lead, ...saved }); onLeadSaved?.(saved); }} />
                   </div>
 

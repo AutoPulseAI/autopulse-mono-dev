@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Alert, Button, Modal, Tab, Tabs } from "react-bootstrap";
+import { Alert, Button, Modal } from "react-bootstrap";
 import { useUser } from "../../../context/UserContext";
 import CustomerHeader, { primaryContact } from "./CustomerHeader";
 import OverviewTab from "./OverviewTab";
@@ -176,6 +176,7 @@ export default function CustomerDetail({ customerId }) {
         dealerId={customer.dealer_id}
         counts={counts}
         onOpenTab={setActiveTab}
+        activeTab={activeTab}
       />
 
       <OpenTasks tasks={openTasks} dealerId={activeEntity?.id} onChanged={fetchCustomer360} leads={leads || []} staffList={staffList} />
@@ -186,29 +187,28 @@ export default function CustomerDetail({ customerId }) {
       )}
       <DmsDetails dms={dms} />
 
-      <Tabs activeKey={activeTab} onSelect={(key) => setActiveTab(key)} className="mb-3 cp_tabs" mountOnEnter unmountOnExit>
-        <Tab eventKey="overview" title={tabTitle("fa-solid fa-clock-rotate-left", "Overview")}>
-          <OverviewTab overview={overview} activity={activity || []} />
-        </Tab>
-        <Tab eventKey="leads" title={tabTitle("fa-solid fa-comments", "Leads & Communications", counts.leads)}>
-          <LeadsTab customerId={customerId} onChanged={fetchCustomer360} initialLeadId={urlParams.get("lead")} />
-        </Tab>
-        <Tab eventKey="sales" title={tabTitle("fa-solid fa-key", "Sales", counts.sales)}>
-          <SalesTab deals={deals} />
-        </Tab>
-        <Tab eventKey="service" title={tabTitle("fa-solid fa-wrench", "Service", counts.service)}>
-          <ServiceTab repairOrders={repair_orders} appointments={appointments} />
-        </Tab>
-        <Tab eventKey="appointments" title={tabTitle("fa-regular fa-calendar-check", "Appointments", counts.appointments)}>
-          <AppointmentsTab appointments={all_appointments} bookings={data?.bookings || []} />
-        </Tab>
-        <Tab eventKey="vehicles" title={tabTitle("fa-solid fa-car-side", "Vehicles", counts.vehicles)}>
-          <VehiclesTab vehicles={vehicles} leads={leads} customerId={customerId} dealerId={customer.dealer_id} onChanged={fetchCustomer360} />
-        </Tab>
-        <Tab eventKey="tradeins" title={tabTitle("fa-solid fa-right-left", "Trade In")}>
-          <TradeInTab customerId={customerId} />
-        </Tab>
-      </Tabs>
+      {/* 25 Nov 2026: no tab row - the OPEN buttons in the toolbar above pick what shows here, one section at a time. */}
+      {(() => {
+        const views = {
+          overview: ["fa-duotone fa-clock-rotate-left", "Overview", () => <OverviewTab overview={overview} activity={activity || []} />],
+          leads: ["fa-duotone fa-comments", "Leads & Communications", () => (
+            <LeadsTab customerId={customerId} onChanged={fetchCustomer360} initialLeadId={urlParams.get("lead")} />)],
+          sales: ["fa-duotone fa-key", "Sales", () => <SalesTab deals={deals} />],
+          service: ["fa-duotone fa-screwdriver-wrench", "Service", () => <ServiceTab repairOrders={repair_orders} appointments={appointments} />],
+          appointments: ["fa-duotone fa-calendar-days", "Appointments", () => (
+            <AppointmentsTab appointments={all_appointments} bookings={data?.bookings || []} />)],
+          vehicles: ["fa-duotone fa-car-side", "Vehicles", () => (
+            <VehiclesTab vehicles={vehicles} leads={leads} customerId={customerId} dealerId={customer.dealer_id} onChanged={fetchCustomer360} />)],
+          tradeins: ["fa-duotone fa-right-left", "Trade In", () => <TradeInTab customerId={customerId} />],
+        };
+        const [icon, label, render] = views[activeTab] || views.overview;
+        return (
+          <section className="cp_view" key={activeTab in views ? activeTab : "overview"}>
+            <h3 className="cp_view_title"><i className={icon} aria-hidden="true" />{label}</h3>
+            {render()}
+          </section>
+        );
+      })()}
 
       <Modal show={!!messageLead} onHide={() => handleMessageLeadChange(null)} centered>
         <Modal.Header closeButton>

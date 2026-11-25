@@ -76,6 +76,7 @@ export default function OpportunityActions({ lead, onChanged, actionsRef = null 
   };
 
   if (!data) return <div className="small text-muted mb-2">{error || <Spinner size="sm" />}</div>;
+  const open = data.reminders.filter((r) => !r.done_at);
 
   return (
     <div className="border rounded p-2 mb-3 small">
@@ -85,6 +86,8 @@ export default function OpportunityActions({ lead, onChanged, actionsRef = null 
       <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
         <div className="opp_tools">
           <span className="opp_slot" ref={actionsRef} />
+          <Button size="sm" className="act_remind" onClick={() => setReminder({ due_at: "", note: "", assigned_to: "" })}>
+            <i className="fa-duotone fa-alarm-clock" />Reminder</Button>
           <Button size="sm" className="act_appt" href="/dealer/booking"><i className="fa-duotone fa-calendar-days" />Appt.</Button>
           <CallButton logOnly phone={lead.phone} leadId={lead._id} dealerId={lead.dealer_id} label="Log call" onLogged={onChanged}
             className="act_log" icon="fa-duotone fa-phone-arrow-up-right" />
@@ -97,7 +100,18 @@ export default function OpportunityActions({ lead, onChanged, actionsRef = null 
           onChange={(e) => act({ action: "in_market", value: e.target.checked })} />
       </div>
 
-      {/* This opportunity's reminders are in Open tasks at the top of the profile (Done / Dismiss there). */}
+      {open.length > 0 && (
+        <ul className="list-unstyled mb-2">
+          {open.map((r) => (
+            <li key={r.id} className="d-flex flex-wrap align-items-center gap-2 mb-1">
+              <i className="fa-regular fa-bell text-warning" />
+              <span>{r.note}</span>
+              <span className="text-muted">due {formatTimestamp(r.due_at)}{r.assigned_name ? ` · ${r.assigned_name}` : ""}</span>
+              <Button size="sm" variant="link" className="p-0" disabled={busy} onClick={() => act({ action: "reminder_done", reminder_id: r.id })}>Done</Button>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <div className="fw-semibold mb-1"><i className="fa-solid fa-car me-1" />Vehicles of interest
         <Badge bg="light" text="dark" className="ms-1">{data.vehicles_of_interest.length}</Badge></div>

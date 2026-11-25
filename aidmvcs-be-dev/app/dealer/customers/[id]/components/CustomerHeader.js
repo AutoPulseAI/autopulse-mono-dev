@@ -298,7 +298,7 @@ function AddressList({ entries, send }) {
 }
 
 export default function CustomerHeader({ customer, valueSnapshot, onSendMessage, staffList, onAssignmentChange, callLeadId,
-  dealerId, onChanged, onOpenTab, counts, latestLead, dmsPerson }) {
+  dealerId, onChanged, onOpenTab, counts, latestLead, dmsPerson, activeTab = "overview" }) {
   const primaryEmail = primaryContact(customer.emails);
   const primaryPhone = primaryContact(customer.phones);
   const primaryAddress = primaryContact(customer.addresses);
@@ -369,29 +369,25 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
       {/* The newest lead, each fact in its own labelled field (approved 24 Nov 2026). */}
       {latestLead && <div className="p-2 bg-white"><LeadFacts lead={latestLead} /></div>}
       <div className="cp_toolbar">
-        {/* 25 Nov 2026 (no duplicates): Call / Text live in the lead's action strip below; here only for a customer
-            without a lead. "Open" (jumps to the tabs) is gone - the tabs are right below. */}
-        {!counts?.leads && (
         <div className="cp_group">
           <span className="cp_group_label">Connect</span>
           <div className="cp_tools">
-            {primaryPhone ? <CallButton phone={primaryPhone.value} leadId={callLeadId} dealerId={dealerId} variant="link" className="cp_tool" />
-              : <button type="button" className="cp_tool" disabled title="No phone on file"><i className="fa-solid fa-phone" />Call</button>}
-            <button type="button" className="cp_tool" onClick={onSendMessage} disabled={!sendLabel}
+            {primaryPhone ? <CallButton phone={primaryPhone.value} leadId={callLeadId} dealerId={dealerId} variant="link" className="cp_tool act_call" icon="fa-duotone fa-phone-office" />
+              : <button type="button" className="cp_tool act_call" disabled title="No phone on file"><i className="fa-duotone fa-phone-office" />Call</button>}
+            <button type="button" className="cp_tool act_sms" onClick={onSendMessage} disabled={!sendLabel}
               title={sendLabel || "No phone or email on file"}>
-              <i className={`fa-solid ${primaryPhone || !primaryEmail ? "fa-comment-sms" : "fa-envelope"}`} />{primaryPhone || !primaryEmail ? "Text" : "Email"}
+              <i className={`fa-duotone ${primaryPhone || !primaryEmail ? "fa-comment-sms" : "fa-envelope-open-text"}`} />{primaryPhone || !primaryEmail ? "Text" : "Email"}
             </button>
           </div>
         </div>
-        )}
         <div className="cp_group">
           <span className="cp_group_label">Documents</span>
           <div className="cp_tools">
             {/* The dealership's forms with this customer's data filled in (Forms Library). */}
             <ExportFormButton customerId={String(customer._id)} dealerId={dealerId} asTool onMessage={setFormMessage} />
             {/* SOW G-056: a print-friendly summary of the profile as it is open now (styles.css @media print). */}
-            <button type="button" className="cp_tool" onClick={() => window.print()} title="Print this customer's summary">
-              <i className="fa-solid fa-print" />Print</button>
+            <button type="button" className="cp_tool act_print" onClick={() => window.print()} title="Print this customer's summary">
+              <i className="fa-duotone fa-print" />Print</button>
           </div>
         </div>
         {/* 13 Nov 2026 meeting (10.3, DealerSocket "Search"): look the customer up on the web (opens a new tab). */}
@@ -402,10 +398,28 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
               ["Facebook", "fa-brands fa-facebook-f", (q) => `https://www.facebook.com/search/top?q=${q}`],
               ["LinkedIn", "fa-brands fa-linkedin-in", (q) => `https://www.linkedin.com/search/results/all/?keywords=${q}`]]
               .map(([label, icon, url]) => (
-                <a key={label} className="cp_tool" target="_blank" rel="noopener noreferrer" title={`Search ${label} for this customer`}
+                <a key={label} className={`cp_tool brand_${label.toLowerCase()}`} target="_blank" rel="noopener noreferrer" title={`Search ${label} for this customer`}
                   href={url(encodeURIComponent([customer.name, primaryAddress?.city].filter(Boolean).join(" ")))}>
                   <i className={icon} />{label}</a>
               ))}
+          </div>
+        </div>
+        <div className="cp_group">
+          <span className="cp_group_label">Open</span>
+          {/* 25 Nov 2026: these buttons are the profile's only navigation (no tab row below); the one on screen is lit. */}
+          <div className="cp_tools" role="tablist" aria-label="Show">
+            {[["overview", "Overview", "fa-duotone fa-clock-rotate-left", "act_task", null],
+              ["leads", "Leads", "fa-duotone fa-comments", "act_leads", counts?.leads],
+              ["appointments", "Appts", "fa-duotone fa-calendar-days", "act_appt", counts?.appointments],
+              ["sales", "Sales", "fa-duotone fa-key", "act_sold", counts?.sales],
+              ["service", "Service", "fa-duotone fa-screwdriver-wrench", "act_service", counts?.service],
+              ["vehicles", "Vehicles", "fa-duotone fa-car-side", "act_call", counts?.vehicles],
+              ["tradeins", "Trade-in", "fa-duotone fa-right-left", "act_status", null]].map(([key, label, icon, tone, n]) => (
+              <button key={key} type="button" role="tab" aria-selected={activeTab === key}
+                className={`cp_tool ${tone}${activeTab === key ? " on" : ""}`} onClick={go(key)}>
+                <i className={icon} />{label}{count(n)}
+              </button>
+            ))}
           </div>
         </div>
       </div>

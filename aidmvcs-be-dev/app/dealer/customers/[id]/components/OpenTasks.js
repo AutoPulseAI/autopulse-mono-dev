@@ -7,7 +7,6 @@ import Link from "next/link";
 import { useCan } from "../../../../hooks/PermissionsContext";
 import DismissTaskModal, { DISMISS_TASKS } from "../../../components/DismissTaskModal";
 import AddTaskModal from "../../../components/AddTaskModal";
-import { aiFetch } from "../../../ai/components/aiShared";
 import { formatTimestamp } from "../../../../utils/dateUtils";
 import AppIcon from "../../../components/AppIcon";
 
@@ -23,12 +22,6 @@ export default function OpenTasks({ tasks, dealerId, onChanged, leads = [], staf
   const canDismiss = useCan(DISMISS_TASKS);
   const [dismissing, setDismissing] = useState(null);
   const [adding, setAdding] = useState(false);
-  const markDone = async (t) => {
-    try {
-      await aiFetch(`/api/leads/${t.lead_id}/opportunity`, { method: "POST", body: JSON.stringify({ action: "reminder_done", reminder_id: t.id }) });
-      onChanged?.();
-    } catch (e) { window.alert(e.message); }
-  };
   const addButton = (
     <button type="button" className="btn btn-sm btn-custom ms-auto text-nowrap" style={{ textTransform: "none" }}
       onClick={() => setAdding(true)}><i className="fa-solid fa-plus me-1" />Add task</button>
@@ -54,9 +47,6 @@ export default function OpenTasks({ tasks, dealerId, onChanged, leads = [], staf
                 {t.who && <span className="text-muted"> · {t.kind === "call" || t.kind === "reminder" ? "Assigned to " : ""}{t.who}</span>}</span>
               {t.at && <span className="text-muted small text-nowrap">{t.kind === "call" ? (t.missed ? "was due " : "due ") : ""}{formatTimestamp(t.at)}</span>}
               <Link href={k.href(t)} className="small text-nowrap">Open</Link>
-              {t.kind === "reminder" && t.id && (
-                <button type="button" className="btn btn-link btn-sm p-0 small text-nowrap" onClick={() => markDone(t)}>Done</button>
-              )}
               {canDismiss && t.id && (t.kind === "call" || t.kind === "reminder") && (
                 <button type="button" className="btn btn-link btn-sm p-0 small text-danger text-nowrap" onClick={() => setDismissing(t)}
                   title="Close this task without doing it">Dismiss</button>
