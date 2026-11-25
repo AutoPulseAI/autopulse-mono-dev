@@ -2,7 +2,7 @@
 
 import { leadStatusLabel } from "@lib/statusLabels";
 import moment from "moment-timezone";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Button, Pagination, Spinner, Table } from "react-bootstrap";
 import AppIcon, { IconLabel, statusIconName } from "../../../components/AppIcon";
 import { useUser } from "../../../context/UserContext";
@@ -87,6 +87,7 @@ export default function LeadsTab({ customerId, onChanged, initialLeadId = null }
   const [details, setDetails] = useState({});
   const [newLead, setNewLead] = useState(null); // prefilled LeadForm for a new opportunity (G-005)
   const hasAutoOpenedRef = useRef(false);
+  const toggle = (id) => setActiveLeadId((cur) => (cur === id ? null : id));
 
   const fetchLeads = useCallback(async (page = 1) => {
     if (loadingParent || !activeEntity?.id || !customerId) return;
@@ -150,56 +151,25 @@ export default function LeadsTab({ customerId, onChanged, initialLeadId = null }
     if (page >= 1 && page <= leadsPagination.totalPages) fetchLeads(page);
   };
 
-  return (
-    <div className="w_card">
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <h3 className="w_card_title mb-0">Leads</h3>
-        {leads.length > 0 && (
-          <Button size="sm" variant="outline-custom" onClick={() => setNewLead({ name: leads[0].name || "",
-            email: leads[0].email || "", phone: leads[0].phone || "" })}>
-            <i className="fa-solid fa-plus me-1" />New lead for this customer
-          </Button>
-        )}
-      </div>
-
-      {leadsError && (
-        <Alert variant="danger" dismissible onClose={() => setLeadsError(null)}>{leadsError}</Alert>
-      )}
-
-      {leadsLoading && leads.length === 0 ? (
-        <div className="text-center py-4"><Spinner animation="border" size="sm" /></div>
-      ) : leads.length === 0 ? (
-        <div className="text-center py-4 text-muted">No leads found for this customer.</div>
-      ) : (
-        <>
-        {/* 13 Nov 2026 meeting (10.10, DealerSocket's Sales tab): the customer's leads as a table - status, department,
-            created, source, vehicle, owner; click a row to open that lead. */}
-        <div className="table-responsive act_table mb-2">
-          <Table hover size="sm" className="mb-0 align-middle">
-            <thead><tr><th><IconLabel name="status">Status</IconLabel></th><th><IconLabel name="department">Department</IconLabel></th><th><IconLabel name="date">Created</IconLabel></th><th><IconLabel name="type">Up type</IconLabel></th><th><IconLabel name="source">Source</IconLabel></th><th><IconLabel name="source">Sub-source</IconLabel></th><th><IconLabel name="vehicle">Vehicle</IconLabel></th><th><IconLabel name="owner">Owner</IconLabel></th></tr></thead>
-            <tbody>
-              {leads.map((lead) => {
-                const vehicle = [lead.vehicle_year, lead.vehicle_make, lead.vehicle_model].filter(Boolean).join(" ");
-                return (
-                  <tr key={lead._id} className={activeLeadId === lead._id ? "table-primary" : undefined} style={{ cursor: "pointer" }}
-                    tabIndex={0} aria-selected={activeLeadId === lead._id} onClick={() => setActiveLeadId(lead._id)}
-                    onKeyDown={(e) => { if (e.key === "Enter") setActiveLeadId(lead._id); }}>
-                    <td className="fw-semibold"><span className="ap_label"><AppIcon name={statusIconName(lead.fe_lead_status)} />{leadStatusLabel(lead) || "N/A"}</span>
-                      {lead.hot && <span className="cp_hot on ms-1 py-0"><i className="fa-solid fa-fire" /></span>}</td>
-                    <td>{DEPARTMENT_NAMES[leadDepartment(lead)]}</td>
-                    <td className="text-nowrap">{lead.createdAt ? moment(lead.createdAt).format("MMM D, YYYY") : "N/A"}</td>
-                    <td>{leadTypeName(lead)}</td><td>{lead.lead_source || lead.source || "Unknown"}</td>
-                    <td>{lead.sub_source || <span className="text-muted">None</span>}</td>
-                    <td>{vehicle || <span className="text-muted">No vehicle</span>}</td>
-                    <td>{details[lead._id]?.owner || <span className="text-muted">Unassigned</span>}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
-        </div>
-        {leads.filter((lead) => lead._id === activeLeadId).map((lead) => (
-          <div key={lead._id}>
+  // The open lead, right under its row (25 Nov 2026: the arrow opens / closes a lead, as the accordion did; with 3-5
+  // leads, Previous / Next step through them). Everything in it is for that one lead.
+  const renderLead = (lead, at) => (
+          <div key={lead._id} className="cp_selected_lead">
+            <div className="cp_selected_head">
+              <i className="fa-solid fa-arrow-turn-down-right" aria-hidden="true" />
+              <span><strong>Selected lead</strong> - everything below is for this lead only
+                <span className="text-muted"> · {lead.fe_lead_status || "New Lead"} · {DEPARTMENT_NAMES[leadDepartment(lead)]}
+                  {lead.createdAt ? ` · ${new Date(lead.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : ""}</span></span>
+              <span className="ms-auto d-flex align-items-center gap-1">
+                <Button size="sm" variant="outline-custom" disabled={at <= 0} onClick={() => setActiveLeadId(leads[at - 1]._id)}
+                  title="Previous lead"><i className="fa-solid fa-chevron-left" /></Button>
+                <span className="small text-muted px-1">Lead {at + 1} of {leads.length}</span>
+                <Button size="sm" variant="outline-custom" disabled={at >= leads.length - 1} onClick={() => setActiveLeadId(leads[at + 1]._id)}
+                  title="Next lead"><i className="fa-solid fa-chevron-right" /></Button>
+                <Button size="sm" variant="outline-secondary" onClick={() => setActiveLeadId(null)} title="Close this lead">
+                  <i className="fa-solid fa-chevron-up" /></Button>
+              </span>
+            </div>
                   <OpportunityHeader lead={lead} owner={details[lead._id]?.owner} onHot={(hot) => setHot(lead, hot)} />
                   <LeadFacts lead={lead} />
                   {activeLeadId === lead._id && <OpportunityActions lead={lead} onChanged={onChanged} actionsRef={setActionsEl} />}
@@ -246,7 +216,63 @@ export default function LeadsTab({ customerId, onChanged, initialLeadId = null }
                     </div>
                   )}
           </div>
-        ))}
+  );
+
+  return (
+    <div className="w_card">
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <h3 className="w_card_title mb-0">Leads</h3>
+        {leads.length > 0 && (
+          <Button size="sm" variant="outline-custom" onClick={() => setNewLead({ name: leads[0].name || "",
+            email: leads[0].email || "", phone: leads[0].phone || "" })}>
+            <i className="fa-solid fa-plus me-1" />New lead for this customer
+          </Button>
+        )}
+      </div>
+
+      {leadsError && (
+        <Alert variant="danger" dismissible onClose={() => setLeadsError(null)}>{leadsError}</Alert>
+      )}
+
+      {leadsLoading && leads.length === 0 ? (
+        <div className="text-center py-4"><Spinner animation="border" size="sm" /></div>
+      ) : leads.length === 0 ? (
+        <div className="text-center py-4 text-muted">No leads found for this customer.</div>
+      ) : (
+        <>
+        {/* 13 Nov 2026 meeting (10.10, DealerSocket's Sales tab): the customer's leads as a table - status, department,
+            created, source, vehicle, owner; click a row to open that lead. */}
+        <div className="table-responsive act_table mb-2">
+          <Table hover size="sm" className="mb-0 align-middle">
+            <thead><tr><th style={{ width: 34 }} aria-label="Open" /><th><IconLabel name="status">Status</IconLabel></th><th><IconLabel name="department">Department</IconLabel></th><th><IconLabel name="date">Created</IconLabel></th><th><IconLabel name="type">Up type</IconLabel></th><th><IconLabel name="source">Source</IconLabel></th><th><IconLabel name="source">Sub-source</IconLabel></th><th><IconLabel name="vehicle">Vehicle</IconLabel></th><th><IconLabel name="owner">Owner</IconLabel></th></tr></thead>
+            <tbody>
+              {leads.map((lead, at) => {
+                const vehicle = [lead.vehicle_year, lead.vehicle_make, lead.vehicle_model].filter(Boolean).join(" ");
+                return (
+                  <Fragment key={lead._id}>
+                  <tr className={activeLeadId === lead._id ? "table-primary" : undefined} style={{ cursor: "pointer" }}
+                    tabIndex={0} aria-expanded={activeLeadId === lead._id} onClick={() => toggle(lead._id)}
+                    onKeyDown={(e) => { if (e.key === "Enter") toggle(lead._id); }}>
+                    <td className="text-center"><i className={`fa-solid fa-chevron-${activeLeadId === lead._id ? "down" : "right"} text-primary`}
+                      title={activeLeadId === lead._id ? "Close this lead" : "Open this lead"} /></td>
+                    <td className="fw-semibold"><span className="ap_label"><AppIcon name={statusIconName(lead.fe_lead_status)} />{leadStatusLabel(lead) || "N/A"}</span>
+                      {lead.hot && <span className="cp_hot on ms-1 py-0"><i className="fa-solid fa-fire" /></span>}</td>
+                    <td>{DEPARTMENT_NAMES[leadDepartment(lead)]}</td>
+                    <td className="text-nowrap">{lead.createdAt ? moment(lead.createdAt).format("MMM D, YYYY") : "N/A"}</td>
+                    <td>{leadTypeName(lead)}</td><td>{lead.lead_source || lead.source || "Unknown"}</td>
+                    <td>{lead.sub_source || <span className="text-muted">None</span>}</td>
+                    <td>{vehicle || <span className="text-muted">No vehicle</span>}</td>
+                    <td>{details[lead._id]?.owner || <span className="text-muted">Unassigned</span>}</td>
+                  </tr>
+                  {activeLeadId === lead._id && (
+                    <tr className="cp_lead_open"><td colSpan={9} className="p-2">{renderLead(lead, at)}</td></tr>
+                  )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </Table>
+        </div>
         </>
       )}
 

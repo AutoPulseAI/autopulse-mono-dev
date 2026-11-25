@@ -8,7 +8,7 @@
 //     (POST /api/customers/[id]/contacts; open leads on a changed / removed number or address get the new one);
 //   - postal addresses: add, remove, make main.
 // Every change goes on the customer's timeline. After a save the profile reloads (onChanged).
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, Badge, Button, Form, Spinner } from "react-bootstrap";
 import { formatTimestamp } from "../../../../utils/dateUtils";
 import { formatCurrency } from "../../../../utils/formatCurrency";
@@ -297,8 +297,23 @@ function AddressList({ entries, send }) {
   );
 }
 
+const FOLD_KEY = "customerProfileFolds";
+
+// A section title that opens / folds its section; folded, it shows the summary beside it.
+function FoldTitle({ id, icon, label, open, onToggle, summary }) {
+  return (
+    <h6 className="cp_section_title">
+      <button type="button" className="cp_fold_btn" onClick={() => onToggle(id)} aria-expanded={open}>
+        <i className={`fa-solid ${icon}`} />{label}
+        <i className={`fa-solid fa-chevron-${open ? "up" : "down"} cp_fold_chevron`} />
+      </button>
+      {!open && <span className="cp_fold_summary">{summary}</span>}
+    </h6>
+  );
+}
+
 export default function CustomerHeader({ customer, valueSnapshot, onSendMessage, staffList, onAssignmentChange, callLeadId,
-  dealerId, onChanged, onOpenTab, counts, latestLead, dmsPerson }) {
+  dealerId, onChanged, onOpenTab, counts, latestLead, dmsPerson, activeTab = "overview" }) {
   const primaryEmail = primaryContact(customer.emails);
   const primaryPhone = primaryContact(customer.phones);
   const primaryAddress = primaryContact(customer.addresses);
@@ -312,6 +327,17 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
   const [formMessage, setFormMessage] = useState(null); // { variant, text } from Export to form
   // "More details" starts folded; a click opens it (19 Nov 2026: keeps the profile short).
   const [showDetails, setShowDetails] = useState(false);
+  // Contact, Preferences and Customer value fold like More details (25 Nov 2026): folded they show one summary line;
+  // open / folded is remembered in this browser.
+  const [fold, setFold] = useState({ contact: false, prefs: false, value: false });
+  useEffect(() => {
+    try { const kept = JSON.parse(localStorage.getItem(FOLD_KEY) || "null"); if (kept) setFold((f) => ({ ...f, ...kept })); } catch { /* folded */ }
+  }, []);
+  const toggleFold = (id) => setFold((f) => {
+    const next = { ...f, [id]: !f[id] };
+    try { localStorage.setItem(FOLD_KEY, JSON.stringify(next)); } catch { /* not kept */ }
+    return next;
+  });
   const detailsFilled = DETAILS.filter(([key]) => customer.details?.[key]).length;
 
   const putCustomer = async (body) => {
@@ -372,11 +398,11 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
         <div className="cp_group">
           <span className="cp_group_label">Connect</span>
           <div className="cp_tools">
-            {primaryPhone ? <CallButton phone={primaryPhone.value} leadId={callLeadId} dealerId={dealerId} variant="link" className="cp_tool" />
-              : <button type="button" className="cp_tool" disabled title="No phone on file"><i className="fa-solid fa-phone" />Call</button>}
-            <button type="button" className="cp_tool" onClick={onSendMessage} disabled={!sendLabel}
+            {primaryPhone ? <CallButton phone={primaryPhone.value} leadId={callLeadId} dealerId={dealerId} variant="link" className="cp_tool act_call" icon="fa-duotone fa-phone-office" />
+              : <button type="button" className="cp_tool act_call" disabled title="No phone on file"><i className="fa-duotone fa-phone-office" />Call</button>}
+            <button type="button" className="cp_tool act_sms" onClick={onSendMessage} disabled={!sendLabel}
               title={sendLabel || "No phone or email on file"}>
-              <i className={`fa-solid ${primaryPhone || !primaryEmail ? "fa-comment-sms" : "fa-envelope"}`} />{primaryPhone || !primaryEmail ? "Text" : "Email"}
+              <i className={`fa-duotone ${primaryPhone || !primaryEmail ? "fa-comment-sms" : "fa-envelope-open-text"}`} />{primaryPhone || !primaryEmail ? "Text" : "Email"}
             </button>
           </div>
         </div>
@@ -386,8 +412,8 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
             {/* The dealership's forms with this customer's data filled in (Forms Library). */}
             <ExportFormButton customerId={String(customer._id)} dealerId={dealerId} asTool onMessage={setFormMessage} />
             {/* SOW G-056: a print-friendly summary of the profile as it is open now (styles.css @media print). */}
-            <button type="button" className="cp_tool" onClick={() => window.print()} title="Print this customer's summary">
-              <i className="fa-solid fa-print" />Print</button>
+            <button type="button" className="cp_tool act_print" onClick={() => window.print()} title="Print this customer's summary">
+              <i className="fa-duotone fa-print" />Print</button>
           </div>
         </div>
         {/* 13 Nov 2026 meeting (10.3, DealerSocket "Search"): look the customer up on the web (opens a new tab). */}
@@ -398,7 +424,7 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
               ["Facebook", "fa-brands fa-facebook-f", (q) => `https://www.facebook.com/search/top?q=${q}`],
               ["LinkedIn", "fa-brands fa-linkedin-in", (q) => `https://www.linkedin.com/search/results/all/?keywords=${q}`]]
               .map(([label, icon, url]) => (
-                <a key={label} className="cp_tool" target="_blank" rel="noopener noreferrer" title={`Search ${label} for this customer`}
+                <a key={label} className={`cp_tool brand_${label.toLowerCase()}`} target="_blank" rel="noopener noreferrer" title={`Search ${label} for this customer`}
                   href={url(encodeURIComponent([customer.name, primaryAddress?.city].filter(Boolean).join(" ")))}>
                   <i className={icon} />{label}</a>
               ))}
@@ -406,13 +432,20 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
         </div>
         <div className="cp_group">
           <span className="cp_group_label">Open</span>
-          <div className="cp_tools">
-            <button type="button" className="cp_tool" onClick={go("leads")}><i className="fa-solid fa-comments" />Leads{count(counts?.leads)}</button>
-            <button type="button" className="cp_tool" onClick={go("appointments")}><i className="fa-regular fa-calendar-check" />Appts{count(counts?.appointments)}</button>
-            <button type="button" className="cp_tool" onClick={go("sales")}><i className="fa-solid fa-key" />Sales{count(counts?.sales)}</button>
-            <button type="button" className="cp_tool" onClick={go("service")}><i className="fa-solid fa-wrench" />Service{count(counts?.service)}</button>
-            <button type="button" className="cp_tool" onClick={go("tradeins")}><i className="fa-solid fa-right-left" />Trade-in</button>
-            <button type="button" className="cp_tool" onClick={go("overview")}><i className="fa-solid fa-clock-rotate-left" />History</button>
+          {/* 25 Nov 2026: these buttons are the profile's only navigation (no tab row below); the one on screen is lit. */}
+          <div className="cp_tools" role="tablist" aria-label="Show">
+            {[["overview", "Overview", "fa-duotone fa-clock-rotate-left", "act_task", null],
+              ["leads", "Leads", "fa-duotone fa-comments", "act_leads", counts?.leads],
+              ["appointments", "Appts", "fa-duotone fa-calendar-days", "act_appt", counts?.appointments],
+              ["sales", "Sales", "fa-duotone fa-key", "act_sold", counts?.sales],
+              ["service", "Service", "fa-duotone fa-screwdriver-wrench", "act_service", counts?.service],
+              ["vehicles", "Vehicles", "fa-duotone fa-car-side", "act_call", counts?.vehicles],
+              ["tradeins", "Trade-in", "fa-duotone fa-right-left", "act_status", null]].map(([key, label, icon, tone, n]) => (
+              <button key={key} type="button" role="tab" aria-selected={activeTab === key}
+                className={`cp_tool ${tone}${activeTab === key ? " on" : ""}`} onClick={go(key)}>
+                <i className={icon} />{label}{count(n)}
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -421,8 +454,9 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
 
       <div className="cp_body">
         <section className="cp_section cp_contact">
-          <h6 className="cp_section_title"><i className="fa-solid fa-address-card" />Contact</h6>
-          <div className="row gy-2">
+          <FoldTitle id="contact" icon="fa-address-card" label="Contact" open={fold.contact} onToggle={toggleFold}
+            summary={[primaryPhone?.value, primaryEmail?.value].filter(Boolean).join(" · ") || "No phone or email"} />
+          {fold.contact && <div className="row gy-2">
             <div className="col-md-6">
               <ContactList kind="phone" entries={customer.phones} labels={PHONE_LABELS} send={sendContact} />
             </div>
@@ -432,10 +466,12 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
             <div className="col-12">
               <AddressList entries={customer.addresses} send={sendContact} />
             </div>
-          </div>
+          </div>}
         </section>
         <section className="cp_section">
-          <h6 className="cp_section_title"><i className="fa-solid fa-sliders" />Preferences</h6>
+          <FoldTitle id="prefs" icon="fa-sliders" label="Preferences" open={fold.prefs} onToggle={toggleFold}
+            summary={`Contact: ${nameOf(CONTACT_MODES, customer.preferred_communication_mode) || "Not set"} · Follow-up: ${nameOf(FOLLOWUP, customer.followup_preference) || "Not set"} · Language: ${nameOf(LANGUAGES, customer.user_language) || "Not set"}`} />
+          {fold.prefs && <>
           <div className="cp_pref"><i className="fa-solid fa-headset" />
             <InlineField label="Preferred contact" value={customer.preferred_communication_mode}
               display={nameOf(CONTACT_MODES, customer.preferred_communication_mode)} options={CONTACT_MODES}
@@ -465,14 +501,16 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
                   onSave={(nv) => putCustomer({ details: { [key]: nv } })} /></div>
             );
           })}</div>}
+          </>}
         </section>
         <section className="cp_section">
-          <h6 className="cp_section_title"><i className="fa-solid fa-sack-dollar" />Customer value</h6>
-          <div className="cp_tiles">
+          <FoldTitle id="value" icon="fa-sack-dollar" label="Customer value" open={fold.value} onToggle={toggleFold}
+            summary={`Sales ${formatCurrency(valueSnapshot.total_deal_price)} · Service ${formatCurrency(valueSnapshot.total_repair_order_sale)}`} />
+          {fold.value && <div className="cp_tiles">
             <div className="cp_tile"><i className="fa-solid fa-car" /><span>Total sales</span><strong>{formatCurrency(valueSnapshot.total_deal_price)}</strong></div>
             <div className="cp_tile"><i className="fa-solid fa-screwdriver-wrench" /><span>Service (all-pay)</span><strong>{formatCurrency(valueSnapshot.total_repair_order_sale)}</strong></div>
             <div className="cp_tile"><i className="fa-solid fa-user-check" /><span>Service (customer-pay)</span><strong>{formatCurrency(valueSnapshot.total_repair_order_customer_sale)}</strong></div>
-          </div>
+          </div>}
         </section>
       </div>
     </div>
