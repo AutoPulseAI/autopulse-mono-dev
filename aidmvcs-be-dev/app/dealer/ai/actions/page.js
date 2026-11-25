@@ -34,6 +34,7 @@ const TASK_STATUS = [
 ];
 const STATUS_META = Object.fromEntries(TASK_STATUS.map(([k, label, icon, bg]) => [k, { label, icon, bg }]));
 const DEPT = { sales: "Sales", service: "Service", parts: "Parts" };
+const DEPT_BUTTONS = [["", "All", "fa-layer-group"], ["sales", "Sales", "fa-car"], ["service", "Service", "fa-screwdriver-wrench"], ["parts", "Parts", "fa-gears"]];
 const REASON_ICON = { "First response late": "overdue", "No owner": "noOwner", "No-show recovery": "missed", "Possible duplicate": "customers", "No next step": "stuck", "Unsold follow-up": "history" };
 const REASON_BG = { "First response late": "danger", "No owner": "warning", "No-show recovery": "primary", "Possible duplicate": "info", "No next step": "secondary", "Unsold follow-up": "dark" };
 const FIX_ICON = { Assign: "fa-user-plus", "Add task": "fa-plus", "Review merge": "fa-code-merge", "Open lead": "fa-arrow-up-right-from-square" };
@@ -58,7 +59,7 @@ const fromReminder = (r, now) => {
     why: r.note, status: r.dismissed_at ? "cancelled" : r.done_at ? "done" : late ? "overdue" : "waiting", due: r.due_at, priority: r.escalated_at || late ? "High" : "Normal",
     made: r.created_by_name || "Staff", owner_id: r.owner_id, done_at: r.done_at, done_by: r.done_by_name,
     outcome: r.dismissed_at ? "Dismissed" : r.done_at ? "Completed" : null, note: r.dismiss_reason || null, escalated: !!r.escalated_at,
-    dismissed: !!r.dismissed_at };
+    dismissed: !!r.dismissed_at, department: r.department || null };
 };
 
 const Person = ({ name }) => (name
@@ -95,11 +96,18 @@ function GoToPage({ page, pages, onPage }) {
   );
 }
 
+// Choices every list has, even before it has rows (25 Nov 2026: the filters looked empty on an empty list).
+const FIXED_OPTIONS = {
+  dar: { pri: ["Escalated", "Normal"] },
+  tasks: { pri: ["High", "Normal"], made: ["AI"] },
+};
+
 function Select({ value, onChange, label, options }) {
   return (
     <Form.Select size="sm" className="act_filter" aria-label={label} value={value || ""} onChange={(e) => onChange(e.target.value)}>
       <option value="">{label}</option>
       {options.map((o) => <option key={o} value={o}>{o}</option>)}
+      {!options.length && <option disabled>None in this list yet</option>}
     </Form.Select>
   );
 }
@@ -223,6 +231,7 @@ function ActionsContent() {
   const [range, setRange] = useState({ startDate: null, endDate: null, preset: "all_time" });
   const [status, setStatus] = useState({ dar: "open", tasks: params.get("status") || "open", stuck: "open" });
   const [f, setF] = useState({});
+  const [dept, setDept] = useState(DEPT[params.get("dept")] ? params.get("dept") : "");
   const [sort, setSort] = useState("");
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
@@ -289,17 +298,29 @@ function ActionsContent() {
   ], [calls, reminders, facts, staffNames]); // eslint-disable-line react-hooks/exhaustive-deps
   const stuckRows = useMemo(() => stuck.rows.map((r) => ({ ...r, lead_status: r.status })), [stuck]);
 
-  const baseAlerts = alertRows.filter(inScope).filter((a) => inDate(a.at)).filter((a) => has(a.name, a.lead?.phone, a.vehicle, a.text));
-  const baseTasks = taskRows.filter(inScope).filter((t) => inDate(t.due)).filter((t) => has(t.name, t.phone, t.vehicle, t.why, t.note));
-  const baseStuck = stuckRows.filter(inScope).filter((x) => inDate(x.since)).filter((x) => has(x.name, x.phone, x.vehicle, x.detail));
+  // Sales / Service / Parts (25 Nov 2026: "how does this page tell sales and service tasks apart"): the lead's
+  // department, as on the Leads page. Applies to every list and every count on the tab.
+  const deptName = (r) => DEPT[r.department] || "Sales";
+  const inDept = (r) => !dept || deptName(r) === DEPT[dept];
+  const preDept = {
+    dar: alertRows.filter(inScope).filter((a) => inDate(a.at)).filter((a) => has(a.name, a.lead?.phone, a.vehicle, a.text)),
+    tasks: taskRows.filter(inScope).filter((t) => inDate(t.due)).filter((t) => has(t.name, t.phone, t.vehicle, t.why, t.note)),
+    stuck: stuckRows.filter(inScope).filter((x) => inDate(x.since)).filter((x) => has(x.name, x.phone, x.vehicle, x.detail)),
+  };
+  const baseAlerts = preDept.dar.filter(inDept);
+  const baseTasks = preDept.tasks.filter(inDept);
+  const baseStuck = preDept.stuck.filter(inDept);
+  // How many items each department has in the list shown (this tab and status) - the department buttons' numbers.
+  const inStatus = { dar: (a) => (status.dar === "handled" ? a.handled : !a.handled), tasks: (t) => t.status === status.tasks, stuck: () => true };
+  const deptCount = (d) => (preDept[tab] || []).filter(inStatus[tab] || (() => true)).filter((r) => !d || deptName(r) === DEPT[d]).length;
   const match = (r, keys) => keys.every(([k, get]) => !f[`${tab}.${k}`] || get(r) === f[`${tab}.${k}`]);
   const owned = (r) => !ownerF || (ownerF === "none" ? !r.owner_id : r.owner_id === ownerF);
   const deptOf = (r) => DEPT[r.department] || "Sales";
   const lsOf = (r) => leadStatusLabelFrom(r.lead_status);
   const FILTERS = {
-    dar: [["kind", "All types", (r) => r.kindLabel], ["dept", "All departments", deptOf], ["src", "All lead sources", (r) => r.source], ["ls", "All lead statuses", lsOf], ["pri", "All priorities", (r) => (r.escalated ? "Escalated" : "Normal")]],
-    tasks: [["why", "All task types", (r) => r.why], ["pri", "All priorities", (r) => r.priority], ["dept", "All departments", deptOf], ["made", "Made by: anyone", (r) => r.made], ["src", "All lead sources", (r) => r.source], ["ls", "All lead statuses", lsOf], ...(status.tasks === "done" ? [["out", "All outcomes", (r) => r.outcome]] : [])],
-    stuck: [["why", "All reasons", (r) => r.reason], ["dept", "All departments", deptOf], ["src", "All lead sources", (r) => r.source], ["ls", "All lead statuses", lsOf], ["age", "Any age", (r) => AGE(r.since, now)]],
+    dar: [["kind", "All types", (r) => r.kindLabel], ["src", "All lead sources", (r) => r.source], ["ls", "All lead statuses", lsOf], ["pri", "All priorities", (r) => (r.escalated ? "Escalated" : "Normal")]],
+    tasks: [["why", "All task types", (r) => r.why], ["pri", "All priorities", (r) => r.priority], ["made", "Made by: anyone", (r) => r.made], ["src", "All lead sources", (r) => r.source], ["ls", "All lead statuses", lsOf], ...(status.tasks === "done" ? [["out", "All outcomes", (r) => r.outcome]] : [])],
+    stuck: [["why", "All reasons", (r) => r.reason], ["src", "All lead sources", (r) => r.source], ["ls", "All lead statuses", lsOf], ["age", "Any age", (r) => AGE(r.since, now)]],
   };
   const keys = FILTERS[tab] || [];
   const statusOK = { dar: (a) => (status.dar === "handled" ? a.handled : !a.handled), tasks: (t) => t.status === status.tasks, stuck: () => true };
@@ -397,6 +418,13 @@ function ActionsContent() {
             <ButtonGroup size="sm">
               {scopes.map(([k, label, icon]) => <Button key={k} variant={scope === k ? "custom" : "outline-custom"} onClick={() => setScope(k)}><AppIcon name={icon} plain className="me-1" />{label}</Button>)}
             </ButtonGroup>
+            <ButtonGroup size="sm" aria-label="Department">
+              {DEPT_BUTTONS.map(([k, label, icon]) => (
+                <Button key={k || "all"} variant={dept === k ? "custom" : "outline-custom"} onClick={() => setDept(k)}>
+                  <i className={`fa-regular ${icon} me-1`} aria-hidden="true" />{label} ({deptCount(k)})
+                </Button>
+              ))}
+            </ButtonGroup>
             {me?.role !== "staff" && (
               <Form.Select size="sm" className="act_filter" aria-label="Owner" value={ownerF} onChange={(e) => setOwnerF(e.target.value)}>
                 <option value="">All owners</option><option value="none">No owner</option>
@@ -421,7 +449,7 @@ function ActionsContent() {
             )}
             {keys.map(([k, label, get]) => (
               <Select key={k} label={label} value={f[`${tab}.${k}`]} onChange={(v) => setF({ ...f, [`${tab}.${k}`]: v })}
-                options={[...new Set(pool.map(get).filter(Boolean))].sort()} />
+                options={[...new Set([...(FIXED_OPTIONS[tab]?.[k] || []), ...pool.map(get).filter(Boolean)])].sort()} />
             ))}
             {filtered && <Button size="sm" variant="link" onClick={clearFilters}>Clear filters</Button>}
             </div>
