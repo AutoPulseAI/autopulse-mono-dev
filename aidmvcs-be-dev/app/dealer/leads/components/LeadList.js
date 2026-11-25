@@ -64,6 +64,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
   // how it was made (all matching / this page / first N / pages / ticked one by one); `unticked` counts leads taken
   // out of a scope by hand.
   const [selectMode, setSelectMode] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false); // phones: the filters fold behind a button
   const [selected, setSelected] = useState(() => new Map());
   const [scope, setScope] = useState("page");
   const [unticked, setUnticked] = useState(0);
@@ -1732,8 +1733,12 @@ useImperativeHandle(ref, () => ({
       ) : selectMode ? null : (
         <Row className="align-items-center g-0">
           <Col lg={12}>
-            {/* Filter Controls */}
-            <Row className="search_filters gx-1 gy-xxl-0 gy-1">
+            {/* Filter Controls (folded behind a button on phones) */}
+            <Button variant="outline-custom" size="sm" className="d-md-none w-100 mb-1" aria-expanded={filtersOpen}
+              onClick={() => setFiltersOpen((v) => !v)}>
+              <i className="fa-solid fa-filter me-1" aria-hidden="true"></i>{filtersOpen ? "Hide filters" : "Search and filter"}
+            </Button>
+            <Row className={`search_filters gx-1 gy-xxl-0 gy-1${filtersOpen ? "" : " d-none d-md-flex"}`}>
               <Col xxl={2} xl={3} lg={3} md={3} xs={12}>
                 <Form.Control
                   type="text"
@@ -1921,7 +1926,7 @@ useImperativeHandle(ref, () => ({
         <div className="w_card_list mt-3">
           <ListGroup as="ul" variant="flush">
             {!compact && (
-            <ListGroup.Item as="li" className={`w_card_list_head border-bottom-0${selectMode ? ' d-flex align-items-center' : ''}`}>
+            <ListGroup.Item as="li" className={`w_card_list_head lead_list_head border-bottom-0${selectMode ? ' d-flex align-items-center' : ''}`}>
               {selectMode && <div className="bulk_tick_col"></div>}
               <Row className="align-items-center w-100 g-0">
                 <Col xl={10} lg={9} sm={9} xs={12} className="lead_main_col">

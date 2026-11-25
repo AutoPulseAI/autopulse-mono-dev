@@ -20,6 +20,7 @@ import CallOutcomeModal from "../components/CallOutcomeModal";
 import DismissTaskModal, { DISMISS_TASKS } from "../../components/DismissTaskModal";
 import { useCan } from "../../../hooks/PermissionsContext";
 import LeadAiDrawer from "../components/LeadAiDrawer";
+import useIsMobile from "../../components/useIsMobile";
 import { ALERTS_CHANGED_EVENT, aiFetch, alertKind, callOutcomeLabel, formatDateTime, fromNow, leadHref, telHref } from "../components/aiShared";
 
 const TABS = [
@@ -238,6 +239,14 @@ function ActionsContent() {
   // "Dismiss Tasks" (app/lib/taskPermission.js): only these people see Dismiss and Undo dismiss.
   const canDismiss = useCan(DISMISS_TASKS);
   const [dismissing, setDismissing] = useState(null);
+  // Below a tablet's width each table row is a card with its column names (from the colleague's phone layouts, 25 Nov 2026).
+  const phone = useIsMobile(992);
+  useEffect(() => {
+    document.querySelectorAll(".act_table table").forEach((t) => {
+      const heads = [...t.querySelectorAll("thead th")].map((h) => h.textContent.trim());
+      t.querySelectorAll("tbody tr").forEach((row) => [...row.children].forEach((td, i) => { if (heads[i]) td.setAttribute("data-label", heads[i]); }));
+    });
+  });
   const [moreFilters, setMoreFilters] = useState(false); // phones: the filters fold away so the list stays in view
 
   const load = useCallback(async ({ silent = false } = {}) => {
@@ -474,7 +483,7 @@ function ActionsContent() {
           </div>
           {loading ? <div className="text-center py-5"><Spinner animation="border" variant="dark" /></div>
             : !shown.length ? <p className="text-muted text-center py-4 mb-0">{tab === "board" ? "Nobody to show." : "Nothing matches these filters."}</p> : (
-            <div className="table-responsive act_table">
+            <div className={`table-responsive act_table${phone ? " act_cards" : ""}`}>
               <Table hover size="sm" className="mb-0 align-middle">
                 {tab === "dar" && <>
                   <thead><tr><th><IconLabel name="type">Type</IconLabel></th><th><IconLabel name="customer">Customer</IconLabel></th><th><IconLabel name="info">What is needed</IconLabel></th><th><IconLabel name="status">Lead status</IconLabel></th><th><IconLabel name="source">Source</IconLabel></th><th><IconLabel name="owner">Owner</IconLabel></th><th><IconLabel name="time">Raised</IconLabel></th><th><IconLabel name="status">Status</IconLabel></th><th /></tr></thead>
