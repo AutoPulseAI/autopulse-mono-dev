@@ -12,6 +12,7 @@ import StatusModal from "./StatusModal";
 import LeadDetailsSidebar from "./LeadDetailsSidebar";
 import AppIcon, { Avatar, IconLabel, statusIconName } from "../../components/AppIcon";
 import { useRouter, useSearchParams } from "next/navigation";
+import { backFor } from "../../components/backLink";
 import Customer360Panel from "../../components/Customer360Panel";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
 import { BulkBar, BulkScope, BulkPanel, BulkNotice, undoBulk, exportBulk } from "./BulkAssign";
@@ -867,6 +868,14 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
 
   // Helper function to handle lead click and update URL with selectedLead=true and leadId
   const handleLeadClick = useCallback(async (lead) => {
+    // Bibi, 25 Nov 2026: from the Dashboard's Customer Replied numbers, a lead opens on its customer's profile, on that
+    // lead's conversation (Leads & Communications), to read the reply there. Back returns to this list.
+    const cameFrom = backFor(window.location);
+    if (cameFrom?.back === '/dealer/dashboard' && new URLSearchParams(window.location.search).get('status') === 'Contacted'
+      && lead?.customer_id) {
+      router.push(`/dealer/customers/${lead.customer_id}?tab=leads&lead=${lead._id}`);
+      return;
+    }
     // Clear the direction flag since this is a manual click
     justHandledDirectionRef.current = false;
     
@@ -900,7 +909,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     }
     
     onLeadSelected(lead);
-  }, [onLeadSelected]);
+  }, [onLeadSelected, router]);
 
   // Function to clear selectedLead from URL (close sidebar)
   const clearSelectedLead = useCallback(() => {

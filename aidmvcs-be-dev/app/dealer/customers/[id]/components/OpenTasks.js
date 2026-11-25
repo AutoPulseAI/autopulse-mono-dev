@@ -6,6 +6,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useCan } from "../../../../hooks/PermissionsContext";
 import DismissTaskModal, { DISMISS_TASKS } from "../../../components/DismissTaskModal";
+import AddTaskModal from "../../../components/AddTaskModal";
 import { formatTimestamp } from "../../../../utils/dateUtils";
 import AppIcon from "../../../components/AppIcon";
 
@@ -17,17 +18,25 @@ const KIND = {
 };
 
 // dealerId / onChanged: for Dismiss (only people whose role has "Dismiss Tasks"); the profile reloads after it.
-export default function OpenTasks({ tasks, dealerId, onChanged }) {
+export default function OpenTasks({ tasks, dealerId, onChanged, leads = [], staffList = [] }) {
   const canDismiss = useCan(DISMISS_TASKS);
   const [dismissing, setDismissing] = useState(null);
+  const [adding, setAdding] = useState(false);
+  const addButton = (
+    <button type="button" className="btn btn-sm btn-custom ms-auto text-nowrap" style={{ textTransform: "none" }}
+      onClick={() => setAdding(true)}><i className="fa-solid fa-plus me-1" />Add task</button>
+  );
+  const addModal = <AddTaskModal show={adding} leads={leads} staff={staffList} onHide={() => setAdding(false)}
+    onDone={() => { setAdding(false); onChanged?.(); }} />;
   // Always shown, so "no tasks" is a clear answer rather than a missing box (25 Nov 2026).
   if (!tasks?.length) {
     return <div className="cp_card cp_tasks mb-3"><div className="cp_tasks_head"><AppIcon name="task" />Open tasks
-      <span className="text-muted small fw-normal ms-2" style={{ textTransform: "none" }}>None - no calls, reminders or appointments waiting</span></div></div>;
+      <span className="text-muted small fw-normal ms-2" style={{ textTransform: "none" }}>None - no calls, reminders or appointments waiting</span>
+      {addButton}</div>{addModal}</div>;
   }
   return (
     <div className="cp_card cp_tasks mb-3">
-      <div className="cp_tasks_head"><AppIcon name="task" />Open tasks <span className="cp_tab_count">{tasks.length}</span></div>
+      <div className="cp_tasks_head"><AppIcon name="task" />Open tasks <span className="cp_tab_count">{tasks.length}</span>{addButton}</div>
       <ul className="list-unstyled mb-0">
         {tasks.map((t, i) => {
           const k = KIND[t.kind] || KIND.followup;
@@ -46,6 +55,7 @@ export default function OpenTasks({ tasks, dealerId, onChanged }) {
           );
         })}
       </ul>
+      {addModal}
       <DismissTaskModal task={dismissing} dealerId={dealerId} onHide={() => setDismissing(null)}
         onDone={() => { setDismissing(null); onChanged?.(); }} />
     </div>
