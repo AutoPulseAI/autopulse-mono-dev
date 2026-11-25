@@ -86,11 +86,12 @@ export default function OpportunityActions({ lead, onChanged, actionsRef = null 
       <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
         <div className="opp_tools">
           <span className="opp_slot" ref={actionsRef} />
-          <Button size="sm" onClick={() => setReminder({ due_at: "", note: "", assigned_to: "" })}>
-            <i className="fa-regular fa-bell" />Reminder</Button>
-          <Button size="sm" href="/dealer/booking"><i className="fa-regular fa-calendar" />Appointment</Button>
-          <CallButton logOnly phone={lead.phone} leadId={lead._id} dealerId={lead.dealer_id} label="Log call" onLogged={onChanged} />
-          <Button size="sm" onClick={() => setTask("")}><i className="fa-solid fa-ellipsis" />Other task</Button>
+          <Button size="sm" className="act_remind" onClick={() => setReminder({ due_at: "", note: "", assigned_to: "" })}>
+            <i className="fa-duotone fa-alarm-clock" />Reminder</Button>
+          <Button size="sm" className="act_appt" href="/dealer/booking"><i className="fa-duotone fa-calendar-days" />Appt.</Button>
+          <CallButton logOnly phone={lead.phone} leadId={lead._id} dealerId={lead.dealer_id} label="Log call" onLogged={onChanged}
+            className="act_log" icon="fa-duotone fa-phone-arrow-up-right" />
+          <Button size="sm" className="act_task" onClick={() => setTask("")}><i className="fa-duotone fa-clipboard-list" />Other task</Button>
           {!actionsRef && <CallButton phone={lead.phone} leadId={lead._id} dealerId={lead.dealer_id} onLogged={onChanged} />}
         </div>
         <Form.Check type="switch" className="ms-auto mb-0" id={`in-market-${lead._id}`} disabled={busy}
