@@ -11,6 +11,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Alert, Badge, Button, ButtonGroup, Form, Modal, Spinner, Table } from "react-bootstrap";
 import { useUser } from "../../context/UserContext";
+import useIsMobile from "../../components/useIsMobile";
 import useLiveRefresh from "../../../hooks/useLiveRefresh";
 import AppIcon, { Avatar, IconLabel, iconColor, statusIconName } from "../../components/AppIcon";
 import DashboardDatePicker from "../../dashboard/components/DashboardDatePicker";
@@ -73,7 +74,7 @@ const Phone = ({ value }) => (value ? <span className="ap_label text-nowrap"><Ap
 const When = ({ at, name = "date" }) => (at ? <span className="ap_label text-nowrap" title={formatDateTime(at)}><AppIcon name={name} />{moment(at).format("MMM D, YYYY")}</span> : <span className="text-muted">-</span>);
 const LeadStatus = ({ status }) => (status ? <span className="ap_label"><AppIcon name={statusIconName(status)} />{leadStatusLabelFrom(status)}</span> : <span className="text-muted">-</span>);
 const Source = ({ value }) => (value ? <span className="ap_label"><AppIcon name="source" />{value}</span> : <span className="text-muted">-</span>);
-const Priority = ({ value }) => <span className={`act_pri ${value.toLowerCase()}`}><i className={`fa-solid ${value === "High" ? "fa-angles-up" : "fa-equals"}`} aria-hidden="true" />{value}</span>;
+const Priority = ({ value }) => <span className={`act_pri ${value.toLowerCase()}`}><i className={`fa-regular ${value === "High" ? "fa-angles-up" : "fa-equals"}`} aria-hidden="true" />{value}</span>;
 const Icon = ({ title, name, variant = "outline-custom", ...rest }) => (
   <Button size="sm" variant={variant} className="act_btn" title={title} aria-label={title} {...rest}><AppIcon name={name} plain /></Button>
 );
@@ -238,6 +239,7 @@ function ActionsContent() {
   // "Dismiss Tasks" (app/lib/taskPermission.js): only these people see Dismiss and Undo dismiss.
   const canDismiss = useCan(DISMISS_TASKS);
   const [dismissing, setDismissing] = useState(null);
+  const narrow = useIsMobile(1680), phone = useIsMobile(992); // wide tables are cards below these widths
   const [moreFilters, setMoreFilters] = useState(false); // phones: the filters fold away so the list stays in view
 
   const load = useCallback(async ({ silent = false } = {}) => {
@@ -271,6 +273,13 @@ function ActionsContent() {
   // Refreshes every 2 minutes while the tab is in view (not in a hidden tab), and at once when it comes back.
   useLiveRefresh(() => load({ silent: true }), { everyMs: 120000, paused: loading || !!pending || !!editing || !!fixing });
   useEffect(() => { setPending(read()); }, []);
+  // A card shows each value with its column name (the table's own headings).
+  useEffect(() => {
+    document.querySelectorAll(".act_table table").forEach((t) => {
+      const heads = [...t.querySelectorAll("thead th")].map((h) => h.textContent.trim());
+      t.querySelectorAll("tbody tr").forEach((row) => [...row.children].forEach((td, i) => { if (heads[i]) td.setAttribute("data-label", heads[i]); }));
+    });
+  });
   useEffect(() => { setPage(1); }, [tab, scope, ownerF, query, range, status, f, perPage, sort]);
 
   const now = new Date();
@@ -405,8 +414,8 @@ function ActionsContent() {
         <div className="act_kpis">
           {TABS.map((t) => (
             <button key={t.key} type="button" className={`act_kpi${tab === t.key ? " on" : ""}`} style={{ "--k": iconColor(t.icon) }} onClick={() => pickTab(t.key)} aria-pressed={tab === t.key}>
-              <span className="act_kpi_icon"><AppIcon name={t.icon} /></span>
-              <span className="act_kpi_text"><span className="fw-semibold">{t.label}</span><b>{counts[t.key]}</b><small>{t.sub}</small></span>
+              <span className="act_kpi_title"><AppIcon name={t.icon} /><span>{t.label}</span></span>
+              <b className="act_kpi_count">{counts[t.key]}</b><small className="act_kpi_sub">{t.sub}</small>
             </button>
           ))}
         </div>
@@ -435,7 +444,7 @@ function ActionsContent() {
             )}
             <Form.Control size="sm" className="act_search" placeholder="Search name, phone, vehicle or text" value={query} onChange={(e) => setQuery(e.target.value)} />
             <Button size="sm" variant="outline-custom" className="act_more" aria-expanded={moreFilters} onClick={() => setMoreFilters(!moreFilters)}>
-              <i className="fa-solid fa-sliders me-1" aria-hidden="true" />{moreFilters ? "Hide filters" : "Filters"}
+              <i className="fa-regular fa-sliders me-1" aria-hidden="true" />{moreFilters ? "Hide filters" : "Filters"}
             </Button>
             <div className={`act_folded${moreFilters ? " open" : ""}`}>
             {tab === "tasks" && (
@@ -474,19 +483,19 @@ function ActionsContent() {
           </div>
           {loading ? <div className="text-center py-5"><Spinner animation="border" variant="dark" /></div>
             : !shown.length ? <p className="text-muted text-center py-4 mb-0">{tab === "board" ? "Nobody to show." : "Nothing matches these filters."}</p> : (
-            <div className="table-responsive act_table">
+            <div className={`table-responsive act_table${(tab === "board" ? phone : narrow) ? " act_cards" : ""}`}>
               <Table hover size="sm" className="mb-0 align-middle">
                 {tab === "dar" && <>
                   <thead><tr><th><IconLabel name="type">Type</IconLabel></th><th><IconLabel name="customer">Customer</IconLabel></th><th><IconLabel name="info">What is needed</IconLabel></th><th><IconLabel name="status">Lead status</IconLabel></th><th><IconLabel name="source">Source</IconLabel></th><th><IconLabel name="owner">Owner</IconLabel></th><th><IconLabel name="time">Raised</IconLabel></th><th><IconLabel name="status">Status</IconLabel></th><th /></tr></thead>
                   <tbody>{shown.map((a) => { const k = alertKind(a.kind); return (
                     <tr key={a.id}>
-                      <td><Badge bg={k.variant} className="act_badge"><i className={`fa-solid ${k.icon}`} aria-hidden="true" />{k.label}</Badge>{a.escalated && <div className="mt-1"><Badge bg="danger" className="act_badge"><AppIcon name="escalated" plain />Escalated</Badge></div>}</td>
+                      <td><Badge bg={k.variant} className="act_badge"><i className={`fa-regular ${k.icon}`} aria-hidden="true" />{k.label}</Badge>{a.escalated && <div className="mt-1"><Badge bg="danger" className="act_badge"><AppIcon name="escalated" plain />Escalated</Badge></div>}</td>
                       <td><Customer name={a.name} vehicle={a.vehicle} href={leadHref(a.lead_id)} /></td>
                       <td className="act_wide small">{a.text}</td><td><LeadStatus status={a.lead_status} /></td><td><Source value={a.source} /></td>
                       <td><Person name={a.owner} /></td><td><When at={a.at} /></td>
                       <td>{a.handled ? <><Badge bg="success" className="act_badge"><AppIcon name="done" plain />Handled</Badge><small className="d-block text-muted">{a.handled_by || "staff"} {fromNow(a.handled_at)}</small></> : <Badge bg="warning" text="dark" className="act_badge"><AppIcon name="open" plain />Open</Badge>}</td>
                       <td className="act_row_btns"><Icon title="AI details" name="ai" variant="outline-secondary" onClick={() => setDrawer({ ...a, customer_name: a.name })} />
-                        <Button as={Link} size="sm" variant="outline-custom" className="act_btn" title="Open lead" aria-label="Open lead" href={leadHref(a.lead_id)}><i className="fa-solid fa-arrow-up-right-from-square" aria-hidden="true" /></Button>
+                        <Button as={Link} size="sm" variant="outline-custom" className="act_btn" title="Open lead" aria-label="Open lead" href={leadHref(a.lead_id)}><i className="fa-regular fa-arrow-up-right-from-square" aria-hidden="true" /></Button>
                         {!a.handled && <Icon title="Mark handled" name="done" variant="custom" disabled={busy === a.id} onClick={() => markHandled(a)} />}</td>
                     </tr>); })}</tbody>
                 </>}
@@ -505,7 +514,7 @@ function ActionsContent() {
                         {t.kind === "call" && t.status === "missed" && <Icon title="Record late call" name="outcome" onClick={() => recordOutcome(t)} />}
                         {canDismiss && t.kind === "call" && t.raw.status === "dismissed" && <Icon title="Undo dismiss" name="history" onClick={() => bringBack(t)} />}
                         {canDismiss && t.kind === "reminder" && t.dismissed && <Icon title="Undo dismiss" name="history" onClick={() => undismissReminder(t)} />}
-                        <Button as={Link} size="sm" variant="outline-custom" className="act_btn" title="Open lead" aria-label="Open lead" href={leadHref(t.lead_id)}><i className="fa-solid fa-arrow-up-right-from-square" aria-hidden="true" /></Button>
+                        <Button as={Link} size="sm" variant="outline-custom" className="act_btn" title="Open lead" aria-label="Open lead" href={leadHref(t.lead_id)}><i className="fa-regular fa-arrow-up-right-from-square" aria-hidden="true" /></Button>
                       </td>
                     </tr>))}</tbody>
                 </>}
@@ -525,7 +534,7 @@ function ActionsContent() {
                         {canDismiss && t.kind === "call" && t.raw.status === "dismissed" && <Icon title="Undo dismiss" name="history" onClick={() => bringBack(t)} />}
                         {canDismiss && t.kind === "reminder" && t.dismissed && <Icon title="Undo dismiss" name="history" onClick={() => undismissReminder(t)} />}
                         {t.kind === "reminder" && t.status !== "done" && <><Icon title="Mark done" name="done" variant="custom" disabled={busy === t.key} onClick={() => finishReminder(t)} /><Icon title="Reschedule, reassign or escalate" name="date" onClick={() => setEditing(t)} />{canDismiss && <Icon title="Dismiss (close without doing it)" name="cancelled" onClick={() => setDismissing(t)} />}</>}
-                        <Button as={Link} size="sm" variant="outline-custom" className="act_btn" title="Open lead" aria-label="Open lead" href={leadHref(t.lead_id)}><i className="fa-solid fa-arrow-up-right-from-square" aria-hidden="true" /></Button>
+                        <Button as={Link} size="sm" variant="outline-custom" className="act_btn" title="Open lead" aria-label="Open lead" href={leadHref(t.lead_id)}><i className="fa-regular fa-arrow-up-right-from-square" aria-hidden="true" /></Button>
                       </td>
                     </tr>); })}</tbody>
                 </>}
@@ -539,9 +548,9 @@ function ActionsContent() {
                       <td><span className="ap_label"><AppIcon name="department" />{deptOf(x)}</span></td><td><Person name={x.owner} /></td><td><When at={x.since} name="age" /></td>
                       <td className="act_row_btns">
                         {x.fix === "Assign" || x.fix === "Add task"
-                          ? <Button size="sm" variant="custom" className="act_btn" title={x.fix} aria-label={x.fix} onClick={() => setFixing(x)}><i className={`fa-solid ${FIX_ICON[x.fix]}`} aria-hidden="true" /></Button>
-                          : <Button as={Link} size="sm" variant="custom" className="act_btn" title={x.fix} aria-label={x.fix} href={fixHref(x)}><i className={`fa-solid ${FIX_ICON[x.fix]}`} aria-hidden="true" /></Button>}
-                        {x.fix !== "Open lead" && <Button as={Link} size="sm" variant="outline-custom" className="act_btn" title="Open lead" aria-label="Open lead" href={leadHref(x.lead_id)}><i className="fa-solid fa-arrow-up-right-from-square" aria-hidden="true" /></Button>}
+                          ? <Button size="sm" variant="custom" className="act_btn" title={x.fix} aria-label={x.fix} onClick={() => setFixing(x)}><i className={`fa-regular ${FIX_ICON[x.fix]}`} aria-hidden="true" /></Button>
+                          : <Button as={Link} size="sm" variant="custom" className="act_btn" title={x.fix} aria-label={x.fix} href={fixHref(x)}><i className={`fa-regular ${FIX_ICON[x.fix]}`} aria-hidden="true" /></Button>}
+                        {x.fix !== "Open lead" && <Button as={Link} size="sm" variant="outline-custom" className="act_btn" title="Open lead" aria-label="Open lead" href={leadHref(x.lead_id)}><i className="fa-regular fa-arrow-up-right-from-square" aria-hidden="true" /></Button>}
                       </td>
                     </tr>))}</tbody>
                 </>}

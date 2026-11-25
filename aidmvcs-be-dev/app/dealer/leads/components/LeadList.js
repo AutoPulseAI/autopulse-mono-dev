@@ -10,7 +10,8 @@ import DateRangePickerComponent from "../../components/DateRangePicker";
 import ImportLeadsModal from "./ImportLeadsModal";
 import StatusModal from "./StatusModal";
 import LeadDetailsSidebar from "./LeadDetailsSidebar";
-import AppIcon, { Avatar, IconLabel, statusIconName } from "../../components/AppIcon";
+import StatusPill, { statusLook } from "../../components/StatusPill";
+import AppIcon, { Avatar, IconLabel } from "../../components/AppIcon";
 import { useRouter, useSearchParams } from "next/navigation";
 import { backFor } from "../../components/backLink";
 import Customer360Panel from "../../components/Customer360Panel";
@@ -56,6 +57,14 @@ const drillRangeText = (range) => {
 };
 
 // Component that uses useSearchParams - needs to be wrapped in Suspense
+// The "more" button of a row's menu (a plain outline button, no caret).
+const MoreToggle = forwardRef(function MoreToggle({ children, onClick, className = "", ...rest }, ref) {
+  return <button type="button" ref={ref} {...rest} className={`btn btn-outline-secondary btn-sm lead_more ${className}`.trim()} onClick={(e) => { e.stopPropagation(); onClick?.(e); }}>{children}</button>;
+});
+// How the lead came in: an icon and the word, in the colours the Desk Log uses for lead types.
+const typeIcon = (label) => (/phone/i.test(label) ? ["fa-phone", "#7c3aed"] : /walk/i.test(label) ? ["fa-person-walking", "#2fb344"]
+  : /campaign/i.test(label) ? ["fa-bullhorn", "#f7931e"] : ["fa-globe", "#1d6fe0"]);
+
 const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, selectedLeadId, compact = false, ...props }, ref) => {
   // All hooks must be called unconditionally at the top level
   const canAssignLeads = useCan("Assign Leads");
@@ -211,23 +220,6 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     "Closed - No Longer Owns",
   ];
 
-  const getStatusVariant = (status) => {
-    switch (status?.toLowerCase()) {
-      case 'contacted': return 'info';
-      case 'appointment booked': return 'warning';
-      case 'visited': return 'success';
-      case 'managerial review': return 'warning';
-      case 'sold': return 'danger';
-      case 'sold pending': return 'warning';
-      case 'sold delivered': return 'danger';
-      case 'unsold': return 'secondary';
-      case 'closed - lost': return 'dark';
-      case 'closed - no longer owns': return 'dark';
-      case 'lead': return 'custom';
-      case 'dnd': return 'secondary';
-      default: return 'secondary';
-    }
-  };
 
   const showAlert = useCallback((message, variant = "success") => {
     setAlert({ show: true, message, variant });
@@ -730,6 +722,14 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       ...prev,
       [name]: value
     }));
+  };
+
+  // One Search box: an @ means an email, mostly digits a phone, anything else a name.
+  const searchText = inputValues.name || inputValues.email || inputValues.phone;
+  const setSearchText = (text) => {
+    const isEmail = text.includes('@');
+    const isPhone = !isEmail && /^[\d\s()+.-]+$/.test(text.trim()) && text.replace(/\D/g, '').length >= 3;
+    setInputValues((prev) => ({ ...prev, name: isEmail || isPhone ? '' : text, email: isEmail ? text : '', phone: isPhone ? text : '' }));
   };
 
   const replaceUrl = (url) => {
@@ -1742,117 +1742,61 @@ useImperativeHandle(ref, () => ({
               onClick={() => setFiltersOpen((v) => !v)}>
               <i className="fa-regular fa-filter me-1" aria-hidden="true"></i>{filtersOpen ? "Hide filters" : "Search and filter"}
             </Button>
-            <Row className={`search_filters gx-1 gy-1 mt-1 mt-md-0 ${filtersOpen ? "" : "d-none d-md-flex"}`}>
-              <Col xxl={3} xl={3} lg={3} md={3} xs={12}>
-                <Form.Control
-                  type="text"
-                  placeholder="Name"
-                  name="name"
-                  value={inputValues.name}
-                  onChange={handleInputChange}
-                  size="sm"
-                />
-              </Col>
-              <Col xxl={3} xl={3} lg={3} md={3} xs={12}>
-                <Form.Control
-                  type="text"
-                  placeholder="Email"
-                  name="email"
-                  value={inputValues.email}
-                  onChange={handleInputChange}
-                  size="sm"
-                />
-              </Col>
-              <Col xxl={3} xl={3} lg={3} md={3} xs={6}>
-                <Form.Control
-                  type="text"
-                  placeholder="Phone"
-                  name="phone"
-                  value={inputValues.phone}
-                  onChange={handleInputChange}
-                  size="sm"
-                />
-              </Col>
-              <Col xxl={3} xl={3} lg={3} md={3} xs={6}>
-                <Form.Select
-                  name="status"
-                  value={inputValues.status}
-                  onChange={handleInputChange}
-                  size="sm"
-                >
-                  <option value="">All Status</option>
-                  {statusOptions.map(status => (
-                    <option key={status} value={status}>{statusLabel(status)}</option>
-                  ))}
-                </Form.Select>
-              </Col>
-              <Col xxl={3} xl={3} lg={3} md={3} xs={6}>
-                <Form.Select
-                  name="lead_source"
-                  value={inputValues.lead_source}
-                  onChange={handleInputChange}
-                  size="sm"
-                >
-                  <option value="">All Lead Sources</option>
-                  {leadSourceOptions.map(source => (
-                    <option key={source} value={source}>{source}</option>
-                  ))}
-                </Form.Select>
-              </Col>
-              <Col xxl={3} xl={3} lg={3} md={3} xs={6}>
-                <Form.Select
-                  name="source"
-                  value={inputValues.source}
-                  onChange={handleInputChange}
-                  size="sm"
-                >
-                  <option value="">All Source Types</option>
-                  {UP_TYPE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                  {inputValues.source && !inputValues.source.startsWith("up:") && <option value={inputValues.source}>{inputValues.source}</option>}
-                </Form.Select>
-              </Col>
-              <Col xxl={2} xl={2} lg={2} md={2} xs={6}>
-                <Form.Select
-                  name="message_filter"
-                  value={inputValues.message_filter}
-                  onChange={handleInputChange}
-                  size="sm"
-                >
-                  <option value="">All Messages</option>
-                  <option value="unread">Unread Messages</option>
-                  <option value="read">Read Messages</option>
-                </Form.Select>
-              </Col>
-              <Col xxl={2} xl={2} lg={2} md={2} xs={6}>
-                <DateRangePickerComponent
-                  onDateRangeChange={handleDateRangeChange}
-                  dateRange={filters.dateRange}
-                  timezone={dealerTimezone}
-                  className="w-100"
-                />
-              </Col>
-              <Col xxl={2} xl={2} lg={2} md={2} xs={6}>
-                <div className="d-flex gap-1">
-                  <Button
-                    variant="custom"
-                    onClick={handleSearch}
-                    size="sm"
-                    className="w-50"
-                  >
-                    Search
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    onClick={clearFilters}
-                    disabled={!inputValues.name && !inputValues.email && !inputValues.phone && !inputValues.status && !inputValues.lead_source && !inputValues.source && !filters.dateRange.startDate}
-                    size="sm"
-                    className="w-50"
-                  >
-                    Clear
-                  </Button>
-                </div>
-              </Col>
-            </Row>
+            <div className={`lf_panel${filtersOpen ? "" : " d-none d-md-block"}`}>
+              <div className="lf_head d-none d-md-flex"><i className="fa-regular fa-filter" aria-hidden="true"></i>Filter leads</div>
+              <Row className="search_filters gx-2 gy-2">
+                <Col xl={4} lg={4} md={6} xs={12}>
+                  <Form.Label htmlFor="lf_search" className="lf_label">Search</Form.Label>
+                  <Form.Control id="lf_search" type="search" size="sm" placeholder="Name, email or phone" value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)} />
+                </Col>
+                <Col xl={2} lg={4} md={6} xs={6}>
+                  <Form.Label htmlFor="lf_status" className="lf_label">Status</Form.Label>
+                  <Form.Select id="lf_status" name="status" value={inputValues.status} onChange={handleInputChange} size="sm">
+                    <option value="">Any status</option>
+                    {statusOptions.map(status => (
+                      <option key={status} value={status}>{statusLabel(status)}</option>
+                    ))}
+                  </Form.Select>
+                </Col>
+                <Col xl={2} lg={4} md={6} xs={6}>
+                  <Form.Label htmlFor="lf_lead_source" className="lf_label">Lead source</Form.Label>
+                  <Form.Select id="lf_lead_source" name="lead_source" value={inputValues.lead_source} onChange={handleInputChange} size="sm">
+                    <option value="">Any source</option>
+                    {leadSourceOptions.map(source => (
+                      <option key={source} value={source}>{source}</option>
+                    ))}
+                  </Form.Select>
+                </Col>
+                <Col xl={2} lg={4} md={6} xs={6}>
+                  <Form.Label htmlFor="lf_source" className="lf_label">Source type</Form.Label>
+                  <Form.Select id="lf_source" name="source" value={inputValues.source} onChange={handleInputChange} size="sm">
+                    <option value="">Any type</option>
+                    {UP_TYPE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    {inputValues.source && !inputValues.source.startsWith("up:") && <option value={inputValues.source}>{inputValues.source}</option>}
+                  </Form.Select>
+                </Col>
+                <Col xl={2} lg={4} md={6} xs={6}>
+                  <Form.Label htmlFor="lf_messages" className="lf_label">Messages</Form.Label>
+                  <Form.Select id="lf_messages" name="message_filter" value={inputValues.message_filter} onChange={handleInputChange} size="sm">
+                    <option value="">Any messages</option>
+                    <option value="unread">Unread messages</option>
+                    <option value="read">Read messages</option>
+                  </Form.Select>
+                </Col>
+                <Col xl={3} lg={4} md={6} xs={6}>
+                  <span className="lf_label">Dates</span>
+                  <DateRangePickerComponent onDateRangeChange={handleDateRangeChange} dateRange={filters.dateRange} timezone={dealerTimezone} className="w-100" />
+                </Col>
+                <Col xl="auto" lg={4} md={6} xs={12} className="align-self-end">
+                  <div className="d-flex gap-2 lf_btns">
+                    <Button variant="custom" onClick={handleSearch} size="sm"><i className="fa-regular fa-magnifying-glass me-1" aria-hidden="true"></i>Search</Button>
+                    <Button variant="secondary" onClick={clearFilters} size="sm"
+                      disabled={!inputValues.name && !inputValues.email && !inputValues.phone && !inputValues.status && !inputValues.lead_source && !inputValues.source && !inputValues.message_filter && !filters.dateRange.startDate}>Clear</Button>
+                  </div>
+                </Col>
+              </Row>
+            </div>
           </Col>
         </Row>
       )}
@@ -1935,36 +1879,17 @@ useImperativeHandle(ref, () => ({
               <Row className="align-items-center w-100 g-0">
                 <Col xl={10} lg={9} sm={9} xs={12} className="lead_main_col">
                   <Row className="align-items-center gx-2">
-                    <Col xl={2} lg={2} sm={2} xs={12}>
-                      <p className="label">
-                        <small><IconLabel name="customer">Name</IconLabel></small>
-                      </p>
-                    </Col>
-                    <Col xl={2} lg={2} sm={2} xs={12}>
-                      <p className="label"><small><IconLabel name="email">Email</IconLabel></small></p>
-                    </Col>
-                    <Col xl={2} lg={2} sm={2} xs={12}>
-                      <p className="label"><small><IconLabel name="phone">Phone</IconLabel></small></p>
-                    </Col>
-                    <Col xl={1} lg={1} sm={1} xs={12}>
-                      <p className="label"><small><IconLabel name="source">Source</IconLabel></small></p>
-                    </Col>
-                    <Col xl={1} lg={2} sm={2} xs={12}>
-                      <p className="label"><small><IconLabel name="sender">Sender</IconLabel></small></p>
-                    </Col>
-                    <Col xl={2} lg={2} sm={2} xs={12}>
-                      <p className="label"><small><IconLabel name="owner">Assigned To</IconLabel></small></p>
-                    </Col>
-                    <Col xl={2} lg={1} sm={1} xs={12}>
-                      <p className="label"><small><IconLabel name="date">Created</IconLabel></small></p>
-                    </Col>
+                    <Col xl={3} lg={3} sm={3} xs={12}><p className="label"><small><IconLabel name="customer">Name and date</IconLabel></small></p></Col>
+                    <Col xl={3} lg={3} sm={3} xs={12}><p className="label"><small><IconLabel name="contactMethods">Contact</IconLabel></small></p></Col>
+                    <Col xl={3} lg={3} sm={3} xs={12}><p className="label"><small><IconLabel name="source">Source</IconLabel></small></p></Col>
+                    <Col xl={3} lg={3} sm={3} xs={12}><p className="label"><small><IconLabel name="owner">Assigned To</IconLabel></small></p></Col>
                   </Row>
                 </Col>
                 <Col xl={1} lg={1} sm={1} xs={12} className="lead_status_col">
                   <p className="label"><small><IconLabel name="status">Status</IconLabel></small></p>
                 </Col>
                 <Col xl={1} lg={2} sm={2} xs={12} className="lead_action_col">
-                  <p className="p_bold text-center"><small>Action</small></p>
+                  <p className="p_bold text-end"><small>Actions</small></p>
                 </Col>
               </Row>
             </ListGroup.Item>
@@ -1972,7 +1897,8 @@ useImperativeHandle(ref, () => ({
 
             {leads.length > 0 ? (
               leads.map(lead => (
-                <ListGroup.Item as="li" key={lead._id} className={`lead-item ${activeLeadId === lead._id ? 'active-lead' : ''} w_card_list_box d-flex align-items-center${selectMode && selected.has(String(lead._id)) ? ' bulk_picked' : ''}`} onClick={(e) => {
+                <ListGroup.Item as="li" key={lead._id} className={`lead-item ${activeLeadId === lead._id ? 'active-lead' : ''} w_card_list_box d-flex align-items-center${selectMode && selected.has(String(lead._id)) ? ' bulk_picked' : ''}`}
+                  style={{ "--strip": statusLook(lead.fe_lead_status, leadStatusLabel(lead)).strip }} onClick={(e) => {
                   // Don't trigger if clicking on buttons or interactive elements
                   if (e.target.closest('button') || e.target.closest('select') || e.target.closest('input')) return;
                   handleLeadClick(lead);
@@ -2045,47 +1971,48 @@ useImperativeHandle(ref, () => ({
                   <Row className="align-items-center w-100 g-0">
                     <Col xl={10} lg={9} sm={9} xs={12} className="lead_main_col">
                       <Row className="align-items-center gx-2">
-                        <Col xl={2} lg={2} sm={2} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
-                          <p className="p_bold ap_person">
-                            <Avatar name={lead.name} /><span>{lead.name || "N/A"}</span>
+                        <Col xl={3} lg={3} sm={3} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
+                          <p className="p_bold ap_person lead_namecell">
+                            <Avatar name={lead.name} />
+                            <span className="lead_namecell_text">
+                              <span className="lead_nm">{lead.name || "N/A"}</span>
+                              <small className="d-block text-muted lead_when" title={formatTimestamp(lead.createdAt, dealerTimezone)}>{moment(lead.createdAt).tz(dealerTimezone).format("MMM D, YYYY h:mm A")}</small>
+                              {lead.last_reply_at && (
+                                <small className="text-success d-block"><AppIcon name="reply" className="me-1" />Replied {formatTimestamp(lead.last_reply_at, dealerTimezone)}</small>
+                              )}
+                              {lead.last_sent_at && (
+                                <small className="text-primary d-block"><AppIcon name="sent" className="me-1" />Messaged {formatTimestamp(lead.last_sent_at, dealerTimezone)}</small>
+                              )}
+                            </span>
                           </p>
                         </Col>
-                        <Col xl={2} lg={2} sm={2} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
+                        <Col xl={3} lg={3} sm={3} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
                           <div className="w_card_list_box_label">
-                            <p className="label"><small>Email:</small></p>
-                            <p className="ap_field"><AppIcon name="email" /><span className="text-truncate">{lead.email || "N/A"}</span></p>
+                            <p className="label"><small>Contact:</small></p>
+                            <div className="lead_contact">
+                              <p className="ap_field"><AppIcon name="phone" /><span>{lead.phone || "N/A"}</span></p>
+                              <p className="ap_field"><AppIcon name="email" /><span className="lead_email">{lead.email || "No email"}</span></p>
+                              {lead.source === "email" && lead.sender && <small className="text-muted d-block">Sent to {lead.sender}</small>}
+                            </div>
                           </div>
                         </Col>
-                        <Col xl={2} lg={2} sm={2} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
+                        <Col xl={3} lg={3} sm={3} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
                           <div className="w_card_list_box_label">
-                          <p className="label"><small>Phone:</small></p>
-                          <p className="ap_field"><AppIcon name="phone" /><span>{lead.phone || "N/A"}</span></p>
+                            <p className="label"><small>Source:</small></p>
+                            {/* 19 Nov 2026 ("still not seeing the source"): the lead's source (Cars.com, Google...) and the
+                                provider's sub-source - not the follow-up channel ("email" / "sms") a hand-entered lead keeps
+                                in `source`. 25 Nov 2026: the whole name shows (it wraps), and the type is an icon and a word. */}
+                            <div className="lead_srcbox" title={[leadSourceName(lead), lead.sub_source].filter(Boolean).join(" - ")}>
+                              <p className="lead_src">{leadSourceName(lead)}</p>
+                              {lead.sub_source ? <small className="text-muted d-block">{lead.sub_source}</small> : null}
+                              <span className="lead_type" title="How the lead came in">
+                                <i className={`fa-regular ${leadContactType(lead) ? typeIcon(contactTypeLabel(lead))[0] : "fa-circle-question"}`}
+                                  style={{ background: leadContactType(lead) ? typeIcon(contactTypeLabel(lead))[1] : "#9aa7b4" }} aria-hidden="true"></i>{contactTypeLabel(lead)}
+                              </span>
+                            </div>
                           </div>
                         </Col>
-                        <Col xl={1} lg={1} sm={1} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
-                          <div className="w_card_list_box_label">
-                          <p className="label"><small>Source:</small></p>
-                          {/* 19 Nov 2026 ("still not seeing the source"): the lead's source (Cars.com, Google...) and the
-                              provider's sub-source - not the follow-up channel ("email" / "sms") a hand-entered lead keeps
-                              in `source`. */}
-                          <p className="text-truncate" title={[leadSourceName(lead), lead.sub_source].filter(Boolean).join(" · ")}>
-                            {leadSourceName(lead)}{lead.sub_source ? <small className="text-muted d-block text-truncate">{lead.sub_source}</small> : null}</p>
-                          <small className={`badge lead_type_badge ${leadContactType(lead) ? 'bg-light text-dark border' : 'bg-warning text-dark'}`}
-                            title="How the lead came in">{contactTypeLabel(lead)}</small>
-                          </div>
-                        </Col>
-                        <Col xl={1} lg={2} sm={2} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
-                          <div className="w_card_list_box_label">
-                          <p className="label"><small>Sender:</small></p>
-                          <p className="text-truncate">
-                            {lead.source === "email"
-                              ? lead.sender || "N/A"
-                              : dealerParent?.dealer_account_information?.sms_conversion_phone || "N/A"
-                            }
-                          </p>
-                          </div>
-                        </Col>
-                        <Col xl={2} lg={2} sm={2} xs={12}>
+                        <Col xl={3} lg={3} sm={3} xs={12}>
                           <div className="w_card_list_box_label">
                             <p className="label"><small>Assigned To:</small></p>
                             {canAssignLeads ? (
@@ -2110,32 +2037,12 @@ useImperativeHandle(ref, () => ({
                             )}
                           </div>
                         </Col>
-                        <Col xl={2} lg={1} sm={1} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
-                          <div className="w_card_list_box_label">
-                            <p className="label"><small>Created:</small></p>
-                            <p className="ap_field ap_wrap" title={formatTimestamp(lead.createdAt, dealerTimezone)}><AppIcon name="date" /><span>{moment(lead.createdAt).tz(dealerTimezone).format("MMM D, YYYY")}<small className="d-block text-muted">{moment(lead.createdAt).tz(dealerTimezone).format("h:mm A")}</small></span></p>
-                            {lead.last_reply_at && (
-                              <small className="text-success d-block text-truncate"><AppIcon name="reply" className="me-1" />Replied {formatTimestamp(lead.last_reply_at, dealerTimezone)}</small>
-                            )}
-                            {lead.last_sent_at && (
-                              <small className="text-primary d-block text-truncate"><AppIcon name="sent" className="me-1" />Messaged {formatTimestamp(lead.last_sent_at, dealerTimezone)}</small>
-                            )}
-                          </div>
-                        </Col>
                       </Row>
                     </Col>
 
                     <Col xl={1} lg={1} sm={1} xs={7} className="lead_status_col">
-                      <Badge
-                        bg={getStatusVariant(lead.fe_lead_status)}
-                        onClick={() => {
-                          setSelectedLead(lead);
-                          setShowStatusModal(true);
-                        }}
-                        className="cursor-pointer text-wrap"
-                      >
-                        <AppIcon name={statusIconName(lead.fe_lead_status)} plain className="me-1" />{leadStatusLabel(lead) || "N/A"} <i className="fa-regular fa-pen-to-square"></i>
-                      </Badge>
+                      <StatusPill status={lead.fe_lead_status} label={leadStatusLabel(lead) || "N/A"}
+                        onClick={() => { setSelectedLead(lead); setShowStatusModal(true); }} />
                       {lead.ai_stop_label && (
                         // What the customer stopped (app/lib/ai/stopLabels.js): beside the status, never instead of it.
                         <div className="mt-1"><Badge bg="danger">{lead.ai_stop_label}</Badge></div>
@@ -2156,32 +2063,22 @@ useImperativeHandle(ref, () => ({
 
                     <Col xl={1} lg={2} sm={2} xs={5} className="lead_action_col">
                       <div className="d-flex gap-1 w_card_list_btns justify-content-end">
-                        <Button variant="custom" size="sm" title="360 View: history, tasks, call / text" aria-label="360 View"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setPanel360({ customerId: lead.customer_id ? String(lead.customer_id?._id || lead.customer_id) : null,
-                              leadId: lead._id, name: lead.name, dnd: lead.fe_lead_status === 'DND' });
-                          }}>
-                          <i className="fa-regular fa-id-card"></i>
+                        <Button variant="custom" size="sm" className="lead_open text-nowrap" onClick={(e) => { e.stopPropagation(); handleLeadClick(lead); }}>
+                          <i className="fa-regular fa-message me-1" aria-hidden="true"></i>Open
                         </Button>
-                        <Button variant="custom" size="sm" onClick={(e) => {
-                          e.stopPropagation();
-                          handleShowDetails(lead);
-                        }}>
-                          <i className="fa-regular fa-eye"></i>
-                        </Button>
-                        <Button variant="custom" size="sm" onClick={(e) => {
-                          e.stopPropagation();
-                          handleLeadClick(lead);
-                        }}>
-                          <i className="fa-regular fa-envelope-open"></i>
-                        </Button>
-                        <Button variant="danger" size="sm" onClick={(e) => {
-                          e.stopPropagation();
-                          handleShowDeleteModal(lead);
-                        }}>
-                          <i className="fa-regular fa-trash"></i>
-                        </Button>
+                        <Dropdown align="end">
+                          <Dropdown.Toggle as={MoreToggle} id={`lead-more-${lead._id}`} aria-label={`More actions for ${lead.name || "lead"}`} title="More actions">
+                            <i className="fa-regular fa-ellipsis" aria-hidden="true"></i>
+                          </Dropdown.Toggle>
+                          <Dropdown.Menu className="lead_more_menu" popperConfig={{ strategy: "fixed" }}>
+                            <Dropdown.Item as="button" onClick={() => setPanel360({ customerId: lead.customer_id ? String(lead.customer_id?._id || lead.customer_id) : null,
+                              leadId: lead._id, name: lead.name, dnd: lead.fe_lead_status === 'DND' })}><i className="fa-regular fa-id-card" aria-hidden="true"></i>360 view</Dropdown.Item>
+                            <Dropdown.Item as="button" onClick={() => handleShowDetails(lead)}><i className="fa-regular fa-eye" aria-hidden="true"></i>Lead details</Dropdown.Item>
+                            <Dropdown.Item as="button" onClick={() => { setSelectedLead(lead); setShowStatusModal(true); }}><i className="fa-regular fa-arrow-right-arrow-left" aria-hidden="true"></i>Change status</Dropdown.Item>
+                            <Dropdown.Divider />
+                            <Dropdown.Item as="button" className="text-danger" onClick={() => handleShowDeleteModal(lead)}><i className="fa-regular fa-trash" aria-hidden="true"></i>Delete lead</Dropdown.Item>
+                          </Dropdown.Menu>
+                        </Dropdown>
                       </div>
                     </Col>
                   </Row>
