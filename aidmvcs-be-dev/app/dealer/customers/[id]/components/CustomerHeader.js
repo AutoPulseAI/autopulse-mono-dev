@@ -369,6 +369,9 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
       {/* The newest lead, each fact in its own labelled field (approved 24 Nov 2026). */}
       {latestLead && <div className="p-2 bg-white"><LeadFacts lead={latestLead} /></div>}
       <div className="cp_toolbar">
+        {/* 25 Nov 2026 (no duplicates): Call / Text live in the lead's action strip below; here only for a customer
+            without a lead. "Open" (jumps to the tabs) is gone - the tabs are right below. */}
+        {!counts?.leads && (
         <div className="cp_group">
           <span className="cp_group_label">Connect</span>
           <div className="cp_tools">
@@ -380,6 +383,7 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
             </button>
           </div>
         </div>
+        )}
         <div className="cp_group">
           <span className="cp_group_label">Documents</span>
           <div className="cp_tools">
@@ -402,17 +406,6 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
                   href={url(encodeURIComponent([customer.name, primaryAddress?.city].filter(Boolean).join(" ")))}>
                   <i className={icon} />{label}</a>
               ))}
-          </div>
-        </div>
-        <div className="cp_group">
-          <span className="cp_group_label">Open</span>
-          <div className="cp_tools">
-            <button type="button" className="cp_tool" onClick={go("leads")}><i className="fa-solid fa-comments" />Leads{count(counts?.leads)}</button>
-            <button type="button" className="cp_tool" onClick={go("appointments")}><i className="fa-regular fa-calendar-check" />Appts{count(counts?.appointments)}</button>
-            <button type="button" className="cp_tool" onClick={go("sales")}><i className="fa-solid fa-key" />Sales{count(counts?.sales)}</button>
-            <button type="button" className="cp_tool" onClick={go("service")}><i className="fa-solid fa-wrench" />Service{count(counts?.service)}</button>
-            <button type="button" className="cp_tool" onClick={go("tradeins")}><i className="fa-solid fa-right-left" />Trade-in</button>
-            <button type="button" className="cp_tool" onClick={go("overview")}><i className="fa-solid fa-clock-rotate-left" />History</button>
           </div>
         </div>
       </div>

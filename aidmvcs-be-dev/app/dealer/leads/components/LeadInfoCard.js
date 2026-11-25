@@ -80,7 +80,7 @@ export function LeadFacts({ lead, extra = null }) {
 }
 
 // SOW B2, read only: the sales type and new / used the AI works from, and what happens next on this lead.
-function LeadPlan({ lead, timezone }) {
+function LeadPlan({ lead, timezone, compact = false }) {
   const [plan, setPlan] = useState(null);
   const id = lead?._id;
   const dealerId = lead?.dealer_id;
@@ -95,12 +95,18 @@ function LeadPlan({ lead, timezone }) {
   const next = plan?.next_step;
   return (
     <>
+      {compact ? (plan && (
+        <dl className="lead_facts">
+          <LeadFact icon="fa-solid fa-robot" label="AI type" color="#4f46e5">{plan.sales_type}</LeadFact>
+          <LeadFact icon="fa-solid fa-car-side" label="Vehicle wanted" muted={!plan.vehicle_wanted}>{plan.vehicle_wanted || "Not known yet"}</LeadFact>
+        </dl>
+      )) : (
       <LeadFacts lead={lead} extra={plan && (
         <>
           <LeadFact icon="fa-solid fa-robot" label="AI type" color="#4f46e5">{plan.sales_type}</LeadFact>
           <LeadFact icon="fa-solid fa-car-side" label="Vehicle wanted" muted={!plan.vehicle_wanted}>{plan.vehicle_wanted || "Not known yet"}</LeadFact>
         </>
-      )} />
+      )} />)}
       {plan && (
         <div className={`lead_next${next ? "" : " none"}`}>
           <i className={`fa-solid ${next?.who === "AI" ? "fa-robot" : next ? "fa-list-check" : "fa-road-barrier"}`} aria-hidden="true" />
@@ -287,7 +293,7 @@ function UndoReassign({ lead, onSaved }) {
   );
 }
 
-export default function LeadInfoCard({ lead: given, dealerTimezone, onSaved, onStatusClick }) {
+export default function LeadInfoCard({ lead: given, dealerTimezone, onSaved, onStatusClick, compact = false }) {
   const [lead, setLead] = useState(given);
   const [form, setForm] = useState(null); // null = viewing
   const leadRef = useRef(given); // the saved lead the next save compares against (a save can finish after a re-render)
@@ -406,7 +412,7 @@ export default function LeadInfoCard({ lead: given, dealerTimezone, onSaved, onS
       </div>
       {/* Where the lead came from, each in its own labelled field (23 Nov 2026), named as the source / sub-source
           report names them: Up Type > Source > Sub-Source, plus department and campaign. */}
-      <LeadPlan lead={lead} timezone={dealerTimezone} />
+      <LeadPlan lead={lead} timezone={dealerTimezone} compact={compact} />
       {lead?._id && <LeadJourney key={`${lead._id}-${lead.fe_lead_status || ""}`} leadId={lead._id} timezone={dealerTimezone} />}
       <p className="mb-1 small text-break"><i className="fa-solid fa-phone me-2 text-muted" />{lead?.phone || "No phone"}</p>
       <p className="mb-1 small text-break"><i className="fa-solid fa-envelope me-2 text-muted" />{lead?.email || "No email"}</p>

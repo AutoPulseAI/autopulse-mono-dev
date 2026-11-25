@@ -8,7 +8,7 @@ import AppIcon, { IconLabel, statusIconName } from "../../../components/AppIcon"
 import { useUser } from "../../../context/UserContext";
 import { formatTimestamp } from "../../../../utils/dateUtils";
 import ViewConversations from "../../../leads/components/viewConversations";
-import { LeadFacts, leadTypeName } from "../../../leads/components/LeadInfoCard";
+import { leadTypeName } from "../../../leads/components/LeadInfoCard";
 import { DEPARTMENT_NAMES, leadDepartment } from "@lib/departmentNames";
 import ViewAdfModal, { isAdfLead } from "../../../leads/components/ViewAdfModal";
 import { Modal } from "react-bootstrap";
@@ -201,7 +201,6 @@ export default function LeadsTab({ customerId, onChanged, initialLeadId = null }
         {leads.filter((lead) => lead._id === activeLeadId).map((lead) => (
           <div key={lead._id}>
                   <OpportunityHeader lead={lead} owner={details[lead._id]?.owner} onHot={(hot) => setHot(lead, hot)} />
-                  <LeadFacts lead={lead} />
                   {activeLeadId === lead._id && <OpportunityActions lead={lead} onChanged={onChanged} actionsRef={setActionsEl} />}
                   <Milestones times={milestones[lead._id]} />
                   {/* The lead's showroom visits (Desk Log), and checking the customer in from here. */}
