@@ -166,7 +166,7 @@ export default function CheckInModal({ dealerId, staff, tz, onHide, onDone, init
                     <ListGroup.Item key={c.customer_id || d.id} action onClick={() => pickCustomer(c)}>
                       <strong>{c.name || "No name"}</strong> <span className="text-muted">{c.phone} {c.email}</span>
                       {c.leads.length > 1 && <span className="badge bg-secondary ms-2">{c.leads.length} leads{open !== c.leads.length ? `, ${open} open` : ""}</span>}
-                      {d.appointment_today && <span className="badge badge_appt ms-2">Appointment today {d.appointment_today !== "today" ? d.appointment_today : ""}</span>}
+                      {d.appointment_today && <span className="badge bg-success ms-2">Appointment today {d.appointment_today !== "today" ? d.appointment_today : ""}</span>}
                       <small className="d-block text-muted">{TYPE_LABEL[d.lead_type] || d.lead_type} - {d.source}
                         {d.vehicle ? ` - ${d.vehicle}` : ""} - {d.status_label} - lead from {moment(d.created_at).tz(tz).format("MMM D, YYYY")}</small>
                     </ListGroup.Item>
@@ -200,7 +200,7 @@ export default function CheckInModal({ dealerId, staff, tz, onHide, onDone, init
                         {TYPE_LABEL[l.lead_type] || l.lead_type} - {l.source}{l.vehicle ? ` - ${l.vehicle}` : ""}
                         {" "}- <span className={l.open ? "" : "text-muted"}>{l.status_label}</span>
                         {" "}- from {moment(l.created_at).tz(tz).format("MMM D, YYYY")}
-                        {l.appointment_today && <span className="badge badge_appt ms-1">Appointment today {l.appointment_today !== "today" ? l.appointment_today : ""}</span>}
+                        {l.appointment_today && <span className="badge bg-success ms-1">Appointment today {l.appointment_today !== "today" ? l.appointment_today : ""}</span>}
                         {l.id === customer.default_lead_id && <span className="text-muted"> (suggested)</span>}
                       </>} />
                   ))}

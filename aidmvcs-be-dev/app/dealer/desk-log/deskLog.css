@@ -133,6 +133,3 @@
 .desk_log .dl_type { padding: 3px 6px; font-size: 0.7rem; }
 .desk_log .dl_staff_cell { gap: 4px; padding-right: 10px; }
 .desk_log .dl_outcome.form-select { font-size: 0.62rem; letter-spacing: -0.01em; }
-
-/* A long word in a card heading ("Appointments") stays inside the card at nine across. */
-@media (min-width: 1200px) and (max-width: 1599.98px) { .desk_log .dl_card { padding: 9px 7px; } .desk_log .dl_card_title { font-size: 0.7rem; gap: 4px; } .desk_log .dl_card_title i { font-size: 0.85rem; } }

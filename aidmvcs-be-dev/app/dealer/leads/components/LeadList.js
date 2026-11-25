@@ -10,7 +10,6 @@ import DateRangePickerComponent from "../../components/DateRangePicker";
 import ImportLeadsModal from "./ImportLeadsModal";
 import StatusModal from "./StatusModal";
 import LeadDetailsSidebar from "./LeadDetailsSidebar";
-import { statusStyle } from "../../components/meaningColors";
 import AppIcon, { Avatar, IconLabel, statusIconName } from "../../components/AppIcon";
 import { useRouter, useSearchParams } from "next/navigation";
 import Customer360Panel from "../../components/Customer360Panel";
@@ -210,6 +209,24 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     "Closed - Lost",
     "Closed - No Longer Owns",
   ];
+
+  const getStatusVariant = (status) => {
+    switch (status?.toLowerCase()) {
+      case 'contacted': return 'info';
+      case 'appointment booked': return 'warning';
+      case 'visited': return 'success';
+      case 'managerial review': return 'warning';
+      case 'sold': return 'danger';
+      case 'sold pending': return 'warning';
+      case 'sold delivered': return 'danger';
+      case 'unsold': return 'secondary';
+      case 'closed - lost': return 'dark';
+      case 'closed - no longer owns': return 'dark';
+      case 'lead': return 'custom';
+      case 'dnd': return 'secondary';
+      default: return 'secondary';
+    }
+  };
 
   const showAlert = useCallback((message, variant = "success") => {
     setAlert({ show: true, message, variant });
@@ -2101,7 +2118,7 @@ useImperativeHandle(ref, () => ({
 
                     <Col xl={1} lg={1} sm={1} xs={7} className="lead_status_col">
                       <Badge
-                        bg="" style={statusStyle(lead.fe_lead_status, leadStatusLabel(lead))}
+                        bg={getStatusVariant(lead.fe_lead_status)}
                         onClick={() => {
                           setSelectedLead(lead);
                           setShowStatusModal(true);

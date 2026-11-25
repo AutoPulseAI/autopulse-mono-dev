@@ -4,14 +4,15 @@
 import Link from "next/link";
 import { rememberBack } from "../../components/backLink";
 import { iconClass as sharedIcon } from "../../components/AppIcon";
-import { MEANING } from "../../components/meaningColors";
 
-// meaning: a key of MEANING (meaningColors.js) - the card's edge, icon and number. soft: the card breaks another down.
-export default function DashboardCard({ icon, iconClass, count, label, link, description, meaning = "neutral", soft = false,
+// meaning: which colour the card has always had - lead blue, date slate, reply orange, sent indigo, action red, appt green.
+// soft: the card breaks another one down (a lighter orange under Customer Replied).
+const TONES = { lead: "#0272b4", date: "#5f7890", reply: "#f7931e", sent: "#4f46e5", action: "#e5383b", appt: "#2fb344" };
+export default function DashboardCard({ icon, iconClass, count, label, link, description, meaning = "date", soft = false,
   colClass = "col col-lg-3 col-md-6 col-6" }) {
   const card = (
-    <div className={`w_card d_counts_card dash_card meaning_${meaning}${soft ? " soft" : ""}${meaning === "neutral" ? " neutral" : ""}`}
-      style={{ "--card": MEANING[meaning] || MEANING.neutral }}>
+    <div className={`w_card d_counts_card dash_card${soft ? " soft" : ""}`}
+      style={{ "--card": soft && meaning === "reply" ? "#ffb45c" : TONES[meaning] || TONES.date }}>
       <p className="dash_card_title"><i className={icon ? sharedIcon(icon) : iconClass} aria-hidden="true"></i><span>{label}</span></p>
       <h3 className="dash_card_count">{count}</h3>
       {description && <small className="dash_card_text">{description}</small>}

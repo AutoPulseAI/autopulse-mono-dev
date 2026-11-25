@@ -1,8 +1,7 @@
 // https://recharts.org/en-US/examples/StackedBarChart
 "use client";
-// Each bar takes its status's colour (meaningColors.js). On a phone the bars lie flat: long status names need the width.
+// Bars keep the dashboard's own colours. On a phone the bars lie flat: long status names need the width.
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { statusChartColor } from '../../components/meaningColors';
 import useIsMobile from '../../components/useIsMobile';
 import { statusLabel } from '../../../lib/statusLabels';
 
@@ -12,12 +11,14 @@ const Tick = ({ x, y, payload }) => (
     </text>
 );
 
+const COLORS = ['var(--primary)', 'var(--secondary)', 'var(--primary2)', 'var(--secondary2)', 'var(--primary3)', 'var(--secondary3)'];
+
 export default function LeadStatusBar({ data, onBarClick }) {
     const isMobile = useIsMobile();
     const handleClick = (entry) => { if (onBarClick && entry) onBarClick(entry); };
     const bars = (
         <Bar dataKey="value" name="Leads" onClick={handleClick} style={{ cursor: 'pointer' }} maxBarSize={isMobile ? 22 : 90}>
-            {data.map((entry) => <Cell key={entry.name} fill={statusChartColor(entry.name)} />)}
+            {data.map((entry, index) => <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />)}
         </Bar>
     );
     const tooltip = <Tooltip cursor={{ fill: 'rgba(0, 0, 0, 0.1)' }} labelFormatter={(v) => statusLabel(v)} />;

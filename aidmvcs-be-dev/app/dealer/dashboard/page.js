@@ -854,6 +854,7 @@ function Dashboard() {
             {!isTodayRange && (
               <CountCard
                 icon="date"
+                meaning="date"
                 count={todayLeadsCount}
                 label="Today's Leads"
                 link={deptLink(`/dealer/leads?${getTodayDateParams()}`)}
@@ -874,6 +875,7 @@ function Dashboard() {
 
             <CountCard
               icon="sent"
+              meaning="sent"
               // The user, 28 Oct 2026: SMS and email each with its own number, small, like the other cards' lines.
               count={activity ? activity.delivered.total : '–'}
               label="Messages Delivered"
@@ -909,7 +911,7 @@ function Dashboard() {
           <div className="row gx-2 gx-lg-4">
             {/* "Appointment Booked (all-time count)" removed (Betsy, 21 Oct 2026). */}
             <CountCard
-              meaning="appointment"
+              meaning="appt"
               icon="appointments"
               count={step('made')?.total || 0}
               label={isTodayRange ? "Appointments Made Today" : "Appointments Made"}
@@ -918,7 +920,7 @@ function Dashboard() {
             />
 
             <CountCard
-              meaning="appointment"
+              meaning="appt"
               icon="appointmentDay"
               count={step('scheduled')?.total || 0}
               label={isTodayRange ? "Appointments for Today" : "Appointments for These Dates"}
@@ -927,7 +929,7 @@ function Dashboard() {
             />
 
             <CountCard
-              meaning="showed"
+              meaning="appt"
               icon="showed"
               count={step('showed')?.total || 0}
               label="Appointments Showed"
@@ -936,7 +938,7 @@ function Dashboard() {
             />
 
             <CountCard
-              meaning="sold"
+              meaning="appt"
               icon="sold"
               count={step('sold')?.total || 0}
               label="Appointments Sold"

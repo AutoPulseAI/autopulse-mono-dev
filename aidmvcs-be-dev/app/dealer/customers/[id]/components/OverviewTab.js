@@ -1,6 +1,5 @@
 "use client";
 
-import { MEANING } from "../../../components/meaningColors";
 import { useEffect, useMemo, useState } from "react";
 import { Button, ButtonGroup, Form } from "react-bootstrap";
 import moment from "moment-timezone";
@@ -74,7 +73,7 @@ function describeEntry(entry) {
 // opens for the detail, with pages.
 const KINDS = {
   text: ["Texts", "fa-comment-sms", "#0f8f83"], email: ["Emails", "fa-envelope", "#6f42c1"], call: ["Calls", "fa-phone", "#0272b4"],
-  note: ["Notes", "fa-note-sticky", "#d97706"], appointment: ["Appointments", "fa-calendar-check", MEANING.appointment],
+  note: ["Notes", "fa-note-sticky", "#d97706"], appointment: ["Appointments", "fa-calendar-check", "#2fb344"],
   status: ["Status", "fa-circle-half-stroke", "#5f7890"], owner: ["Owner", "fa-user-tie", "#5f7890"], lead: ["Leads", "fa-user-plus", "#0272b4"],
   sale: ["Sales", "fa-handshake", "#2fb344"], service: ["Service", "fa-wrench", "#0f8f83"], other: ["Other", "fa-circle-info", "#5f7890"],
 };

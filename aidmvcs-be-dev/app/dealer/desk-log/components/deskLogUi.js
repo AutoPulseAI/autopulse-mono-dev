@@ -1,5 +1,4 @@
 // Colours and labels for the Desk Log screen (Betsy's design).
-import { OUTCOME_STYLE } from "../../components/meaningColors";
 import { UNSOLD_REASONS } from "../../../lib/deskLog/constants";
 
 // Betsy's colour coding (her Desk Log design, SOW v6 Appendix B1; 13 Nov 2026 meeting: "the colour coding is
@@ -16,19 +15,19 @@ export const STAGE_STYLE = {
 export const NO_STAGE_STYLE = { backgroundColor: "#fff", color: "#6c757d", border: "1px dashed #ced4da" };
 
 // One menu for the outcome, as the design shows it: SOLD PENDING, SOLD DELIVERED, UNSOLD <reason>.
-const PINK = OUTCOME_STYLE.unsold;
+const PINK = { backgroundColor: "#f8a9ad", color: "#5c1015" };
 const PURPLE = { backgroundColor: "#c4a7f5", color: "#2e1065" };
 const REASON_STYLE = {
   [UNSOLD_REASONS.NEGATIVE_EQUITY]: PINK, [UNSOLD_REASONS.PRICE_PAYMENT]: PINK, [UNSOLD_REASONS.CREDIT]: PINK,
   [UNSOLD_REASONS.HOT]: { backgroundColor: "#e5383b", color: "#fff" },
   [UNSOLD_REASONS.FUTURE_FOLLOW_UP]: PURPLE, [UNSOLD_REASONS.CAR_FINDER]: PURPLE,
-  [UNSOLD_REASONS.DND]: OUTCOME_STYLE.dnd,
+  [UNSOLD_REASONS.DND]: { backgroundColor: "#ced4da", color: "#343a40" },
 };
 export const OUTCOME_CHOICES = [
   { value: "SOLD PENDING", outcome: "SOLD PENDING", reason: null, label: "SOLD PENDING",
-    style: OUTCOME_STYLE.sold_pending },
+    style: { backgroundColor: "#b7ebb0", color: "#14532d" } },
   { value: "SOLD DELIVERED", outcome: "SOLD DELIVERED", reason: null, label: "SOLD DELIVERED",
-    style: OUTCOME_STYLE.sold_delivered },
+    style: { backgroundColor: "#34c759", color: "#fff" } },
   ...[UNSOLD_REASONS.NEGATIVE_EQUITY, UNSOLD_REASONS.DND, UNSOLD_REASONS.PRICE_PAYMENT, UNSOLD_REASONS.CREDIT,
     UNSOLD_REASONS.HOT, UNSOLD_REASONS.FUTURE_FOLLOW_UP, UNSOLD_REASONS.CAR_FINDER,
   ].map((reason) => ({ value: `UNSOLD|${reason}`, outcome: "UNSOLD", reason,
@@ -47,7 +46,10 @@ export const rowStripColor = (row, choice) => (choice?.style.backgroundColor || 
   || "#dee2e6");
 
 // Headline cards: each its own colour (icon, top bar, today's number).
-export { CARD_COLOR } from "../../components/meaningColors";
+export const CARD_COLOR = {
+  internet: "#1d6fe0", phone: "#7c3aed", walk_in: "#2fb344", appts_set: "#f7931e", appts_showed: "#1e3a8a",
+  sold_pending: "#2fb344", sold_delivered: "#e5383b", action_required: "#e0a800", closed_lost: "#6c757d",
+};
 
 // Initials for the people avatars.
 export const initials = (name) => String(name || "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("") || "?";

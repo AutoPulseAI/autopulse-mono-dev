@@ -1,5 +1,4 @@
 "use client";
-import { statusStyle } from "../../components/meaningColors";
 import { statusLabel } from "@lib/statusLabels";
 import { useState, useEffect, Suspense, useRef, useCallback } from "react";
 // import { useSearchParams } from "next/navigation"; // Not needed for calendar view
@@ -256,6 +255,20 @@ function LeadCalendarContent({ onLeadSelected }) {
     setSelectedLead(lead);
   };
 
+  // Get status color
+  const getStatusColor = (status) => {
+    switch (status?.toLowerCase()) {
+      case 'contacted': return 'info';
+      case 'appointment booked': return 'warning';
+      case 'visited': return 'success';
+      case 'managerial review': return 'info';
+      case 'sold': return 'danger';
+      case 'lead': return 'custom';
+      case 'dnd': return 'secondary';
+      default: return 'secondary';
+    }
+  };
+
   // Render calendar header
   const renderCalendarHeader = () => {
     const monthNames = [
@@ -369,7 +382,7 @@ function LeadCalendarContent({ onLeadSelected }) {
                     <Card.Body>
                       <div className="d-flex justify-content-between align-items-start mb-2">
                         <h6 className="mb-0">{lead.name || 'N/A'}</h6>
-                        <Badge bg="" style={statusStyle(lead.fe_lead_status)}>
+                        <Badge bg={getStatusColor(lead.fe_lead_status)}>
                           {lead.fe_lead_status || 'Lead'}
                         </Badge>
                       </div>
@@ -419,7 +432,7 @@ function LeadCalendarContent({ onLeadSelected }) {
                   {dateLeads.slice(0, 3).map(lead => (
                     <div
                       key={lead._id}
-                      className="lead-indicator" style={{ backgroundColor: statusStyle(lead.fe_lead_status).backgroundColor }}
+                      className={`lead-indicator bg-${getStatusColor(lead.fe_lead_status)}`}
                       title={`${lead.name} - ${statusLabel(lead.fe_lead_status)}`}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -480,7 +493,7 @@ function LeadCalendarContent({ onLeadSelected }) {
                     <Card.Body>
                       <div className="d-flex justify-content-between align-items-start mb-2">
                         <h6 className="mb-0">{lead.name || 'N/A'}</h6>
-                        <Badge bg="" style={statusStyle(lead.fe_lead_status)}>
+                        <Badge bg={getStatusColor(lead.fe_lead_status)}>
                           {lead.fe_lead_status || 'Lead'}
                         </Badge>
                       </div>
@@ -528,7 +541,7 @@ function LeadCalendarContent({ onLeadSelected }) {
                 <Col md={6}>
                   <h6 className="mb-3">Lead Information</h6>
                   <p><strong>Status:</strong> 
-                    <Badge bg="" style={statusStyle(selectedLead.fe_lead_status)} className="ms-2">
+                    <Badge bg={getStatusColor(selectedLead.fe_lead_status)} className="ms-2">
                       {selectedLead.fe_lead_status || 'Lead'}
                     </Badge>
                   </p>

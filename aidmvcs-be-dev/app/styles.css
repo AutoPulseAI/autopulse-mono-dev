@@ -2113,7 +2113,7 @@ a .d_counts_card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgb
 .dashboard_counts .col > a.d-block > .d_counts_card { height: 100%; }
 .lead_main_col > .row > .col-xl-1:last-child { padding-right: 8px; }
 
-/* Dashboard number cards (app/dealer/dashboard/components/CountCard.js): the Desk Log card's look. --card: meaningColors.js */
+/* Dashboard number cards (app/dealer/dashboard/components/CountCard.js): the card's colour comes in as --card (CountCard.js) */
 .dash_card { flex-direction: column; border-left: 5px solid var(--card); padding: 12px 14px; }
 .dash_card.soft { border-left-width: 3px; }
 .dash_card .dash_card_title { display: flex; align-items: flex-start; gap: 7px; margin-bottom: 8px; font-size: 0.85rem; font-weight: 600;
@@ -2124,7 +2124,6 @@ a .d_counts_card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgb
 .dash_card.neutral .dash_card_count, .dash_card.soft .dash_card_count { color: var(--dark); }
 .dash_card .dash_card_text { font-size: 0.75rem; line-height: 1.35; color: var(--secondary); }
 a .dash_card:hover .dash_card_title { color: var(--primary); }
-.badge_appt { background-color: #f7931e; color: #3a2000; }
 .dash_head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
 
 /* Phones: the header fits, text stays readable, buttons can be tapped */
