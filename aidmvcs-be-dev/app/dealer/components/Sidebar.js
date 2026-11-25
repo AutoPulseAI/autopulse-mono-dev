@@ -42,7 +42,7 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   // AI Assistant menu (app/dealer/ai/**), with the number of open AI alerts.
   const canSeeAi = hasManageLeads || hasViewAssigned;
-  const isAiActive = pathname?.startsWith("/dealer/ai/");
+  const isAiActive = pathname?.startsWith("/dealer/ai/") && !pathname.startsWith("/dealer/ai/actions");
   const [aiOpen, setAiOpen] = useState(isAiActive);
   const [aiAlertCount, setAiAlertCount] = useState(0);
   useEffect(() => {
@@ -111,11 +111,10 @@ const Sidebar = ({ isOpen, onClose }) => {
         )}
 
         {/* Bibi, 25 Nov 2026: "I'm not seeing anything on the side menu that says tasks" - the task list (AI calls
-            and the team's reminders) was only inside AI Assistant > Actions. Same page, opened on its Tasks tab. */}
+            and the team's reminders) was only inside AI Assistant > Actions. Same page, opened on its Tasks tab; it is no longer
+            under AI Assistant (one place only, 25 Nov 2026). The red number: customers waiting on us. */}
         {canSeeAi && (
-          <Suspense fallback={<TasksLink active={false} />}>
-            <TasksLinkFromUrl onActions={pathname === "/dealer/ai/actions"} />
-          </Suspense>
+          <TasksLink active={pathname === "/dealer/ai/actions"} alerts={aiAlertCount} />
         )}
 
         {(hasManageLeads || hasViewAssigned) && (
@@ -169,9 +168,6 @@ const Sidebar = ({ isOpen, onClose }) => {
               onClick={() => setAiOpen(!aiOpen)}
             >
               <i className="fa-regular fa-message-bot"></i>AI Assistant
-              {aiAlertCount > 0 && !aiOpen && (
-                <span className="badge rounded-pill bg-danger ms-2">{aiAlertCount}</span>
-              )}
               <i className={`fa-solid fa-chevron-${aiOpen ? "up" : "down"} ms-auto`}></i>
             </button>
 
@@ -180,14 +176,6 @@ const Sidebar = ({ isOpen, onClose }) => {
                 <li>
                   <Link href="/dealer/ai/messages" className={getLinkClass("/dealer/ai/messages")}>
                     <i className="fa-regular fa-messages"></i>AI Messages
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/dealer/ai/actions" className={getLinkClass("/dealer/ai/actions")}>
-                    <i className="fa-regular fa-list-check"></i>Actions
-                    {aiAlertCount > 0 && (
-                      <span className="badge rounded-pill bg-danger ms-auto">{aiAlertCount}</span>
-                    )}
                   </Link>
                 </li>
                 <li>
@@ -391,16 +379,14 @@ function DashboardLinks({ department, onDashboard }) {
   );
 }
 
-function TasksLinkFromUrl({ onActions }) {
-  const tab = useSearchParams().get("tab");
-  return <TasksLink active={onActions && tab === "tasks"} />;
-}
-
-function TasksLink({ active }) {
+function TasksLink({ active, alerts }) {
   return (
     <li>
       <Link href="/dealer/ai/actions?tab=tasks" className={active ? "nav-link active" : "nav-link"}>
         <i className="fa-regular fa-list-check"></i>Tasks
+        {alerts > 0 && (
+          <span className="badge rounded-pill bg-danger ms-auto" title="Customers waiting on us">{alerts}</span>
+        )}
       </Link>
     </li>
   );

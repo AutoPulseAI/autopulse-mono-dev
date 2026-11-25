@@ -41,7 +41,7 @@ export default function DismissTaskModal({ task, dealerId, onHide, onDone }) {
       <Modal.Body>
         {task && <p className="mb-2"><strong>{task.text || task.why}</strong></p>}
         <p className="text-muted small mb-2">It closes without being done and leaves every open list. It can be brought back
-          from Actions &gt; Tasks &gt; Closed.</p>
+          from Tasks &gt; Closed.</p>
         {error && <Alert variant="danger" className="py-2">{error}</Alert>}
         <Form.Group>
           <Form.Label className="small">Why is it dismissed?</Form.Label>
