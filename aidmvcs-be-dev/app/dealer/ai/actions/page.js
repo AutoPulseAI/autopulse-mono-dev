@@ -291,6 +291,8 @@ function ActionsContent() {
     lead_status: x.status || r.lead_status || r.status_raw || null, source: r.source || x.source || null, department: r.department || x.department || "sales" }; };
 
   const alertRows = useMemo(() => alerts.map((a) => ({ ...withFacts({ ...a, owner_id: facts[a.lead_id]?.owner_id }), kindLabel: alertKind(a.kind).label, name: a.lead?.name || "Unknown customer",
+    // A customer asking for service is Service work, whatever department their lead is in (e.g. a sold car's first service).
+    ...(a.kind === "service_request" ? { department: "service" } : {}),
     vehicle: a.lead?.vehicle, escalated: a.still_no_reply || ["handoff", "no_staff_response", "person_requested"].includes(a.kind) })), [alerts, facts, staffNames]); // eslint-disable-line react-hooks/exhaustive-deps
   const taskRows = useMemo(() => [
     ...Object.entries(calls).flatMap(([v, list]) => list.map((t) => withFacts(fromCall(v, t, now)))),
@@ -395,7 +397,7 @@ function ActionsContent() {
     <div className="page_content">
       <div className="page_head">
         <div className="d-flex align-items-center flex-wrap gap-2">
-          <h3 className="page_title mb-0 me-auto">Actions</h3>
+          <h3 className="page_title mb-0 me-auto">Tasks</h3>
           <DashboardDatePicker value={range} onChange={(r) => setRange({ startDate: r?.startDate || null, endDate: r?.endDate || null, preset: r?.preset || "custom" })} timezone={timezone} />
         </div>
       </div>
