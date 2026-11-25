@@ -16,6 +16,7 @@ import {
 } from "recharts";
 import DashboardDatePicker, { presetRange, previousPeriod } from "./components/DashboardDatePicker";
 import CountCard from "./components/CountCard";
+import useIsMobile from "../components/useIsMobile";
 import AppIcon from "../components/AppIcon";
 import { aiFetch } from "../ai/components/aiShared";
 import LeadStatusBar from "./components/LeadStatusBar";
@@ -32,6 +33,7 @@ import { reportsVisible } from "../reports/reportsAccess";
 function Dashboard() {
   const { dealerParent, loadingParent } = useUser();
   const { fetchData } = useFetch();
+  const isMobile = useIsMobile();
   // Chart and source clicks open the Leads list in this tab (client, 11 Nov 2026), with a way back.
   const router = useRouter();
   // 13 Nov 2026 meeting (6.4, 9.2): the dashboard for one department - "Service Dashboard" is this page with Service
@@ -312,12 +314,12 @@ function Dashboard() {
     <div className="page_head">
       <div className="row align-items-center">
         <div className="col col-12">
-          <div className="d-flex align-items-center">
+          <div className="dash_head">
             <h3 className="page_title mb-0 me-auto">
               {department === "service" ? "Service Dashboard" : department === "parts" ? "Parts Dashboard"
                 : department === "sales" ? "Sales Dashboard" : "Leads Dashboard"}
               {dateRange.startDate && dateRange.endDate && (
-                <small className="text-muted ms-2">
+                <small className="text-muted ms-2 text-nowrap">
                   ({formatDateInDealerTimezone(dateRange.startDate)} - {formatDateInDealerTimezone(dateRange.endDate)})
                 </small>
               )}
@@ -1087,8 +1089,8 @@ function Dashboard() {
                   </button>
                 </div>
 
-                <ResponsiveContainer width="100%" height={400}>
-                  <BarChart data={messageTrendChartData}>
+                <ResponsiveContainer width="100%" height={isMobile ? 260 : 400}>
+                  <BarChart data={messageTrendChartData} margin={isMobile ? { left: -24, right: 4 } : undefined}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis
                       dataKey="date"

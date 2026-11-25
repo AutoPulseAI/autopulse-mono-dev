@@ -131,6 +131,7 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
     phone: filters.phone
   });
 
+
   const getStatusVariant = (status) => {
     switch (status?.toLowerCase()) {
       case 'contacted':
@@ -1095,7 +1096,7 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
                     size="sm"
                   />
                 </Col>
-                <Col xxl={3} xl={2} lg={2} md={2} xs={4}>
+                <Col xxl={2} xl={2} lg={2} md={2} xs={4}>
                   <Form.Control
                     type="text"
                     placeholder="Phone"
@@ -1113,7 +1114,7 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
                     size="sm"
                   />
                 </Col>
-                <Col xxl={1} xl={2} lg={2} md={2} xs={4}>
+                <Col xxl={2} xl={2} lg={2} md={2} xs={4}>
                   <div className="d-flex">
                     <Button
                       variant="custom"
@@ -1143,7 +1144,7 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
             {!compact && (
             <ListGroup.Item as="li" className="w_card_list_head border-bottom-0">
               <Row className="align-items-center w-100 g-0 gx-1">
-                <Col xl={9} lg={9} sm={9} xs={12}>
+                <Col xl={9} lg={9} sm={9} xs={12} className="appt_main_col">
                   <Row className="align-items-center gx-2">
                     <Col xl={2} lg={2} sm={2} xs={12}>
                       <p className="label"><small>Name</small></p>
@@ -1165,10 +1166,10 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
                     </Col>
                   </Row>
                 </Col>
-                <Col xl={2} lg={1} sm={1} xs={12}>
+                <Col xl={2} lg={1} sm={1} xs={12} className="appt_status_col">
                   <p className="label"><small>Status</small></p>
                 </Col>
-                <Col xl={1} lg={2} sm={2} xs={12}>
+                <Col xl={1} lg={2} sm={2} xs={12} className="appt_action_col">
                   <p className="p_bold text-center"><small>Action</small></p>
                 </Col>
               </Row>
@@ -1234,7 +1235,7 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
                     </div>
                   ) : (
                   <Row className="align-items-center w-100 g-0 gx-1">
-                    <Col xl={9} lg={9} sm={9} xs={12} className="mb-1 mb-md-0">
+                    <Col xl={9} lg={9} sm={9} xs={12} className="mb-1 mb-md-0 appt_main_col">
                       <Row className="align-items-center gx-2">
                         <Col xl={2} lg={2} sm={2} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
                           <p className="p_bold">{lead.name || "N/A"}</p>
@@ -1304,7 +1305,7 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
                               })()}
                             </p>
                             {lead.appointment_type && (
-                              <small className="text-muted">{lead.appointment_type === 'service' ? 'Service' : 'Sales'}</small>
+                              <small className="text-muted appt_type">{lead.appointment_type === 'service' ? 'Service' : 'Sales'}</small>
                             )}
                           </div>
                         </Col>
@@ -1335,7 +1336,7 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
                         </Col>
                       </Row>
                     </Col>
-                    <Col xl={2} lg={1} sm={1} xs={7}>
+                    <Col xl={2} lg={1} sm={1} xs={7} className="appt_status_col">
                       <Badge
                         bg={getStatusVariant(lead.fe_lead_status)}
                         onClick={(e) => {
@@ -1347,7 +1348,7 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
                         {lead.fe_lead_status || "N/A"} <i className="fa-solid fa-pen-to-square"></i>
                       </Badge>
                     </Col>
-                    <Col xl={1} lg={2} sm={2} xs={5}>
+                    <Col xl={1} lg={2} sm={2} xs={5} className="appt_action_col">
                       <div className="d-flex gap-1 w_card_list_btns justify-content-end">
                         <Button variant="custom" size="sm" onClick={(e) => {
                           e.stopPropagation();

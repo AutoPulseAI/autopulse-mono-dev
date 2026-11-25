@@ -180,14 +180,14 @@ export default function LeadSourceDistributionPie({ data, onSegmentClick }) {
   if (!chartData.length) return null;
 
   return (
-    <ResponsiveContainer width="100%" height={isMobile ? 600 : 320}>
+    <ResponsiveContainer width="100%" height={isMobile ? 360 : 320}>
       <PieChart>
         <Pie
           margin={{ top: 20, right: 20, bottom: isMobile ? 80 : 20, left: 20 }}
           data={chartData}
           dataKey="value"
           nameKey="name"
-          label={<CustomLabel />}
+          label={isMobile ? false : <CustomLabel />}
           labelLine={false}
           outerRadius={isMobile ? 80 : 100}
           innerRadius={28}
