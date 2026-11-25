@@ -145,13 +145,13 @@ export default function TopbarTools({ storeName }) {
       if (!part?.items?.some((i) => i.key === key)) return part;
       return { ...part, items: part.items.filter((i) => i.key !== key), count: Math.max(0, (part.count || 0) - 1) };
     };
-    setData((d) => d && { ...d, alerts: drop(d.alerts), calls: drop(d.calls), taken: drop(d.taken), new_leads: drop(d.new_leads) });
+    setData((d) => d && { ...d, alerts: drop(d.alerts), calls: drop(d.calls), taken: drop(d.taken), escalated: drop(d.escalated), new_leads: drop(d.new_leads) });
     sendClear({ keys: [key] }).catch(() => null).finally(load);
   }, [load, sendClear]);
   const clearAll = useCallback(() => {
     const keys = data?.clear_keys || [];
     const empty = (part) => part && { ...part, items: [], count: 0 };
-    setData((d) => d && { ...d, alerts: empty(d.alerts), calls: empty(d.calls), taken: empty(d.taken), new_leads: empty(d.new_leads) });
+    setData((d) => d && { ...d, alerts: empty(d.alerts), calls: empty(d.calls), taken: empty(d.taken), escalated: empty(d.escalated), new_leads: empty(d.new_leads) });
     sendClear({ all: true, keys }).catch(() => null).finally(load);
   }, [data, load, sendClear]);
 
@@ -160,7 +160,8 @@ export default function TopbarTools({ storeName }) {
   const calls = data?.calls;
   const fresh = data?.new_leads;
   const taken = data?.taken;
-  const bellCount = (alerts?.count || 0) + (calls?.count || 0) + (fresh?.count || 0) + (taken?.count || 0);
+  const escalated = data?.escalated;
+  const bellCount = (alerts?.count || 0) + (calls?.count || 0) + (fresh?.count || 0) + (taken?.count || 0) + (escalated?.count || 0);
 
   return (
     <div className="tb_tools">
@@ -174,7 +175,7 @@ export default function TopbarTools({ storeName }) {
             </Dropdown.Toggle>
             <Dropdown.Menu className="tb_menu tb_bell">
               {loading && !data && <div className="text-center py-2"><Spinner size="sm" /></div>}
-              {data && (alerts?.count > 0 || calls?.count > 0 || taken?.count > 0 || fresh?.count > 0) && (
+              {data && (alerts?.count > 0 || calls?.count > 0 || taken?.count > 0 || escalated?.count > 0 || fresh?.count > 0) && (
                 <div className="tb_bell_head">
                   <strong>Notifications</strong>
                   <button type="button" className="btn btn-link btn-sm p-0 ms-auto" onClick={clearAll}>Clear all</button>
@@ -196,6 +197,15 @@ export default function TopbarTools({ storeName }) {
                   more="/dealer/ai/actions?tab=tasks" empty="No calls due">
                   {calls.items.map((t) => (
                     <Row key={t.key} href={leadHref(t.lead_id)} title={t.name} text={t.reason} at={t.due_at} whose={t.whose} onClear={() => clearOne(t.key)} />
+                  ))}
+                </Section>
+              )}
+              {escalated?.count > 0 && (
+                <Section title="Escalated to you" icon="fa-regular fa-arrow-up" count={escalated.count}
+                  more="/dealer/ai/actions?tab=tasks" empty="">
+                  {escalated.items.map((t) => (
+                    <Row key={t.key} href={leadHref(t.lead_id)} title={t.name} onClear={() => clearOne(t.key)}
+                      text={`${t.by || "Staff"} escalated: ${t.text}`} at={t.at} />
                   ))}
                 </Section>
               )}

@@ -76,9 +76,17 @@ jobs:
           # 1. Build next to the live app with the live app's settings; the site keeps serving meanwhile.
           cp -p "$APP"/.env* "$BUILD"/ 2>/dev/null || true
           cd "$BUILD"
-          npm ci --no-audit --no-fund
+          # 24 Nov 2026 (the site slowed down on every merge): the build shares this server with the live CRM, the AI
+          # service and the workers, so it runs at the lowest CPU and disk priority - live requests always go first and
+          # the build just takes a little longer. Packages are only reinstalled when package-lock.json changed.
+          SLOW="nice -n 19 ionice -c 3"
+          if [ -d node_modules ] && cmp -s package-lock.json "$APP/package-lock.json" && [ -d "$APP/node_modules" ]; then
+            echo "package-lock.json unchanged: keeping node_modules"
+          else
+            $SLOW npm ci --no-audit --no-fund
+          fi
           rm -rf .next
-          npm run build
+          $SLOW npm run build
 
           # 2. Keep the previous build's JS/CSS, so pages already open in a browser still find their files.
           rsync -a --ignore-existing "$APP/.next/static/" "$BUILD/.next/static/"
@@ -87,7 +95,7 @@ jobs:
           # public/csv holds files uploaded to the server (inventory feeds, DealerSocket): never deleted by a deploy (25 Oct
           # 2026: every deploy removed public/csv/upload and the inventory stopped updating on 12 Sep).
           rsync -a --delete --exclude='.env*' --exclude='node_modules' --exclude='.next' --exclude='logs' --exclude='public/csv' "$BUILD/" "$APP/"
-          rsync -a --delete "$BUILD/node_modules/" "$APP/node_modules/"
+          nice -n 19 ionice -c 3 rsync -a --delete "$BUILD/node_modules/" "$APP/node_modules/"
           rm -rf "$APP/.next.new" "$APP/.next.prev"
           cp -a "$BUILD/.next" "$APP/.next.new"
           mv "$APP/.next" "$APP/.next.prev"

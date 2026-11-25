@@ -15,6 +15,7 @@ import AppointmentsTab from "./AppointmentsTab";
 import VehiclesTab from "./VehiclesTab";
 import TradeInTab from "./TradeInTab";
 import LeadForm from "../../../leads/components/LeadForm";
+import EmailReplyModal from "../../../leads/components/EmailReplyModal";
 
 export default function CustomerDetail({ customerId }) {
   const { user, dealerParent, loadingParent } = useUser();
@@ -24,7 +25,11 @@ export default function CustomerDetail({ customerId }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [activeTab, setActiveTab] = useState("overview");
+  // ?tab=leads&lead=<id> opens a lead's conversation here (the Dashboard's Customer Replied list, 25 Nov 2026).
+  const [urlParams] = useState(() => (typeof window === "undefined" ? new URLSearchParams() : new URLSearchParams(window.location.search)));
+  const [activeTab, setActiveTab] = useState(urlParams.get("tab") || "overview");
+  // Text / Email from the profile's toolbar (Bibi, 25 Nov 2026: "Text is not working" - it only switched tabs).
+  const [replyTo, setReplyTo] = useState(null); // { lead, channel }
   // Mirrors the `editLead` convention from app/dealer/leads/page.js: an object
   // pre-fills LeadForm, and LeadForm itself calls this setter with null when
   // it's done (submitted or cancelled) to close.
@@ -106,7 +111,11 @@ export default function CustomerDetail({ customerId }) {
 
   const handleSendMessage = () => {
     if ((leads?.length || 0) > 0) {
-      setActiveTab("leads");
+      // The newest lead's thread, the same reply window as the Leads page; it goes to the customer's number / email.
+      const lead = leads[0];
+      const phone = primaryContact(customer.phones)?.value;
+      const email = primaryContact(customer.emails)?.value;
+      setReplyTo({ lead: { ...lead, phone: lead.phone || phone, email: lead.email || email }, channel: phone ? "sms" : "email" });
     } else {
       setMessageLead({
         name: customer.name || "",
@@ -169,7 +178,12 @@ export default function CustomerDetail({ customerId }) {
         onOpenTab={setActiveTab}
       />
 
-      <OpenTasks tasks={openTasks} />
+      <OpenTasks tasks={openTasks} dealerId={activeEntity?.id} onChanged={fetchCustomer360} leads={leads || []} staffList={staffList} />
+      {replyTo && (
+        <EmailReplyModal lead={replyTo.lead} dealer_id={replyTo.lead.dealer_id || customer.dealer_id}
+          communicationType={replyTo.channel} selectedConversation={{ lead_id: replyTo.lead._id }}
+          onClose={() => setReplyTo(null)} onReplySuccess={fetchCustomer360} />
+      )}
       <DmsDetails dms={dms} />
 
       <Tabs activeKey={activeTab} onSelect={(key) => setActiveTab(key)} className="mb-3 cp_tabs" mountOnEnter unmountOnExit>
@@ -177,7 +191,7 @@ export default function CustomerDetail({ customerId }) {
           <OverviewTab overview={overview} activity={activity || []} />
         </Tab>
         <Tab eventKey="leads" title={tabTitle("fa-solid fa-comments", "Leads & Communications", counts.leads)}>
-          <LeadsTab customerId={customerId} onChanged={fetchCustomer360} />
+          <LeadsTab customerId={customerId} onChanged={fetchCustomer360} initialLeadId={urlParams.get("lead")} />
         </Tab>
         <Tab eventKey="sales" title={tabTitle("fa-solid fa-key", "Sales", counts.sales)}>
           <SalesTab deals={deals} />

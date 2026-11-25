@@ -2204,3 +2204,29 @@ a .dash_card:hover .dash_card_title { color: var(--primary); }
 /* The side list beside a conversation is narrow: one filter per line, so no dropdown text is cut */
 .dealer-sidebar .search_filters > [class*="col"] { flex: 0 0 100%; max-width: 100%; }
 @media (max-width: 1199.98px) { .w_card_list_box .appt_type { margin-left: 6px; } }
+
+/* Customer profile, opportunity row (Bibi, 25 Nov 2026, from her reference CRM's toolbar): one strip of actions, each a
+   large two-tone icon in its own colour with a dark label under it - no boxes. The lead's own SMS Reply, Call, Note,
+   Status and Check in are placed in .opp_slot so every action is in this one strip. */
+.opp_tools { display: flex; flex-wrap: wrap; gap: 2px; align-items: stretch; background: #f4f5f7;
+  border: 1px solid #e2e5ea; border-radius: 8px; padding: 6px 8px; }
+.opp_tools .opp_slot, .opp_tools .lead_actions_row { display: contents; }
+.opp_tools .btn {
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 5px;
+  min-width: 64px; padding: 6px 6px 4px; font-size: 12.5px; font-weight: 500; line-height: 1.1; white-space: nowrap !important;
+  background: transparent !important; border: 0 !important; color: #1f2937 !important; border-radius: 6px; box-shadow: none !important;
+}
+.opp_tools .btn:hover { background: #e3e7ee !important; }
+.opp_tools .btn:disabled, .opp_tools .btn.disabled { opacity: .45; }
+.opp_tools .btn > i { margin: 0 !important; font-size: 26px; --fa-secondary-opacity: 1; }
+/* Colours from the reference toolbar: blue phone, yellow note, calendar blue, orange visit, grey text bubble... */
+.opp_tools .act_sms > i    { --fa-primary-color: #ffffff; --fa-secondary-color: #6b7480; }
+.opp_tools .act_call > i   { --fa-primary-color: #1d5fa8; --fa-secondary-color: #5b9be0; }
+.opp_tools .act_note > i   { --fa-primary-color: #c99a06; --fa-secondary-color: #f7d548; }
+.opp_tools .act_status > i { --fa-primary-color: #2f3a4a; --fa-secondary-color: #6b7a90; }
+.opp_tools .act_visit > i  { --fa-primary-color: #2f5fa8; --fa-secondary-color: #e8913a; }
+.opp_tools .act_remind > i { --fa-primary-color: #b42318; --fa-secondary-color: #f39a5b; }
+.opp_tools .act_appt > i   { --fa-primary-color: #2b4c8c; --fa-secondary-color: #8fb0e8; }
+.opp_tools .act_log > i    { --fa-primary-color: #0f6b5c; --fa-secondary-color: #4fb7a3; }
+.opp_tools .act_task > i   { --fa-primary-color: #4a5568; --fa-secondary-color: #a6b3c6; }
+.opp_tools .lead_actions_row > span.small { align-self: center; }

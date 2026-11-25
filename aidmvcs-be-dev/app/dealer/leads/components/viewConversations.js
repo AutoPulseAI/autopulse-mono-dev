@@ -1,6 +1,7 @@
 "use client";
 import { leadStatusLabel } from "@lib/statusLabels";
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { formatTimestamp } from "../../../utils/dateUtils";
 import useFetch from "../../../hooks/useFetch";
 import { Col, Row, Button, Spinner, Nav, Badge } from "react-bootstrap";
@@ -72,6 +73,8 @@ export default function ViewConversations({
   embedded = false,
   // Called after the lead card saves an edit (the customer profile reloads, so its name / phone / email follow).
   onLeadSaved,
+  // A DOM element (the customer profile's opportunity row): the action buttons are shown there instead of here.
+  actionsTarget = null,
 }) {
   const AGENT_VIEW_LANGUAGE_STORAGE_KEY = "dealer_agent_view_language";
   const [emails, setEmails] = useState([]);
@@ -866,30 +869,34 @@ export default function ViewConversations({
                     </div>
                   )}
 
-                  {/* Every action on the lead in one place (BB, 17 Nov 2026: "all call to action should be in one place"). */}
-                  <div className="lead_actions mt-2">
+                  {/* Every action on the lead in one place (BB, 17 Nov 2026: "all call to action should be in one place").
+                      On the customer profile they sit in the opportunity's own action row instead (Bibi, 25 Nov 2026:
+                      "this way all communication is in one place") - actionsTarget is that row. */}
+                  {(() => { const actions = (
+                  <div className={actionsTarget ? "lead_actions_row" : "lead_actions mt-2"}>
                     {selectedConversation && getReplyChannel(lead, activeChannelTab, stoppedChannels) && !replyAllowed && (
                       <span className="small text-muted align-self-center" title="Reply from the department's own staff">
                         <i className="fa-regular fa-lock me-1" />{DEPARTMENT_NAMES[leadDepartment(lead)]} lead - {DEPARTMENT_NAMES[leadDepartment(lead)]} staff reply
                       </span>
                     )}
                     {selectedConversation && getReplyChannel(lead, activeChannelTab, stoppedChannels) && replyAllowed && (
-                      <Button variant="custom" size="sm" onClick={() => setShowReplyModal(true)}>
-                        <i className="fa-regular fa-reply me-1"></i>
+                      <Button variant="custom" size="sm" className="act_sms" onClick={() => setShowReplyModal(true)}>
+                        <i className={actionsTarget ? "fa-duotone fa-comment-sms" : "fa-regular fa-reply me-1"}></i>
                         {getReplyChannel(lead, activeChannelTab, stoppedChannels) === 'sms' ? 'SMS Reply' : 'Email Reply'}
                       </Button>
                     )}
-                    {lead?.phone && <CallButton phone={lead.phone} leadId={lead._id} dealerId={lead.dealer_id} size="sm" />}
-                    <Button variant="outline-warning" size="sm" className="text-nowrap" onClick={() => setShowNotesModal(true)}>
-                      <i className="fa-regular fa-sticky-note me-1"></i>Add Note
+                    {lead?.phone && <CallButton phone={lead.phone} leadId={lead._id} dealerId={lead.dealer_id} size="sm"
+                      className={actionsTarget ? "act_call" : ""} icon={actionsTarget ? "fa-duotone fa-phone-office" : null} />}
+                    <Button variant="outline-warning" size="sm" className="text-nowrap act_note" onClick={() => setShowNotesModal(true)}>
+                      <i className={actionsTarget ? "fa-duotone fa-note-sticky" : "fa-regular fa-sticky-note me-1"}></i>Add Note
                     </Button>
-                    <Button variant="outline-custom" size="sm" className="text-nowrap" onClick={() => setShowStatusModal(true)}>
-                      <i className="fa-regular fa-pen me-1"></i>Update Status
+                    <Button variant="outline-custom" size="sm" className="text-nowrap act_status" onClick={() => setShowStatusModal(true)}>
+                      <i className={actionsTarget ? "fa-duotone fa-right-left" : "fa-regular fa-pen me-1"}></i>Update Status
                     </Button>
                     {/* The Desk Log check-in, with this lead picked. */}
                     {showCheckIn && (
-                      <Button variant="outline-custom" size="sm" className="text-nowrap" href={`/dealer/desk-log?check_in=${lead._id}`}>
-                        <i className="fa-regular fa-right-to-bracket me-1"></i>Check in
+                      <Button variant="outline-custom" size="sm" className="text-nowrap act_visit" href={`/dealer/desk-log?check_in=${lead._id}`}>
+                        <i className={actionsTarget ? "fa-duotone fa-user-check" : "fa-regular fa-right-to-bracket me-1"}></i>Check in
                       </Button>
                     )}
                     {/* Client, 8 Oct 2026: from the lead, straight to the customer's 360 profile (not shown on the profile itself). */}
@@ -904,6 +911,7 @@ export default function ViewConversations({
                       </Button>
                     )}
                   </div>
+                  ); return actionsTarget ? createPortal(actions, actionsTarget) : actions; })()}
                 </div>
                 {/* What the AI is doing with this lead (stage, next touch, call task, consent; on/off) */}
                 {lead?._id && <AiLeadPanel key={`${lead._id}-${lead.fe_lead_status || lead.status || ""}`} leadId={lead._id} />}

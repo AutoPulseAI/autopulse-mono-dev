@@ -15,6 +15,7 @@ import User from '@models/User';
 import LeadReminder from '@models/LeadReminder';
 import { requireDealerAccess } from '@lib/apiGuard';
 import { logActivity } from '@lib/activityLog';
+import { canDismissTasks, DISMISS_TASKS } from '@lib/taskPermission';
 
 export const runtime = 'nodejs';
 const fail = (error, status) => Response.json({ error }, { status });
@@ -91,6 +92,30 @@ export async function POST(req, { params }) {
       break;
     }
     // Actions > Tasks (SOW D1): reschedule, reassign or escalate a reminder; each change goes on the timeline.
+    case 'reminder_dismiss': {
+      // Closed without doing it, with why (app/lib/taskPermission.js). Undo: reminder_undismiss.
+      if (!(await canDismissTasks(user))) return fail(`You need the "${DISMISS_TASKS}" permission to do this. Ask your admin.`, 403);
+      if (!mongoose.isValidObjectId(body.reminder_id)) return fail('reminder_id is required', 400);
+      const reason = clean(body.reason, 300);
+      if (!reason) return fail('Say why this task is dismissed', 400);
+      const now = new Date();
+      const r = await LeadReminder.findOneAndUpdate({ _id: body.reminder_id, lead_id: lead._id, done_at: null },
+        { $set: { done_at: now, done_by_name: who, dismissed_at: now, dismissed_by_name: who, dismiss_reason: reason } },
+        { new: true }).lean();
+      if (!r) return fail('That task is already closed or not on this lead', 400);
+      await logActivity({ ...base, action: 'reminder_dismissed', detail: `${r.note} - dismissed: ${reason}` });
+      break;
+    }
+    case 'reminder_undismiss': {
+      if (!(await canDismissTasks(user))) return fail(`You need the "${DISMISS_TASKS}" permission to do this. Ask your admin.`, 403);
+      if (!mongoose.isValidObjectId(body.reminder_id)) return fail('reminder_id is required', 400);
+      const r = await LeadReminder.findOneAndUpdate({ _id: body.reminder_id, lead_id: lead._id, dismissed_at: { $ne: null } },
+        { $set: { done_at: null, done_by_name: null, dismissed_at: null, dismissed_by_name: null, dismiss_reason: null } },
+        { new: true }).lean();
+      if (!r) return fail('That task was not dismissed', 400);
+      await logActivity({ ...base, action: 'reminder_undismissed', detail: r.note });
+      break;
+    }
     case 'reminder_update': {
       if (!mongoose.isValidObjectId(body.reminder_id)) return fail('reminder_id is required', 400);
       const current = await LeadReminder.findOne({ _id: body.reminder_id, lead_id: lead._id, done_at: null }).lean();

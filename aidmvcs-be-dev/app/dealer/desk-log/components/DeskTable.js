@@ -9,7 +9,7 @@
 // and shows in full on hover (notes: two lines, click opens the visit); people as avatar + "Jessica S."; the four
 // actions (call, message, appointment, more) always in the same place (greyed when they can't be used); stage and
 // outcome as coloured menus with their arrow, as in the design.
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Form } from "react-bootstrap";
 import moment from "moment-timezone";
@@ -17,16 +17,20 @@ import { STAGES, STALLED_MINUTES } from "../../../lib/deskLog/constants";
 import { rememberBack } from "../../components/backLink";
 import { deskLogUpdate } from "../deskLogApi";
 import OutcomeModal from "./OutcomeModal";
+import ColorPick from "./ColorPick";
 import CallButton from "../../components/CallButton";
 import Customer360Panel from "../../components/Customer360Panel";
 import { NO_OUTCOME_STYLE, NO_STAGE_STYLE, OUTCOME_CHOICES, STAGE_STYLE, TYPE_LABEL, TYPE_STYLE, ageText,
-  avatarColor, choiceOf, darkPill, initials, rowStripColor, shortName, sourceLogo, vehicleText } from "./deskLogUi";
+  avatarColor, choiceOf, darkPill, initials, rowStripColor, shortName, sourceLogo, vehicleText, STAGE_ICON, OUTCOME_ICON } from "./deskLogUi";
 
 // Column widths (px), in the order of the columns. The table is laid out fixed, so a long value never pushes the
 // next column over: it is cut and shows in full on hover.
 // 24 Nov 2026: tightened to the design so the whole row fits a laptop screen; Actions and Outcome stay pinned right.
 const COLS = [4, 30, 60, 124, 68, 112, 108, 86, 116, 112, 114, 114, 114, 140, 112, 156];
 const TABLE_WIDTH = COLS.reduce((a, b) => a + b, 0);
+// 24 Nov 2026 (responsive): each column is its share of the table, so the table fills a big screen and shrinks with
+// zoom; below TABLE_WIDTH it scrolls sideways instead of crushing, with Actions and Outcome pinned.
+const SHARE = COLS.map((w) => `${((w / TABLE_WIDTH) * 100).toFixed(3)}%`);
 
 // One line, cut with "...", the whole text on hover.
 const Clip = ({ text, className = "", children }) => (
@@ -52,7 +56,19 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
   const [pending, setPending] = useState(null); // { row, choice }
   const [selected, setSelected] = useState(() => new Set());
   const [bulk, setBulk] = useState({ field: "salesperson_id", value: "" });
-  const [sort, setSort] = useState({ key: null, dir: 1 }); // the sortable columns of the design (click again = reverse)
+  const [sort, setSort] = useState({ key: null, dir: 1 });
+  // Pinned Actions sit right next to Outcome, whose width now follows the screen.
+  const wrapRef = useRef(null);
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    const out = wrap?.querySelector("thead th.dl_pin_out");
+    if (!wrap || !out || typeof ResizeObserver === "undefined") return undefined;
+    const set = () => wrap.style.setProperty("--dl-out-w", `${out.getBoundingClientRect().width}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(out);
+    return () => ro.disconnect();
+  }, []); // the sortable columns of the design (click again = reverse)
 
   // Every change carries the visit as this screen read it: someone else's newer change is never overwritten (409 ->
   // reloaded, made again).
@@ -145,9 +161,9 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
           <button type="button" className="btn btn-link btn-sm" onClick={() => setSelected(new Set())}>Clear selection</button>
         </div>
       )}
-      <div className="dl_table_wrap">
-        <table className="dl_table" style={{ width: TABLE_WIDTH, minWidth: "100%" }}>
-          <colgroup>{COLS.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
+      <div className="dl_table_wrap" ref={wrapRef}>
+        <table className="dl_table" style={{ width: "100%", minWidth: TABLE_WIDTH }}>
+          <colgroup>{SHARE.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
           <thead>
             <tr>
               <th className="dl_strip" aria-hidden="true" />
@@ -214,13 +230,10 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                     ) : <span className="text-muted">-</span>}
                   </td>
                   <td>
-                    <Form.Select size="sm" className={`dl_pill${row.stage && darkPill(STAGE_STYLE[row.stage]) ? " dl_pill_dark" : ""}`}
-                      value={row.stage || ""} disabled={busy === row.id} title={row.stage || "No stage"}
-                      style={row.stage ? STAGE_STYLE[row.stage] : NO_STAGE_STYLE} aria-label="Current stage"
-                      onChange={(e) => save(row, { stage: e.target.value || null })}>
-                      <option value="">No stage</option>
-                      {STAGES.map((st) => <option key={st} value={st} style={STAGE_STYLE[st]}>{st}</option>)}
-                    </Form.Select>
+                    <ColorPick value={row.stage || ""} disabled={busy === row.id} label="Current stage" empty="No stage"
+                      style={row.stage ? STAGE_STYLE[row.stage] : NO_STAGE_STYLE} dark={row.stage && darkPill(STAGE_STYLE[row.stage])}
+                      options={[{ value: "", label: "No stage" }, ...STAGES.map((st) => ({ value: st, label: st, dot: STAGE_STYLE[st]?.backgroundColor, icon: STAGE_ICON[st], ink: st === "PROPOSAL" ? "#9a7b00" : undefined }))]}
+                      onPick={(v) => save(row, { stage: v || null })} />
                     {row.minutes_in_stage != null && (
                       <span className={`dl_age${stalled ? " stalled" : ""}`}>{ageText(row.minutes_in_stage)}</span>
                     )}
@@ -262,16 +275,10 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                     </div>
                   </td>
                   <td className="dl_pin dl_pin_out">
-                    <Form.Select size="sm" className={`dl_pill dl_outcome${darkPill(choice?.style) ? " dl_pill_dark" : ""}`}
-                      value={choice?.value || ""} disabled={busy === row.id} title={choice?.label || "Pick outcome"}
-                      style={choice ? choice.style : NO_OUTCOME_STYLE} aria-label="Outcome"
-                      onChange={(e) => {
-                        const next = OUTCOME_CHOICES.find((c) => c.value === e.target.value);
-                        if (next) setPending({ row, choice: next });
-                      }}>
-                      {!choice && <option value="">Pick outcome</option>}
-                      {OUTCOME_CHOICES.map((c) => <option key={c.value} value={c.value} style={c.style}>{c.label}</option>)}
-                    </Form.Select>
+                    <ColorPick value={choice?.value || ""} disabled={busy === row.id} label="Outcome" empty="Pick outcome"
+                      style={choice ? choice.style : NO_OUTCOME_STYLE} dark={darkPill(choice?.style)}
+                      options={OUTCOME_CHOICES.map((c) => ({ value: c.value, label: c.label, dot: c.style.backgroundColor, icon: OUTCOME_ICON[c.value], ink: c.style.color === "#fff" ? undefined : c.style.color }))}
+                      onPick={(v) => { const next = OUTCOME_CHOICES.find((c) => c.value === v); if (next) setPending({ row, choice: next }); }} />
                     {row.outcome_from_lead && <Clip className="small text-muted" text="Set on the Leads page" />}
                     {/* G-016: the sale checked against the dealer's DMS (DealerVault). */}
                     {row.dms?.flag === "not_in_dms" && <Clip className="small text-danger" text="Not in the DMS yet" />}

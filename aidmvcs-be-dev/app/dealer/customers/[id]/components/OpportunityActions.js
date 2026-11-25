@@ -48,7 +48,7 @@ function InventoryPicker({ dealerId, onPick }) {
   );
 }
 
-export default function OpportunityActions({ lead, onChanged }) {
+export default function OpportunityActions({ lead, onChanged, actionsRef = null }) {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -81,21 +81,19 @@ export default function OpportunityActions({ lead, onChanged }) {
   return (
     <div className="border rounded p-2 mb-3 small">
       {error && <Alert variant="danger" className="py-1 px-2 mb-2">{error}</Alert>}
-      <div className="d-flex flex-wrap align-items-center gap-3 mb-2">
-        <span className="d-flex align-items-center gap-1"><span className="text-muted me-1">Schedule</span>
-          <Button size="sm" variant="outline-custom" onClick={() => setReminder({ due_at: "", note: "", assigned_to: "" })}>
-            <i className="fa-regular fa-bell me-1" />Reminder</Button>
-          <Button size="sm" variant="outline-custom" href="/dealer/booking"><i className="fa-regular fa-calendar me-1" />Appointment</Button>
-        </span>
-        <span className="d-flex align-items-center gap-1"><span className="text-muted me-1">Log</span>
-          <CallButton logOnly phone={lead.phone} leadId={lead._id} dealerId={lead.dealer_id} label="Phone call" onLogged={onChanged} />
-          <Button size="sm" variant="outline-custom" href={`/dealer/desk-log?check_in=${lead._id}`}><i className="fa-solid fa-store me-1" />Store visit</Button>
-          <Button size="sm" variant="outline-custom" onClick={() => setTask("")}><i className="fa-solid fa-ellipsis me-1" />Other task</Button>
-        </span>
-        <span className="d-flex align-items-center gap-1"><span className="text-muted me-1">Connect</span>
-          <CallButton phone={lead.phone} leadId={lead._id} dealerId={lead.dealer_id} onLogged={onChanged} />
-          <span className="text-muted">text / email below</span>
-        </span>
+      {/* One row of solid action blocks for this opportunity (Bibi, 25 Nov 2026: all communication in one place, solid
+          blue like SMS Reply). The lead's own SMS Reply, Call, Note, Status and Check in are placed in the slot. */}
+      <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
+        <div className="opp_tools">
+          <span className="opp_slot" ref={actionsRef} />
+          <Button size="sm" className="act_remind" onClick={() => setReminder({ due_at: "", note: "", assigned_to: "" })}>
+            <i className="fa-duotone fa-alarm-clock" />Reminder</Button>
+          <Button size="sm" className="act_appt" href="/dealer/booking"><i className="fa-duotone fa-calendar-days" />Appt.</Button>
+          <CallButton logOnly phone={lead.phone} leadId={lead._id} dealerId={lead.dealer_id} label="Log call" onLogged={onChanged}
+            className="act_log" icon="fa-duotone fa-phone-arrow-up-right" />
+          <Button size="sm" className="act_task" onClick={() => setTask("")}><i className="fa-duotone fa-clipboard-list" />Other task</Button>
+          {!actionsRef && <CallButton phone={lead.phone} leadId={lead._id} dealerId={lead.dealer_id} onLogged={onChanged} />}
+        </div>
         <Form.Check type="switch" className="ms-auto mb-0" id={`in-market-${lead._id}`} disabled={busy}
           label={data.in_market ? "Active" : "Not in market"} checked={data.in_market}
           title="A flag for your team; the AI's follow-ups don't change"
