@@ -2146,6 +2146,7 @@ a .d_counts_card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgb
 .cust_profile .brand_facebook i { color: #1877f2; }
 .cust_profile .brand_linkedin i { color: #0a66c2; }
 .opp_tools .act_sms > i, .cust_profile .cp_tool.act_sms i    { --fa-primary-color: #ffffff; --fa-secondary-color: #6b7480; }
+.opp_tools .act_email > i { --fa-primary-color: #c2410c; --fa-secondary-color: #f6c38b; }
 .opp_tools .act_call > i, .cust_profile .cp_tool.act_call i   { --fa-primary-color: #1d5fa8; --fa-secondary-color: #5b9be0; }
 .opp_tools .act_note > i, .cust_profile .cp_tool.act_note i   { --fa-primary-color: #c99a06; --fa-secondary-color: #f7d548; }
 .opp_tools .act_status > i, .cust_profile .cp_tool.act_status i { --fa-primary-color: #2f3a4a; --fa-secondary-color: #6b7a90; }
