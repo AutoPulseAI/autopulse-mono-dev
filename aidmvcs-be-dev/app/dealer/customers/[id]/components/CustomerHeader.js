@@ -8,7 +8,7 @@
 //     (POST /api/customers/[id]/contacts; open leads on a changed / removed number or address get the new one);
 //   - postal addresses: add, remove, make main.
 // Every change goes on the customer's timeline. After a save the profile reloads (onChanged).
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, Badge, Button, Form, Spinner } from "react-bootstrap";
 import { formatTimestamp } from "../../../../utils/dateUtils";
 import { formatCurrency } from "../../../../utils/formatCurrency";
@@ -297,6 +297,21 @@ function AddressList({ entries, send }) {
   );
 }
 
+const FOLD_KEY = "customerProfileFolds";
+
+// A section title that opens / folds its section; folded, it shows the summary beside it.
+function FoldTitle({ id, icon, label, open, onToggle, summary }) {
+  return (
+    <h6 className="cp_section_title">
+      <button type="button" className="cp_fold_btn" onClick={() => onToggle(id)} aria-expanded={open}>
+        <i className={`fa-solid ${icon}`} />{label}
+        <i className={`fa-solid fa-chevron-${open ? "up" : "down"} cp_fold_chevron`} />
+      </button>
+      {!open && <span className="cp_fold_summary">{summary}</span>}
+    </h6>
+  );
+}
+
 export default function CustomerHeader({ customer, valueSnapshot, onSendMessage, staffList, onAssignmentChange, callLeadId,
   dealerId, onChanged, onOpenTab, counts, latestLead, dmsPerson, activeTab = "overview" }) {
   const primaryEmail = primaryContact(customer.emails);
@@ -312,6 +327,17 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
   const [formMessage, setFormMessage] = useState(null); // { variant, text } from Export to form
   // "More details" starts folded; a click opens it (19 Nov 2026: keeps the profile short).
   const [showDetails, setShowDetails] = useState(false);
+  // Contact, Preferences and Customer value fold like More details (25 Nov 2026): folded they show one summary line;
+  // open / folded is remembered in this browser.
+  const [fold, setFold] = useState({ contact: false, prefs: false, value: false });
+  useEffect(() => {
+    try { const kept = JSON.parse(localStorage.getItem(FOLD_KEY) || "null"); if (kept) setFold((f) => ({ ...f, ...kept })); } catch { /* folded */ }
+  }, []);
+  const toggleFold = (id) => setFold((f) => {
+    const next = { ...f, [id]: !f[id] };
+    try { localStorage.setItem(FOLD_KEY, JSON.stringify(next)); } catch { /* not kept */ }
+    return next;
+  });
   const detailsFilled = DETAILS.filter(([key]) => customer.details?.[key]).length;
 
   const putCustomer = async (body) => {
@@ -428,8 +454,9 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
 
       <div className="cp_body">
         <section className="cp_section cp_contact">
-          <h6 className="cp_section_title"><i className="fa-solid fa-address-card" />Contact</h6>
-          <div className="row gy-2">
+          <FoldTitle id="contact" icon="fa-address-card" label="Contact" open={fold.contact} onToggle={toggleFold}
+            summary={[primaryPhone?.value, primaryEmail?.value].filter(Boolean).join(" · ") || "No phone or email"} />
+          {fold.contact && <div className="row gy-2">
             <div className="col-md-6">
               <ContactList kind="phone" entries={customer.phones} labels={PHONE_LABELS} send={sendContact} />
             </div>
@@ -439,10 +466,12 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
             <div className="col-12">
               <AddressList entries={customer.addresses} send={sendContact} />
             </div>
-          </div>
+          </div>}
         </section>
         <section className="cp_section">
-          <h6 className="cp_section_title"><i className="fa-solid fa-sliders" />Preferences</h6>
+          <FoldTitle id="prefs" icon="fa-sliders" label="Preferences" open={fold.prefs} onToggle={toggleFold}
+            summary={`Contact: ${nameOf(CONTACT_MODES, customer.preferred_communication_mode) || "Not set"} · Follow-up: ${nameOf(FOLLOWUP, customer.followup_preference) || "Not set"} · Language: ${nameOf(LANGUAGES, customer.user_language) || "Not set"}`} />
+          {fold.prefs && <>
           <div className="cp_pref"><i className="fa-solid fa-headset" />
             <InlineField label="Preferred contact" value={customer.preferred_communication_mode}
               display={nameOf(CONTACT_MODES, customer.preferred_communication_mode)} options={CONTACT_MODES}
@@ -472,14 +501,16 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
                   onSave={(nv) => putCustomer({ details: { [key]: nv } })} /></div>
             );
           })}</div>}
+          </>}
         </section>
         <section className="cp_section">
-          <h6 className="cp_section_title"><i className="fa-solid fa-sack-dollar" />Customer value</h6>
-          <div className="cp_tiles">
+          <FoldTitle id="value" icon="fa-sack-dollar" label="Customer value" open={fold.value} onToggle={toggleFold}
+            summary={`Sales ${formatCurrency(valueSnapshot.total_deal_price)} · Service ${formatCurrency(valueSnapshot.total_repair_order_sale)}`} />
+          {fold.value && <div className="cp_tiles">
             <div className="cp_tile"><i className="fa-solid fa-car" /><span>Total sales</span><strong>{formatCurrency(valueSnapshot.total_deal_price)}</strong></div>
             <div className="cp_tile"><i className="fa-solid fa-screwdriver-wrench" /><span>Service (all-pay)</span><strong>{formatCurrency(valueSnapshot.total_repair_order_sale)}</strong></div>
             <div className="cp_tile"><i className="fa-solid fa-user-check" /><span>Service (customer-pay)</span><strong>{formatCurrency(valueSnapshot.total_repair_order_customer_sale)}</strong></div>
-          </div>
+          </div>}
         </section>
       </div>
     </div>
