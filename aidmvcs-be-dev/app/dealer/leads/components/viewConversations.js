@@ -880,22 +880,23 @@ export default function ViewConversations({
                       </span>
                     )}
                     {selectedConversation && getReplyChannel(lead, activeChannelTab, stoppedChannels) && replyAllowed && (
-                      <Button variant="custom" size="sm" onClick={() => setShowReplyModal(true)}>
-                        <i className="fa-regular fa-reply me-1"></i>
+                      <Button variant="custom" size="sm" className="act_sms" onClick={() => setShowReplyModal(true)}>
+                        <i className={actionsTarget ? "fa-duotone fa-comment-sms" : "fa-regular fa-reply me-1"}></i>
                         {getReplyChannel(lead, activeChannelTab, stoppedChannels) === 'sms' ? 'SMS Reply' : 'Email Reply'}
                       </Button>
                     )}
-                    {lead?.phone && <CallButton phone={lead.phone} leadId={lead._id} dealerId={lead.dealer_id} size="sm" />}
-                    <Button variant="outline-warning" size="sm" className="text-nowrap" onClick={() => setShowNotesModal(true)}>
-                      <i className="fa-solid fa-sticky-note me-1"></i>Add Note
+                    {lead?.phone && <CallButton phone={lead.phone} leadId={lead._id} dealerId={lead.dealer_id} size="sm"
+                      className={actionsTarget ? "act_call" : ""} icon={actionsTarget ? "fa-duotone fa-phone-office" : null} />}
+                    <Button variant="outline-warning" size="sm" className="text-nowrap act_note" onClick={() => setShowNotesModal(true)}>
+                      <i className={actionsTarget ? "fa-duotone fa-note-sticky" : "fa-solid fa-sticky-note me-1"}></i>Add Note
                     </Button>
-                    <Button variant="outline-custom" size="sm" className="text-nowrap" onClick={() => setShowStatusModal(true)}>
-                      <i className="fa-solid fa-pen me-1"></i>Update Status
+                    <Button variant="outline-custom" size="sm" className="text-nowrap act_status" onClick={() => setShowStatusModal(true)}>
+                      <i className={actionsTarget ? "fa-duotone fa-right-left" : "fa-solid fa-pen me-1"}></i>Update Status
                     </Button>
                     {/* The Desk Log check-in, with this lead picked. */}
                     {showCheckIn && (
-                      <Button variant="outline-custom" size="sm" className="text-nowrap" href={`/dealer/desk-log?check_in=${lead._id}`}>
-                        <i className="fa-solid fa-right-to-bracket me-1"></i>Check in
+                      <Button variant="outline-custom" size="sm" className="text-nowrap act_visit" href={`/dealer/desk-log?check_in=${lead._id}`}>
+                        <i className={actionsTarget ? "fa-duotone fa-user-check" : "fa-solid fa-right-to-bracket me-1"}></i>Check in
                       </Button>
                     )}
                     {/* Client, 8 Oct 2026: from the lead, straight to the customer's 360 profile (not shown on the profile itself). */}
