@@ -6,6 +6,7 @@ import { Button } from "react-bootstrap";
 import { useUser } from "../../context/UserContext";
 import CustomerDetail from "./components/CustomerDetail";
 import CustomerSideList from "./components/CustomerSideList";
+import { BackButton } from "../../components/backLink";
 
 export default function CustomerDetailPage() {
   const { id } = useParams();
@@ -48,6 +49,7 @@ export default function CustomerDetailPage() {
     <div className="page_content">
       <div className="page_head">
         <div className="d-flex align-items-center flex-wrap gap-2">
+          <BackButton className="" />
           <h3 className="page_title mb-0 me-auto">Customer Details</h3>
           <div className="cust_nav">
             <Button variant="custom" size="sm" disabled={adjacentLoading || !previous}

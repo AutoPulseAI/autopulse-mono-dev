@@ -131,7 +131,7 @@ export async function leadSummaries(dealerId, leadIds) {
   const ids = [...new Set(leadIds.filter((id) => mongoose.isValidObjectId(id)))];
   if (!ids.length) return {};
   const leads = await Lead.find({ _id: { $in: ids }, dealer_id: String(dealerId) })
-    .select("name phone email vehicle_year vehicle_make vehicle_model fe_lead_status assigned_to")
+    .select("name phone email vehicle_year vehicle_make vehicle_model fe_lead_status assigned_to customer_id")
     .lean();
   return Object.fromEntries(leads.map((lead) => [String(lead._id), {
     name: lead.name || null,
@@ -139,5 +139,6 @@ export async function leadSummaries(dealerId, leadIds) {
     email: lead.email || null,
     vehicle: [lead.vehicle_year, lead.vehicle_make, lead.vehicle_model].filter(Boolean).join(" ") || null,
     crm_status: lead.fe_lead_status || null,
+    customer_id: lead.customer_id ? String(lead.customer_id) : null,
   }]));
 }
