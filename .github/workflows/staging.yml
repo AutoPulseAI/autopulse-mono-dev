@@ -1,0 +1,153 @@
+name: Deploy to Contabo (staging)
+
+# Pushes to `staging` deploy the CRM + AI to the Contabo staging box, pointed at the scaled rs0 DB.
+# Mirrors the proven on-box build/swap of deploy.yml (AWS), but: targets Contabo, writes each app's
+# .env from a GitHub secret (the box has no pre-set .env), and uses staging ports / PM2 names.
+#
+# Secrets (repo -> Settings -> Secrets and variables -> Actions -> New repository secret):
+#   SERVER_HOST       Contabo host/IP
+#   SERVER_USER       SSH user on the Contabo box
+#   SERVER_SSH_KEY    that user's private SSH key (whole key, multiline)
+#   STAGING_CRM_ENV   the ENTIRE CRM .env pasted as one secret (incl. MONGODB_URI -> rs0, SES keys, scaling vars)
+#   STAGING_AI_ENV    the ENTIRE AI .env pasted as one secret (incl. MONGODB_URI -> rs0)
+# To change any env value later: edit the secret, re-run this workflow.
+#
+# Variables (optional, same screen -> Variables tab) override the defaults below:
+#   STAGING_APP_ROOT, STAGING_CRM_PORT, STAGING_AI_PORT
+#
+# CONFIRM against the Contabo box before the first real run (needs the box / its access):
+#   - node 20+, npm, python3 + venv, and pm2 are installed and on PATH for SERVER_USER
+#   - the SAQ worker launch command (marked CONFIRM below) matches how AWS starts `agentic-worker`
+#   - STAGING_APP_ROOT is writable by SERVER_USER and the ports are free (not the connect app's :8090)
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging-contabo
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SSH: ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new
+      TARGET: ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}
+      APP_ROOT: ${{ vars.STAGING_APP_ROOT || '/opt/autopulse-staging' }}
+      CRM_PORT: ${{ vars.STAGING_CRM_PORT || '3101' }}
+      AI_PORT: ${{ vars.STAGING_AI_PORT || '8101' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Guard — required secrets present
+        run: |
+          for s in SERVER_HOST SERVER_USER SERVER_SSH_KEY STAGING_CRM_ENV STAGING_AI_ENV; do
+            eval "v=\${$s:-}"; [ -n "$v" ] || { echo "Missing secret: $s"; exit 1; }
+          done
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          STAGING_CRM_ENV: ${{ secrets.STAGING_CRM_ENV }}
+          STAGING_AI_ENV: ${{ secrets.STAGING_AI_ENV }}
+
+      - name: Set up SSH
+        env:
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SERVER_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.SERVER_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Prepare app root
+        run: $SSH "$TARGET" "mkdir -p '$APP_ROOT/aidmvcs-be-dev' '$APP_ROOT/agentic-upsell'"
+
+      # --- CRM (aidmvcs-be-dev): ship source, write .env from the secret, build on the box, (re)start PM2 ---
+      # The env secret goes over its OWN ssh call (stdin = the secret). It must not share stdin with the
+      # deploy script heredoc, or `cat > .env` would swallow the script instead of the secret.
+      - name: Deploy CRM
+        env:
+          CRM_ENV: ${{ secrets.STAGING_CRM_ENV }}
+        run: |
+          rsync -az --delete -e "$SSH" \
+            --exclude='.env*' --exclude='node_modules' --exclude='.next' --exclude='logs' \
+            aidmvcs-be-dev/ "$TARGET:$APP_ROOT/aidmvcs-be-dev/"
+          printf '%s\n' "$CRM_ENV" | \
+            $SSH "$TARGET" "install -m 600 /dev/null '$APP_ROOT/aidmvcs-be-dev/.env' && cat > '$APP_ROOT/aidmvcs-be-dev/.env'"
+          $SSH "$TARGET" "APP_ROOT='$APP_ROOT' CRM_PORT='$CRM_PORT' bash -s" <<'REMOTE'
+          set -euo pipefail
+          export PATH=/opt/node-22/bin:$PATH   # same private Node 22 the connect apps use; global Node 18 untouched
+          NODE=/opt/node-22/bin/node           # Next 16 needs Node >= 20.9 -> pin pm2's interpreter explicitly
+          APP="$APP_ROOT/aidmvcs-be-dev"
+          cd "$APP"
+          npm ci --no-audit --no-fund
+          rm -rf .next && npm run build
+          # start (first time) or restart with the staging name + port
+          if pm2 describe aidmvcs-be-staging >/dev/null 2>&1; then
+            pm2 restart aidmvcs-be-staging --update-env
+          else
+            pm2 start node_modules/next/dist/bin/next --name aidmvcs-be-staging --interpreter "$NODE" -- start -p "$CRM_PORT"
+          fi
+          # worker loads .env from its cwd via dotenv.config()
+          if pm2 describe aidmvcs-worker-staging >/dev/null 2>&1; then
+            pm2 restart aidmvcs-worker-staging --update-env
+          else
+            pm2 start app/worker/worker.js --name aidmvcs-worker-staging --interpreter "$NODE"
+          fi
+          # health check
+          ok=false
+          for i in $(seq 1 30); do curl -sf "http://127.0.0.1:$CRM_PORT/dealer" >/dev/null && { ok=true; break; }; sleep 2; done
+          $ok || { echo "CRM did not come up on :$CRM_PORT"; pm2 logs aidmvcs-be-staging --lines 40 --nostream; exit 1; }
+          pm2 save
+          echo "CRM staging deployed on :$CRM_PORT"
+          REMOTE
+
+      # --- AI (agentic-upsell): ship source, write .env, venv install, (re)start API + worker ---
+      - name: Deploy AI
+        env:
+          AI_ENV: ${{ secrets.STAGING_AI_ENV }}
+        run: |
+          rsync -az --delete -e "$SSH" \
+            --exclude='.env*' --exclude='venv' --exclude='.venv' --exclude='__pycache__' --exclude='*.egg-info' \
+            agentic-upsell/ "$TARGET:$APP_ROOT/agentic-upsell/"
+          printf '%s\n' "$AI_ENV" | \
+            $SSH "$TARGET" "install -m 600 /dev/null '$APP_ROOT/agentic-upsell/.env' && cat > '$APP_ROOT/agentic-upsell/.env'"
+          $SSH "$TARGET" "APP_ROOT='$APP_ROOT' AI_PORT='$AI_PORT' bash -s" <<'REMOTE'
+          set -euo pipefail
+          export PATH=/opt/node-22/bin:$PATH
+          APP="$APP_ROOT/agentic-upsell"
+          cd "$APP"
+          # pyproject requires Python >= 3.11 (Dockerfile: python:3.11). The box's system python3 is 3.10,
+          # so use a private 3.11 (/opt/python/python3.11, or python3.11 on PATH). System python untouched.
+          PY=""
+          for c in /opt/python/python3.11 python3.11 python3.12; do command -v "$c" >/dev/null 2>&1 && { PY="$c"; break; }; done
+          [ -n "$PY" ] || { echo "No Python >= 3.11 on the box (expected /opt/python/python3.11). See STAGING-CONTABO-PLAN.md."; exit 1; }
+          # rebuild the venv if it was made with the wrong Python
+          if [ -d venv ] && ! venv/bin/python -c 'import sys; sys.exit(0 if sys.version_info >= (3,11) else 1)'; then rm -rf venv; fi
+          [ -d venv ] || "$PY" -m venv venv
+          venv/bin/pip install -q -e .
+          # API (config.py reads .env from the cwd). --interpreter none: these are venv console scripts, not node.
+          if pm2 describe agentic-upsell-staging >/dev/null 2>&1; then
+            pm2 restart agentic-upsell-staging --update-env
+          else
+            pm2 start venv/bin/uvicorn --name agentic-upsell-staging --interpreter none -- upsell_agent.main:app --host 127.0.0.1 --port "$AI_PORT"
+          fi
+          # Worker (SAQ) — entrypoint per worker/main.py docstring
+          if pm2 describe agentic-worker-staging >/dev/null 2>&1; then
+            pm2 restart agentic-worker-staging --update-env
+          else
+            pm2 start venv/bin/saq --name agentic-worker-staging --interpreter none -- upsell_agent.worker.main.settings
+          fi
+          ok=false
+          for i in $(seq 1 30); do curl -sf "http://127.0.0.1:$AI_PORT/health" >/dev/null && { ok=true; break; }; sleep 2; done
+          $ok || { echo "AI did not come up on :$AI_PORT"; pm2 logs agentic-upsell-staging --lines 40 --nostream; exit 1; }
+          pm2 save
+          echo "AI staging deployed on :$AI_PORT"
+          REMOTE
+
+      - name: Status
+        if: always()
+        run: $SSH "$TARGET" 'pm2 status' || true
