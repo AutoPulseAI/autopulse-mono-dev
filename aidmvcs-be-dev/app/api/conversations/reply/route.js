@@ -13,6 +13,8 @@ import { notifyAiOfStaffReply } from '@lib/ai/aiStaff';
 import jwt from 'jsonwebtoken';
 import { requireUser, requireDealerAccess } from "@lib/apiGuard";
 import { DEPARTMENT_NAMES, canReplyInDepartment, leadDepartment } from '@lib/departmentNames';
+import { cleanStaffMedia, emailWithPhotoLinks } from '@lib/staffMedia';
+import { mediaAttachments } from '@lib/ai/aiMessageRecord';
 
 function normalizeUserLanguage(raw) {
   const v = raw == null ? '' : String(raw).trim();
@@ -73,8 +75,11 @@ export async function POST(request) {
       content,
       subject,
       communicationType,
-      originalMessage
+      originalMessage,
+      media_urls: rawMediaUrls,
     } = await request.json();
+    // Vehicle photos picked in the reply window (app/lib/staffMedia.js).
+    const mediaUrls = cleanStaffMedia(rawMediaUrls);
 
     // Validate required fields
     if ((!parent_message_id && !leadId) || !content || !communicationType) {
@@ -276,7 +281,7 @@ export async function POST(request) {
         sentMessageId = await sendEmail(
           to,
           subjectToSend,
-          contentToSend,
+          emailWithPhotoLinks(contentToSend, mediaUrls),
           from,
           latestMessageId,
           dealer,
@@ -285,7 +290,7 @@ export async function POST(request) {
         );
         console.log('Email sent successfully. Message ID:', sentMessageId);
       } else if (communicationType === 'sms') {
-        sentMessageId = await sendSMS(to, contentToSend, dealer, [],
+        sentMessageId = await sendSMS(to, contentToSend, dealer, mediaUrls,
           { origin: 'staff', leadId: parentMessage?.lead_id || leadId || null });
         console.log('SMS sent successfully. Message ID:', sentMessageId);
       }
@@ -302,7 +307,8 @@ export async function POST(request) {
       sender: from,
       recipient: to,
       subject: communicationType === 'email' ? subjectToSend : undefined,
-      mail_content:  contentToSend,
+      mail_content: communicationType === 'email' ? emailWithPhotoLinks(contentToSend, mediaUrls) : contentToSend,
+      ...(mediaUrls.length ? { has_attachments: true, attachments: mediaAttachments(mediaUrls) } : {}),
     
       communication_type: communicationType,
       message_by: messageBy, // Set based on token verification (defaults to 'user')

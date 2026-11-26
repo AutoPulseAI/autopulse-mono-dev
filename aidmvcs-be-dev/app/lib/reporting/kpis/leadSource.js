@@ -41,9 +41,14 @@ export async function carsInStock(dealerId, now = new Date()) {
     const vin = String(c.vin || '').trim().toUpperCase();
     if (!vin) continue;
     const stock = String(c.stockNumber || c.stocknumber || c.stock_number || '').trim();
-    const feedAge = Number(c.age);
-    const days = Number.isFinite(feedAge) && feedAge >= 0 ? Math.round(feedAge)
-      : c.createdAt ? Math.max(0, Math.floor((now - new Date(c.createdAt)) / 86400000)) : null;
+    // The import stores the feed's Age as the in-stock date when it reads as a date (lib/import.js), else a number
+    // of days; with neither, the day the car first came in the feed.
+    const daysSince = (d) => Math.max(0, Math.floor((now - d) / 86400000));
+    const ageDate = c.age instanceof Date ? c.age : null;
+    const feedAge = typeof c.age === 'number' ? c.age : Number.NaN;
+    const days = ageDate && !Number.isNaN(ageDate.getTime()) ? daysSince(ageDate)
+      : Number.isFinite(feedAge) && feedAge >= 0 && feedAge < 5000 ? Math.round(feedAge)
+        : c.createdAt ? daysSince(new Date(c.createdAt)) : null;
     const car = [c.year, c.make, c.model].filter(Boolean).join(' ');
     byVin.set(vin, { vin, stock, car, days,
       label: [stock ? `#${stock}` : vin, car, days == null ? null : `${days} days in stock`].filter(Boolean).join(' · ') });

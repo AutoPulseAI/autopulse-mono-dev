@@ -3,6 +3,7 @@
 //   #12 reassigning several leads at once needs "Bulk Reassign Leads"; one lead needs only "Assign Leads".
 //   #23 a super admin pauses / deactivates a dealership: it and its staff can't sign in; history kept.
 //   #19 "view as" an employee: only the dealership / employee managers, only their own staff; the session is look-only.
+//   #16/#17 reply window: the car's photos and facts (any feed spelling), photos sent with the reply.
 //   #13 lead type: Internet / Phone / Walk-in / Campaign, else 'Not set' (no 'Other').
 //   #7 one search box on the Leads page: name, phone, email or stock number.
 //   #2 a lead is "tethered, not merged" to a customer with DealerVault (sale / service) history: own customer, shown as
@@ -49,6 +50,8 @@ const { upType } = await import('./app/lib/reporting/normalize.js');
 const { canReassign, ensureBulkReassignPermission, BULK_REASSIGN } = await import('./app/lib/bulkPermission.js');
 const { default: Permission } = await import('./app/models/Permission.js');
 const { default: Role } = await import('./app/models/Role.js');
+const { vehicleFacts } = await import('./app/lib/vehicleFacts.js');
+const { cleanStaffMedia, emailWithPhotoLinks } = await import('./app/lib/staffMedia.js');
 const { mayViewAs, viewAsWriteRequest, tokenPayload } = await import('./app/lib/viewAs.js');
 const { dealershipBlockedMessage, setDealershipState, PAUSED_MESSAGE } = await import('./app/lib/dealerAccountStatus.js');
 
@@ -137,6 +140,8 @@ db('#8 leads by car in stock: one group per car with stock #, car and days in st
   await Vehicle.create({ dealerId: DEALER, vin: 'AGED0000000000001', stockNumber: 'A1', year: 2019, make: 'Honda',
     model: 'Civic', age: 95 });
   await Vehicle.create({ dealerId: DEALER, vin: 'SOLD0000000000001', stockNumber: 'S1', removedAt: now });
+  await Vehicle.create({ dealerId: DEALER, vin: 'DATE0000000000001', stockNumber: 'D7', age: new Date(now - 10 * 86400000) });
+  await newLead({ name: 'Dated', vin: 'DATE0000000000001' });
   await newLead({ name: 'One', vin: 'aged0000000000001' });
   await newLead({ name: 'Two', vehicles_of_interest: [{ vin: 'AGED0000000000001' }] });
   await newLead({ name: 'Sold car', vin: 'SOLD0000000000001' });
@@ -144,9 +149,11 @@ db('#8 leads by car in stock: one group per car with stock #, car and days in st
   const day = now.toISOString().slice(0, 10);
   const r = await evaluateKpi('source.leads_by_car', { dealerId: DEALER, from: day, to: day, tz: 'UTC' }, {});
   assert.equal(r.state, 'live');
-  assert.equal(r.count, 2);
-  assert.deepEqual(r.breakdowns.car.map((g) => [g.key, g.count]), [['#A1 · 2019 Honda Civic · 95 days in stock', 2]]);
-  assert.equal(r.rows[0].stock, 'A1');
+  assert.equal(r.count, 3);
+  const groups = Object.fromEntries(r.breakdowns.car.map((g) => [g.key, g.count]));
+  assert.equal(groups['#A1 · 2019 Honda Civic · 95 days in stock'], 2);
+  assert.equal(groups['#D7 · 10 days in stock'], 1, 'the feed Age stored as the in-stock date');
+  assert.ok(r.rows.some((x) => x.stock === 'A1'));
 });
 
 test('#13 lead type has no "Other": unknown is "Not set"; campaign stays', () => {
@@ -210,4 +217,30 @@ test('#19 view as: who may view whom, and every change made with the view token 
   assert.equal(req('GET', '/api/leads', t), false);
   assert.equal(req('POST', '/api/leads/bulk-assign', normal), false);
   assert.equal(req('POST', '/api/auth/logout', t), false);
+});
+
+test('#16 vehicle facts read every feed spelling; only https photos; message lines ready to insert', () => {
+  const f = vehicleFacts({ year: 2021, make: 'Toyota', model: 'RAV4', stockNumber: 'T55', mileage: 35210, drive: 'AWD',
+    fuelType: 'Hybrid', exteriorcolor: 'White', internetreduced: 28995, vin: 'JT123',
+    imageUrls: 'https://img/1.jpg|http://img/2.jpg|https://img/1.jpg', shortUrl: 'https://autopulse.ai/v/abc' });
+  assert.equal(f.title, '2021 Toyota RAV4');
+  assert.deepEqual(f.photos, ['https://img/1.jpg']);
+  const text = Object.fromEntries(f.facts.map((x) => [x.key, x.text]));
+  assert.equal(text.miles, 'Miles: 35,210 miles');
+  assert.equal(text.drivetrain, 'Drivetrain: AWD');
+  assert.equal(text.fuel, 'Fuel: Hybrid');
+  assert.equal(text.price, 'Price: $28,995');
+  assert.equal(text.stock, 'Stock #: T55');
+  assert.equal(text.link, '2021 Toyota RAV4: https://autopulse.ai/v/abc');
+  assert.deepEqual(vehicleFacts({ imagesSecure: ['https://a/1.jpg'] }).photos, ['https://a/1.jpg']);
+});
+
+test('#16 photos sent with a reply: https only, no duplicates, at most 5; an email lists them as links', () => {
+  const many = Array.from({ length: 8 }, (_, i) => `https://img/${i}.jpg`);
+  assert.equal(cleanStaffMedia(many).length, 5);
+  assert.deepEqual(cleanStaffMedia(['http://x/1.jpg', 'ftp://x/2.jpg', 'https://a/1.jpg', 'https://a/1.jpg']),
+    ['https://a/1.jpg']);
+  assert.deepEqual(cleanStaffMedia('https://a/1.jpg'), []);
+  assert.equal(emailWithPhotoLinks('Hi', ['https://a/1.jpg']), 'Hi\n\nPhotos:\nhttps://a/1.jpg');
+  assert.equal(emailWithPhotoLinks('Hi', []), 'Hi');
 });

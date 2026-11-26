@@ -30,15 +30,18 @@ export async function GET(request) {
       { make: { $regex: search, $options: 'i' } },
       { model: { $regex: search, $options: 'i' } },
       { vin: { $regex: search, $options: 'i' } },
+      // The import stores stockNumber (lib/import.js); older / seeded records stocknumber / stock_number.
+      { stockNumber: { $regex: search, $options: 'i' } },
       { stocknumber: { $regex: search, $options: 'i' } },
-      { year: { $regex: search, $options: 'i' } }
+      { stock_number: { $regex: search, $options: 'i' } },
+      ...(/^\d{4}$/.test(search) ? [{ year: Number(search) }, { year: search }] : []),
     ];
   } else {
     // Use specific filters if no generic search
     if (vin) filter.vin = { $regex: vin, $options: 'i' };
     if (make) filter.make = { $regex: make, $options: 'i' };
     if (model) filter.model = { $regex: model, $options: 'i' };
-    if (stock) filter.stocknumber = { $regex: stock, $options: 'i' };
+    if (stock) filter.$or = ['stockNumber', 'stocknumber', 'stock_number'].map((f) => ({ [f]: { $regex: stock, $options: 'i' } }));
     if (year) filter.year = year;
   }
 
