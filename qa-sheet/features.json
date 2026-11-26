@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-26T22:24:32.482Z",
+ "generatedAt": "2026-11-26T22:33:59.020Z",
  "app": {
   "name": "AutoPulse CRM",
   "url": "https://www.autopulse.ai",
@@ -43,7 +43,7 @@
  "inventoryAt": "2026-11-26T22:19:58.664Z",
  "totals": {
   "sections": 81,
-  "features": 210,
+  "features": 211,
   "buttons": 749,
   "fields": 320
  },
@@ -2308,6 +2308,21 @@
      "code": "LEA-11"
     },
     {
+     "id": "dealer/leads.f.staff-opted-out",
+     "title": "Opted Out set by staff stops everything (like DND)",
+     "about": "The user, 27 Nov 2026.",
+     "steps": [
+      "On a test lead choose Update Status → Opted Out.",
+      "Try to reply by text and by email.",
+      "Text the lead's number from the test phone."
+     ],
+     "expect": "Both replies are refused with 'set to Opted Out by staff'; the AI sends nothing on any channel and does not move the lead off Opted Out when the customer writes; a customer's own STOP still stops only texts.",
+     "status": "live",
+     "auto": [],
+     "access": null,
+     "code": "LEA-12"
+    },
+    {
      "id": "dealer/leads.f.stopped",
      "title": "Stopped (AI paused) filter",
      "steps": [
@@ -2317,7 +2332,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-12"
+     "code": "LEA-13"
     },
     {
      "id": "dealer/leads.t.G-006",
@@ -2331,7 +2346,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-13"
+     "code": "LEA-14"
     },
     {
      "id": "dealer/leads.t.G-009",
@@ -2345,7 +2360,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-14"
+     "code": "LEA-15"
     },
     {
      "id": "dealer/leads.t.G-010",
@@ -2359,7 +2374,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-15"
+     "code": "LEA-16"
     },
     {
      "id": "dealer/leads.t.G-027",
@@ -2373,7 +2388,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-16"
+     "code": "LEA-17"
     },
     {
      "id": "dealer/leads.t.G-082",
@@ -2387,7 +2402,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-17"
+     "code": "LEA-18"
     },
     {
      "id": "dealer/leads.t.G-083",
@@ -2401,7 +2416,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-18"
+     "code": "LEA-19"
     },
     {
      "id": "dealer/leads.t.M25-03",
@@ -2415,7 +2430,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-19"
+     "code": "LEA-20"
     },
     {
      "id": "dealer/leads.t.M25-07",
@@ -2429,7 +2444,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-20"
+     "code": "LEA-21"
     },
     {
      "id": "dealer/leads.t.M25-10",
@@ -2443,7 +2458,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-21"
+     "code": "LEA-22"
     },
     {
      "id": "dealer/leads.t.M25-11",
@@ -2457,7 +2472,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-22"
+     "code": "LEA-23"
     },
     {
      "id": "dealer/leads.t.M25-12",
@@ -2471,7 +2486,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-23"
+     "code": "LEA-24"
     },
     {
      "id": "dealer/leads.t.M25-16",
@@ -2485,7 +2500,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-24"
+     "code": "LEA-25"
     },
     {
      "id": "dealer/leads.t.M25-17",
@@ -2499,7 +2514,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-25"
+     "code": "LEA-26"
     },
     {
      "id": "dealer/leads.t.M25-18",
@@ -2513,7 +2528,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-26"
+     "code": "LEA-27"
     }
    ],
    "buttons": [

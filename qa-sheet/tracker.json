@@ -1145,8 +1145,8 @@
   },
   "M25-27": {
    "feature": "Status change fires a task / AI action and shows in the timeline",
-   "status": "Partly done",
-   "live": "Yes",
+   "status": "Done",
+   "live": "After merge",
    "where": "Lead timeline",
    "order": "Meeting 25 Nov"
   },
