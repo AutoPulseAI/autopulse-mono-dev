@@ -1019,7 +1019,7 @@
   },
   "M25-09": {
    "feature": "Good vs bad leads in reports (no bad-lead status)",
-   "status": "Waiting for Betsy",
+   "status": "Not doing (not requested)",
    "live": "No",
    "where": "-",
    "order": "Meeting 25 Nov"
@@ -1054,8 +1054,8 @@
   },
   "M25-14": {
    "feature": "Trade-in from the conversation on the Desk Log",
-   "status": "Open",
-   "live": "No",
+   "status": "Done",
+   "live": "After merge",
    "where": "Desk Log Trade column",
    "order": "Meeting 25 Nov"
   },
@@ -1145,8 +1145,8 @@
   },
   "M25-27": {
    "feature": "Status change fires a task / AI action and shows in the timeline",
-   "status": "Open",
-   "live": "No",
+   "status": "Partly done",
+   "live": "Yes",
    "where": "Lead timeline",
    "order": "Meeting 25 Nov"
   },
@@ -1159,8 +1159,15 @@
   },
   "M25-29": {
    "feature": "Where customers' email replies to staff land",
-   "status": "Open",
-   "live": "No",
+   "status": "Partly done",
+   "live": "Yes",
+   "where": "Lead conversation",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-30": {
+   "feature": "Old CRM customer messages removed for good (AI off = nothing automatic)",
+   "status": "Done",
+   "live": "After merge",
    "where": "-",
    "order": "Meeting 25 Nov"
   }
