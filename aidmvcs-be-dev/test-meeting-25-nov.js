@@ -2,6 +2,7 @@
 //   #8 inventory report: leads by car in stock (stock #, days in stock).
 //   #12 reassigning several leads at once needs "Bulk Reassign Leads"; one lead needs only "Assign Leads".
 //   #23 a super admin pauses / deactivates a dealership: it and its staff can't sign in; history kept.
+//   #19 "view as" an employee: only the dealership / employee managers, only their own staff; the session is look-only.
 //   #13 lead type: Internet / Phone / Walk-in / Campaign, else 'Not set' (no 'Other').
 //   #7 one search box on the Leads page: name, phone, email or stock number.
 //   #2 a lead is "tethered, not merged" to a customer with DealerVault (sale / service) history: own customer, shown as
@@ -48,6 +49,7 @@ const { upType } = await import('./app/lib/reporting/normalize.js');
 const { canReassign, ensureBulkReassignPermission, BULK_REASSIGN } = await import('./app/lib/bulkPermission.js');
 const { default: Permission } = await import('./app/models/Permission.js');
 const { default: Role } = await import('./app/models/Role.js');
+const { mayViewAs, viewAsWriteRequest, tokenPayload } = await import('./app/lib/viewAs.js');
 const { dealershipBlockedMessage, setDealershipState, PAUSED_MESSAGE } = await import('./app/lib/dealerAccountStatus.js');
 
 const DEALER = new mongoose.Types.ObjectId().toString();
@@ -186,4 +188,26 @@ db('#23 pause a dealership: reason required, its staff are refused, history kept
   const h = (await User.findById(shop._id).lean()).account_status_history;
   assert.deepEqual(h.map((x) => [x.from, x.to, x.by_name]), [['active', 'paused', 'Betsy'], ['paused', 'active', 'Betsy']]);
   assert.equal(h[0].reason, 'Unpaid invoice');
+});
+
+test('#19 view as: who may view whom, and every change made with the view token is refused', async () => {
+  const { default: jwt } = await import('jsonwebtoken');
+  const shop = { _id: 'S1', type: 'dealer', parent_id: null };
+  const mercy = { _id: 'M1', type: 'dealer', parent_id: 'S1' };
+  const boss = { _id: 'B1', type: 'dealer', parent_id: 'S1' };
+  const otherShopStaff = { _id: 'X1', type: 'dealer', parent_id: 'S2' };
+  assert.equal(mayViewAs(shop, mercy), true);
+  assert.equal(mayViewAs(boss, mercy, ['Manage Employee']), true);
+  assert.equal(mayViewAs(boss, mercy, ['Manage Leads']), false);
+  assert.equal(mayViewAs(shop, otherShopStaff), false, 'another dealership\'s staff');
+  assert.equal(mayViewAs(mercy, shop), false, 'not the dealership account itself');
+  const t = jwt.sign({ userId: 'M1', type: 'dealer', view_as: true }, 'k');
+  const normal = jwt.sign({ userId: 'M1', type: 'dealer' }, 'k');
+  assert.equal(tokenPayload(t).view_as, true);
+  const req = (method, pathname, token) => viewAsWriteRequest({ method, pathname, authorization: `Bearer ${token}` });
+  assert.equal(req('POST', '/api/leads/bulk-assign', t), true);
+  assert.equal(req('PUT', '/api/customers/x', t), true);
+  assert.equal(req('GET', '/api/leads', t), false);
+  assert.equal(req('POST', '/api/leads/bulk-assign', normal), false);
+  assert.equal(req('POST', '/api/auth/logout', t), false);
 });
