@@ -85,7 +85,7 @@ export function outcomeEffect(choice) {
 
 export const TYPE_CLASS = { Internet: "internet", Phone: "phone", "Walk-in": "walk_in" };
 export const TYPE_LABEL = { Internet: "Internet", Phone: "Phone Up", "Walk-in": "Walk-In", Campaign: "Campaign",
-  Other: "Other" };
+  "Not set": "Not set" };
 
 export const vehicleText = (v) => [v?.year, v?.make, v?.model, v?.trim].filter(Boolean).join(" ");
 
