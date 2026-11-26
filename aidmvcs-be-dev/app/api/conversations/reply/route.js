@@ -201,6 +201,16 @@ export async function POST(request) {
       }
     }
 
+    // Staff set the lead to "Opted Out" by hand: nothing goes to this customer on any channel, like DND (the user,
+    // 27 Nov 2026). The AI's own "Opted Out" (a customer's STOP) is per channel and checked just above.
+    if (parentMessage.lead_id) {
+      const optLead = await Lead.findById(parentMessage.lead_id).select('fe_lead_status status_source').lean();
+      if (optLead?.fe_lead_status === 'Opted Out' && optLead?.status_source === 'staff') {
+        return NextResponse.json({ message: 'This lead was set to Opted Out by staff, so nothing is sent to this customer. '
+          + 'Change the status first if they asked to be contacted again.' }, { status: 403 });
+      }
+    }
+
     if (parentMessage.lead_id && ['sms', 'email'].includes(communicationType)) {
       // Ebony Mingo, 30 Oct 2026: "Please stop" on 26 Oct, and a staff text still reached her - this check only knew
       // STOP / unsubscribe, not a stop on the lead. It ends when the customer writes to us again.

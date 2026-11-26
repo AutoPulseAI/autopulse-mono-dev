@@ -190,8 +190,11 @@ async def _find(db: DealerScopedDatabase, collection: str, doc_id: str | None) -
 
 def _is_dnd(lead: dict | None) -> bool:
     lead = lead or {}
-    return any(str(lead.get(k) or "").strip().lower() in DND_STATUSES
-               for k in ("fe_lead_status", "lead_status", "status"))
+    if any(str(lead.get(k) or "").strip().lower() in DND_STATUSES for k in ("fe_lead_status", "lead_status", "status")):
+        return True
+    # Staff set "Opted Out" by hand (status_source 'staff'): every channel stops, like DND (the user, 27 Nov 2026).
+    # The AI's own "Opted Out" (a customer's STOP, status_source 'ai') stays per channel: rule 2 reads the stops.
+    return str(lead.get("fe_lead_status") or "") == "Opted Out" and lead.get("status_source") == "staff"
 
 
 _DND_PATTERN = {"$regex": r"^\s*(dnd|do not disturb|do not contact)\s*$", "$options": "i"}

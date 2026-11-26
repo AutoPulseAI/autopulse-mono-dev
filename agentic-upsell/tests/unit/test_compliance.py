@@ -180,6 +180,16 @@ async def test_a_paused_dealership_holds_every_message_until_it_is_reactivated(m
     assert (await _check(created, is_reply=True)).outcome == "ALLOW"
 
 
+def test_staff_opted_out_is_a_full_stop_but_the_ais_own_opted_out_is_not():
+    """The user, 27 Nov 2026: staff picking "Opted Out" by hand stops every channel, like DND."""
+    from upsell_agent.compliance.engine import _is_dnd
+    from upsell_agent.agent import lifecycle
+    assert _is_dnd({"fe_lead_status": "Opted Out", "status_source": "staff"})
+    assert not _is_dnd({"fe_lead_status": "Opted Out", "status_source": "ai"})
+    assert _is_dnd({"fe_lead_status": "DND"})
+    assert lifecycle.STAFF_STATUS_EVENTS["Opted Out"] == "opted_out"
+
+
 async def test_reply_in_an_outbound_conversation_at_night_asks_nothing(mongo, dealers):
     set_clock(ny(22, 23, 30))
     created = await _lead(mongo, source="campaign")

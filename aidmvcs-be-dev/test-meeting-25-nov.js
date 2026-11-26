@@ -50,6 +50,9 @@ const { upType } = await import('./app/lib/reporting/normalize.js');
 const { canReassign, ensureBulkReassignPermission, BULK_REASSIGN } = await import('./app/lib/bulkPermission.js');
 const { default: Permission } = await import('./app/models/Permission.js');
 const { default: Role } = await import('./app/models/Role.js');
+const { staffOptedOut } = await import('./app/lib/compliance/eligibility.js');
+const { closedStatusConflict } = await import('./app/lib/ai/aiDnd.js');
+const { STAFF_OWNED_STATUSES } = await import('./app/lib/ai/aiStaff.js');
 const { conversationTrades } = await import('./app/lib/deskLog/list.js');
 const { contactGate } = await import('./app/lib/compliance/eligibility.js');
 const { legacyAutoReplyOn } = await import('./app/lib/legacyAutoReply.js');
@@ -280,4 +283,37 @@ db('#14 Desk Log trade from the conversation: the AI\'s current trade-in facts w
   const m = await conversationTrades([String(cust)], [String(lead)]);
   assert.deepEqual(m.get(String(cust)), { from_conversation: true, year: 2019, make: 'GMC', model: 'Terrain' });
   assert.equal((await conversationTrades([String(new mongoose.Types.ObjectId())])).size, 0);
+});
+
+test('staff picking Opted Out stops every channel like DND; the AI\'s own Opted Out stays per channel and reversible', () => {
+  assert.equal(staffOptedOut({ fe_lead_status: 'Opted Out', status_source: 'staff' }), true);
+  assert.equal(staffOptedOut({ fe_lead_status: 'Opted Out', status_source: 'ai' }), false);
+  assert.ok(STAFF_OWNED_STATUSES.includes('Opted Out'), 'the AI is told');
+  assert.equal(closedStatusConflict({ status: 'Lead Not Contacted', current: 'Opted Out', currentSource: 'staff' }),
+    'staff_status_kept');
+  assert.equal(closedStatusConflict({ status: 'Lead Not Contacted', current: 'Opted Out', currentSource: 'ai' }), null);
+});
+
+db('staff Opted Out: the contact check stops texts AND emails to that customer', async () => {
+  const shop = await User.create({ name: 'Optout Motors', email: `o${Date.now()}@x.test`, password: 'x', type: 'dealer' });
+  const { default: ContactPolicy } = await import('./app/models/ContactPolicy.js');
+  await ContactPolicy.create({ dealer_id: String(shop._id), mode: 'enforce' });
+  await Lead.create({ dealer_id: String(shop._id), name: 'Stop Me', phone: '+17185550188', email: 'stop@x.test',
+    fe_lead_status: 'Opted Out', status_source: 'staff' });
+  const sms = await contactGate({ dealerId: String(shop._id), channel: 'sms', to: '+17185550188', origin: 'staff' });
+  const mail = await contactGate({ dealerId: String(shop._id), channel: 'email', to: 'stop@x.test', origin: 'staff' });
+  assert.equal(sms.stop, true);
+  assert.ok(sms.reasons.includes('dnd'));
+  assert.equal(mail.stop, true);
+});
+
+db('staff Opted Out stops sends even in log-only mode (campaigns, automations)', async () => {
+  const shop = await User.create({ name: 'LogOnly Motors', email: `l${Date.now()}@x.test`, password: 'x', type: 'dealer' });
+  await Lead.create({ dealer_id: String(shop._id), name: 'Stop Me Too', phone: '+17185550177', fe_lead_status: 'Opted Out',
+    status_source: 'staff' });
+  await Lead.create({ dealer_id: String(shop._id), name: 'Ai Stop', phone: '+17185550166', fe_lead_status: 'Opted Out',
+    status_source: 'ai' });
+  assert.equal((await contactGate({ dealerId: String(shop._id), channel: 'sms', to: '7185550177' })).stop, true);
+  assert.equal((await contactGate({ dealerId: String(shop._id), channel: 'sms', to: '7185550166' })).stop, false,
+    'the AI\'s per-channel Opted Out is not turned into a full stop');
 });
