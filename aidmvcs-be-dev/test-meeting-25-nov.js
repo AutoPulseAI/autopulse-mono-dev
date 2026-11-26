@@ -50,6 +50,7 @@ const { upType } = await import('./app/lib/reporting/normalize.js');
 const { canReassign, ensureBulkReassignPermission, BULK_REASSIGN } = await import('./app/lib/bulkPermission.js');
 const { default: Permission } = await import('./app/models/Permission.js');
 const { default: Role } = await import('./app/models/Role.js');
+const { conversationTrades } = await import('./app/lib/deskLog/list.js');
 const { contactGate } = await import('./app/lib/compliance/eligibility.js');
 const { legacyAutoReplyOn } = await import('./app/lib/legacyAutoReply.js');
 const { vehicleFacts } = await import('./app/lib/vehicleFacts.js');
@@ -264,4 +265,19 @@ db('#23 a paused dealership sends nothing: every text / email of it and of its s
 test('old CRM auto-replies are gone for good: no switch turns them back on', () => {
   assert.equal(legacyAutoReplyOn({ LEGACY_N8N_AUTOREPLY: 'true' }), false);
   assert.equal(legacyAutoReplyOn(), false);
+});
+
+db('#14 Desk Log trade from the conversation: the AI\'s current trade-in facts when there is no trade-in record', async () => {
+  const cust = new mongoose.Types.ObjectId();
+  const lead = new mongoose.Types.ObjectId();
+  const facts = mongoose.connection.db.collection('qualification_facts');
+  await facts.insertMany([
+    { dealer_id: DEALER, customer_id: String(cust), lead_id: null, path: 'trade_in.year', value: 2019, valid_to: null },
+    { dealer_id: DEALER, customer_id: String(cust), lead_id: null, path: 'trade_in.make', value: 'GMC', valid_to: null },
+    { dealer_id: DEALER, customer_id: String(cust), lead_id: null, path: 'trade_in.model', value: 'Terrain', valid_to: null },
+    { dealer_id: DEALER, customer_id: String(cust), lead_id: null, path: 'trade_in.make', value: 'Ford', valid_to: new Date() },
+  ]);
+  const m = await conversationTrades([String(cust)], [String(lead)]);
+  assert.deepEqual(m.get(String(cust)), { from_conversation: true, year: 2019, make: 'GMC', model: 'Terrain' });
+  assert.equal((await conversationTrades([String(new mongoose.Types.ObjectId())])).size, 0);
 });

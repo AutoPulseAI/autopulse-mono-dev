@@ -218,7 +218,10 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                   </td>
                   <td><Clip text={row.stock_number}>{row.stock_number || <span className="text-muted">-</span>}</Clip></td>
                   <td><span className="dl_clamp2" title={vehicle || undefined}>{vehicle || <span className="text-muted">-</span>}</span></td>
-                  <td><span className="dl_clamp2" title={trade || undefined}>{trade || <span className="text-muted">-</span>}</span></td>
+                  <td><span className="dl_clamp2" title={row.trade?.from_conversation ? "From the conversation (no trade-in record yet)" : trade || undefined}>
+                    {trade || <span className="text-muted">-</span>}
+                    {trade && row.trade?.from_conversation && <small className="d-block text-muted">from the conversation</small>}
+                  </span></td>
                   <td><span className="dl_type" style={typeStyle}>{TYPE_LABEL[row.lead_type] || row.lead_type || "-"}</span></td>
                   <td>
                     {row.source ? (
