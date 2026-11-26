@@ -960,6 +960,209 @@
    "live": "Yes (main 98c7922, 19 Nov 2026)",
    "where": "Admin > Forms Library: upload a scan",
    "order": "4 Forms"
+  },
+  "M25-01": {
+   "feature": "Customer name opens the customer profile",
+   "status": "Done",
+   "live": "Yes",
+   "where": "Tasks, Call Tasks, Desk Log, Appointments today: click the name",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-02": {
+   "feature": "Lead linked, not merged, to a sales/service customer (manager confirms)",
+   "status": "Done",
+   "live": "After merge",
+   "where": "Customer profile > Possible match; Customers > Possible duplicates",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-03": {
+   "feature": "Leads search box keeps the cursor while typing a phone number",
+   "status": "Done",
+   "live": "After merge",
+   "where": "Leads > search box",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-04": {
+   "feature": "Desk Log cards match the Dashboard",
+   "status": "Waiting for Betsy",
+   "live": "No",
+   "where": "Desk Log cards",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-05": {
+   "feature": "Contact compliance lists dealerships only",
+   "status": "Done",
+   "live": "After merge",
+   "where": "Admin > Contact compliance",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-06": {
+   "feature": "Merge / unmerge duplicates, who merged",
+   "status": "Done",
+   "live": "After merge",
+   "where": "Customers > Possible duplicates > Recent merges (By column, Undo)",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-07": {
+   "feature": "One search box: name, phone, email or stock #",
+   "status": "Done",
+   "live": "After merge",
+   "where": "Leads > search box",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-08": {
+   "feature": "Inventory report: leads per car in stock, days in stock",
+   "status": "Done",
+   "live": "After merge",
+   "where": "Dashboard > Lead sources > Leads by car in stock",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-09": {
+   "feature": "Good vs bad leads in reports (no bad-lead status)",
+   "status": "Waiting for Betsy",
+   "live": "No",
+   "where": "-",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-10": {
+   "feature": "Filter leads by who they are assigned to (for bulk reassign)",
+   "status": "Done",
+   "live": "After merge",
+   "where": "Leads > Assigned to filter",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-11": {
+   "feature": "Undo a reassignment later",
+   "status": "Done",
+   "live": "Yes",
+   "where": "Leads > Actions > Bulk history > Undo",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-12": {
+   "feature": "Bulk reassign is its own permission",
+   "status": "Done",
+   "live": "After merge",
+   "where": "Admin > Employee Roles > Bulk Reassign Leads",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-13": {
+   "feature": "Lead type Internet / Phone / Walk-in (no Other)",
+   "status": "Done",
+   "live": "After merge",
+   "where": "Desk Log lead type; reports",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-14": {
+   "feature": "Trade-in from the conversation on the Desk Log",
+   "status": "Open",
+   "live": "No",
+   "where": "Desk Log Trade column",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-15": {
+   "feature": "Check-in button exactly as the design",
+   "status": "Open",
+   "live": "No",
+   "where": "Desk Log",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-16": {
+   "feature": "Reply box in the conversation (chat style), customer left / ours right",
+   "status": "Done",
+   "live": "After merge",
+   "where": "Lead conversation",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-17": {
+   "feature": "Attach vehicle: photos and facts",
+   "status": "Done",
+   "live": "After merge",
+   "where": "Reply window > Attach Vehicle",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-18": {
+   "feature": "One-click dealer links (credit application...)",
+   "status": "Done",
+   "live": "After merge",
+   "where": "Reply window > Send a link",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-19": {
+   "feature": "Templates set up",
+   "status": "Waiting for Betsy",
+   "live": "No",
+   "where": "Message Template",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-20": {
+   "feature": "Shorter side menu: Sales and Service groups",
+   "status": "Done",
+   "live": "After merge",
+   "where": "Left menu",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-21": {
+   "feature": "View as an employee",
+   "status": "Done",
+   "live": "After merge",
+   "where": "Admin > Employee Management > eye button",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-22": {
+   "feature": "Roles: sales/service manager, rep, BDC; marketing user",
+   "status": "Waiting for Betsy",
+   "live": "No",
+   "where": "-",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-23": {
+   "feature": "Lead assignment rules (round robin, bucket, manager)",
+   "status": "Waiting for Betsy",
+   "live": "No",
+   "where": "-",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-24": {
+   "feature": "Schedules: no lead / task on a day off",
+   "status": "Partly done",
+   "live": "Yes",
+   "where": "Employee schedule",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-25": {
+   "feature": "Service staff see only service, sales only sales",
+   "status": "Waiting for Betsy",
+   "live": "No",
+   "where": "-",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-26": {
+   "feature": "Pause / deactivate a dealership",
+   "status": "Done",
+   "live": "After merge",
+   "where": "Admin > Dealers > ... menu",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-27": {
+   "feature": "Status change fires a task / AI action and shows in the timeline",
+   "status": "Open",
+   "live": "No",
+   "where": "Lead timeline",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-28": {
+   "feature": "Click-to-call: counts, duration, desk phone, CarWars / CallRevu",
+   "status": "Open",
+   "live": "No",
+   "where": "-",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-29": {
+   "feature": "Where customers' email replies to staff land",
+   "status": "Open",
+   "live": "No",
+   "where": "-",
+   "order": "Meeting 25 Nov"
   }
  }
 }
