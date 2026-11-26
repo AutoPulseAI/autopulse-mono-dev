@@ -76,7 +76,8 @@ export async function senderFor(dealerId, env = process.env) {
 // production). Returns the provider message id.
 export async function defaultSend({ to, subject, html, env = process.env, dealerId = null }) {
   const { sendEmail } = await import('../email.js');
-  return sendEmail(to, subject, html, await senderFor(dealerId, env), null, null);
+  // dealerId: a paused dealership's report is not sent (app/lib/compliance/eligibility.js contactGate).
+  return sendEmail(to, subject, html, await senderFor(dealerId, env), null, null, [], { dealerId });
 }
 
 function isFinishedDay(reportDate, tz, now) {

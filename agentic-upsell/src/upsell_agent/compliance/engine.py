@@ -363,6 +363,17 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
                   lead_id: str | None, channel: str, purpose: Purpose, is_reply: bool, at: datetime,
                   to: str | None, lead: dict | None, customer: dict | None, campaign: bool,
                   origin: LeadOrigin) -> Decision:
+    # 0. A paused / deactivated dealership (Admin > Dealers; the user, 27 Nov 2026: "when the dealership is paused, it
+    # should pause everything"). Nothing goes out, the opt-out confirmation included; the message is HELD, not dropped,
+    # and is looked at again a day later - after a reactivation it goes through every check again.
+    from upsell_agent.integrations.dealer_mode import dealer_account_state
+    state = await dealer_account_state(dealer_id)
+    if state != "active":
+        check("dealership_active", False, f"the dealership is {state}")
+        return Decision("HOLD", f"the dealership is {state}: nothing is sent until it is reactivated",
+                        "dealership_paused", until=at + timedelta(days=1))
+    check("dealership_active", True, "the dealership is active")
+
     # 1. AI voice.
     if channel == "voice":
         check("ai_voice", False, "AI voice calls are a separate, higher-risk channel and are off")

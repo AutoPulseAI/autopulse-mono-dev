@@ -2,8 +2,12 @@
 // complying ... or not adhering to their contract. I need to be able to either pause them or deactivate them.").
 // A super admin sets it on Admin > Dealers. Paused or deactivated: the dealership account and all its staff can't sign
 // in, and a signed-in session stops at its next page load. AutoPulse's "login as" still works, so support can look.
-// Nothing else changes: leads, data and the AI's settings stay as they are (the AI is switched in Admin > AI mode).
+// Everything stops too (the user, 27 Nov 2026: "it should pause everything for the messages, email, activities"): no
+// text or email leaves for it - AI, staff, campaigns, alerts, the daily report (compliance/eligibility.js contactGate)
+// - and the AI holds its messages instead of sending them (agentic-upsell compliance/engine.py rule 0). Incoming
+// leads and messages are still saved. Reactivating restarts everything; the AI's held messages are checked again.
 import User from '../models/User.js';
+import { forgetDealershipPaused } from './compliance/eligibility.js';
 
 export const ACCOUNT_STATES = Object.freeze(['active', 'paused', 'deactivated']);
 export const PAUSED_MESSAGE = "This dealership's AutoPulse account is paused. Please contact AutoPulse.";
@@ -32,5 +36,6 @@ export async function setDealershipState({ dealerId, state, reason, byName }, { 
   if (state !== 'active' && !why) return { ok: false, status: 400, error: 'Say why (it is kept in the history)' };
   await Model.updateOne({ _id: dealer._id }, { $set: { account_status: state },
     $push: { account_status_history: { from, to: state, reason: why || null, by_name: byName || null, at: new Date() } } });
+  forgetDealershipPaused(dealer._id); // senders see the change at once on this server (others within a minute)
   return { ok: true, state, from };
 }

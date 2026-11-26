@@ -464,11 +464,12 @@ export default function DealerList({
         <Modal.Body className="small">
           {stateChange?.error && <Alert variant="danger" className="py-2">{stateChange.error}</Alert>}
           {stateChange?.state === "active" ? (
-            <p>The dealership and its staff can sign in again.</p>
+            <p>The dealership and its staff can sign in again, and messages start again (the AI&apos;s held messages are
+              checked again before they go).</p>
           ) : (
-            <p>The dealership and all its staff will not be able to sign in until it is reactivated. Its leads, customers,
-              settings and AI setup stay as they are; &quot;Login as&quot; still works. To stop the AI messaging its customers,
-              use Admin &gt; AI mode.</p>
+            <p>Everything stops until it is reactivated: the dealership and all its staff cannot sign in, and no text or
+              email goes out for it (AI, staff, campaigns, alerts, daily report). New leads and customer messages are still
+              saved; the AI holds its messages and checks them again after reactivation. &quot;Login as&quot; still works.</p>
           )}
           <Form.Control size="sm" as="textarea" rows={2} maxLength={300} value={stateChange?.reason || ""}
             placeholder={stateChange?.state === "active" ? "Note (optional)" : "Why (required, kept in the history)"}

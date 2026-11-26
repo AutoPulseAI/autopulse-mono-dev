@@ -138,6 +138,7 @@ export const REASON_TEXT = Object.freeze({
   email_stop: 'The customer stopped emails',
   outside_contact_window: "Outside the dealership's contact hours",
   check_failed: 'The check could not run',
+  dealership_paused: 'The dealership is paused or deactivated (Admin > Dealers)',
 });
 
 // The check as senders use it (sendSMS / sendEmail). In 'log_only' mode it runs beside the send and never delays or
@@ -153,6 +154,11 @@ async function modeFor(dealerId) {
 
 export async function contactGate(req) {
   if (!req?.dealerId) return { stop: false };
+  // A paused / deactivated dealership sends nothing at all, whatever its compliance mode (the user, 27 Nov 2026: "when
+  // the dealership is paused, it should pause everything for the messages, email, activities").
+  if (await dealershipPaused(String(req.dealerId))) {
+    return { stop: true, decision: 'block', reasons: ['dealership_paused'] };
+  }
   const mode = await modeFor(String(req.dealerId));
   if (mode !== 'enforce') {
     checkEligibility(req).catch(() => null);
@@ -160,6 +166,23 @@ export async function contactGate(req) {
   }
   return checkEligibility(req);
 }
+
+const pausedCache = new Map(); // dealer id -> { paused, at }: re-read at most once a minute
+export async function dealershipPaused(dealerId, { now = Date.now() } = {}) {
+  const hit = pausedCache.get(dealerId);
+  if (hit && now - hit.at < 60_000) return hit.paused;
+  let paused = false;
+  try {
+    if (mongoose.isValidObjectId(dealerId)) {
+      const u = await User.findById(dealerId).select('account_status parent_id').lean();
+      const owner = u?.parent_id ? await User.findById(u.parent_id).select('account_status').lean() : u;
+      paused = ['paused', 'deactivated'].includes(owner?.account_status);
+    }
+  } catch { paused = false; }
+  pausedCache.set(dealerId, { paused, at: now });
+  return paused;
+}
+export function forgetDealershipPaused(dealerId) { pausedCache.delete(String(dealerId)); }
 
 export function blockedError(result) {
   const err = new Error(`Not sent: ${(result.reasons || []).map((r) => REASON_TEXT[r] || r).join('; ') || 'contact not eligible'}`);

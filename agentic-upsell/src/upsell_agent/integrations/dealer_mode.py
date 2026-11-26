@@ -44,3 +44,18 @@ async def dealer_ai_mode(dealer_id: str) -> AiMode:
     dealer = await get_db()[PLATFORM_USERS_COLLECTION].find_one(
         {"_id": as_object_id(dealer_id)}, {"ai_mode": 1, "setting": 1})
     return effective_ai_mode(dealer)
+
+
+async def dealer_account_state(dealer_id: str) -> str:
+    """'active', 'paused' or 'deactivated' (the platform's User.account_status, set by a super admin on Admin > Dealers;
+    aidmvcs-be-dev/app/lib/dealerAccountStatus.js). A paused or deactivated dealership sends nothing
+    (compliance/engine.py rule 0). No record or no field = active."""
+    try:
+        dealer = await get_db()[PLATFORM_USERS_COLLECTION].find_one(
+            {"_id": as_object_id(dealer_id)}, {"account_status": 1})
+    except Exception as exc:  # noqa: BLE001 - a read failure never stops the AI on its own
+        import logging
+        logging.getLogger(__name__).warning("dealer account state unreadable for %s: %s", dealer_id, exc)
+        return "active"
+    state = (dealer or {}).get("account_status") or "active"
+    return state if state in ("active", "paused", "deactivated") else "active"

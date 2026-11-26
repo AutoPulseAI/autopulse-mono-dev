@@ -163,6 +163,23 @@ async def test_reply_in_a_conversation_the_customer_started_goes_at_any_hour(mon
     assert decision.outcome == "ALLOW" and not decision.quiet_hours and decision.origin["origin"] == "inbound"
 
 
+async def test_a_paused_dealership_holds_every_message_until_it_is_reactivated(mongo, dealers):
+    """The user, 27 Nov 2026: a paused dealership (Admin > Dealers) sends nothing - not even a reply - and the
+    message is held (looked at again a day later), never dropped."""
+    from upsell_agent.integrations.mongodb import PLATFORM_USERS_COLLECTION, as_object_id
+    set_clock(ny(22, 11, 0))
+    created = await _lead(mongo, source="AutoTrader")
+    users = mongo[PLATFORM_USERS_COLLECTION]
+    await users.update_one({"_id": as_object_id(DEALER)}, {"$set": {"account_status": "paused"}}, upsert=True)
+    held = await _check(created, is_reply=True)
+    assert held.outcome == "HOLD" and held.rule == "dealership_paused"
+    assert abs((held.until - (ny(22, 11, 0) + timedelta(days=1))).total_seconds()) < 60
+    await users.update_one({"_id": as_object_id(DEALER)}, {"$set": {"account_status": "deactivated"}})
+    assert (await _check(created, is_reply=True)).rule == "dealership_paused"
+    await users.update_one({"_id": as_object_id(DEALER)}, {"$set": {"account_status": "active"}})
+    assert (await _check(created, is_reply=True)).outcome == "ALLOW"
+
+
 async def test_reply_in_an_outbound_conversation_at_night_asks_nothing(mongo, dealers):
     set_clock(ny(22, 23, 30))
     created = await _lead(mongo, source="campaign")

@@ -50,6 +50,8 @@ const { upType } = await import('./app/lib/reporting/normalize.js');
 const { canReassign, ensureBulkReassignPermission, BULK_REASSIGN } = await import('./app/lib/bulkPermission.js');
 const { default: Permission } = await import('./app/models/Permission.js');
 const { default: Role } = await import('./app/models/Role.js');
+const { contactGate } = await import('./app/lib/compliance/eligibility.js');
+const { legacyAutoReplyOn } = await import('./app/lib/legacyAutoReply.js');
 const { vehicleFacts } = await import('./app/lib/vehicleFacts.js');
 const { cleanStaffMedia, emailWithPhotoLinks } = await import('./app/lib/staffMedia.js');
 const { mayViewAs, viewAsWriteRequest, tokenPayload } = await import('./app/lib/viewAs.js');
@@ -243,4 +245,23 @@ test('#16 photos sent with a reply: https only, no duplicates, at most 5; an ema
   assert.deepEqual(cleanStaffMedia('https://a/1.jpg'), []);
   assert.equal(emailWithPhotoLinks('Hi', ['https://a/1.jpg']), 'Hi\n\nPhotos:\nhttps://a/1.jpg');
   assert.equal(emailWithPhotoLinks('Hi', []), 'Hi');
+});
+
+db('#23 a paused dealership sends nothing: every text / email of it and of its staff is stopped; reactivated, they go', async () => {
+  const shop = await User.create({ name: 'Paused Motors', email: `p${Date.now()}@x.test`, password: 'x', type: 'dealer' });
+  const staff = await User.create({ name: 'Rep', email: `r${Date.now()}@x.test`, password: 'x', type: 'dealer', parent_id: shop._id });
+  const gate = (dealerId) => contactGate({ dealerId: String(dealerId), channel: 'sms', to: '+17185550101', origin: 'staff' });
+  assert.equal((await gate(shop._id)).stop, false);
+  await setDealershipState({ dealerId: shop._id, state: 'paused', reason: 'Unpaid', byName: 'Betsy' });
+  const stopped = await gate(shop._id);
+  assert.equal(stopped.stop, true);
+  assert.deepEqual(stopped.reasons, ['dealership_paused']);
+  assert.equal((await gate(staff._id)).stop, true, 'a staff member\'s alerts too');
+  await setDealershipState({ dealerId: shop._id, state: 'active', byName: 'Betsy' });
+  assert.equal((await gate(shop._id)).stop, false);
+});
+
+test('old CRM auto-replies are gone for good: no switch turns them back on', () => {
+  assert.equal(legacyAutoReplyOn({ LEGACY_N8N_AUTOREPLY: 'true' }), false);
+  assert.equal(legacyAutoReplyOn(), false);
 });
