@@ -607,7 +607,7 @@ LOCKED = {"prompts": ["extract", "judge"]}
 
 
 # Bump when the shape of a built-in item changes: an item nobody has edited yet takes the new built-in version.
-DEFAULTS_REVISION = 43  # 43: Service follow-up cadence for service leads (23 Nov 2026); 42: a customer reply restarts Day 91 (19 Nov 2026); 41: bought-elsewhere escalation
+DEFAULTS_REVISION = 44  # 44: staff "Opted Out" -> the DND workflow (27 Nov 2026); 43: Service follow-up cadence for service leads (23 Nov 2026); 42: a customer reply restarts Day 91 (19 Nov 2026); 41: bought-elsewhere escalation
 
 
 def export() -> dict[str, Any]:

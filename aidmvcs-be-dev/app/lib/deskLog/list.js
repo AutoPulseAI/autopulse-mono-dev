@@ -77,8 +77,13 @@ export async function deskLogList({ dealerId, tz, from, to, view = 'all', q = ''
   const trades = await TradeIn.find({ dealer_id: String(dealerId), status: 'open',
     $or: [{ lead_id: { $in: leadIdList } }, ...(customerIds.length ? [{ customer_id: { $in: customerIds } }] : [])] })
     .sort({ updatedAt: -1 }).select('lead_id customer_id year make model trim vin').lean().catch(() => []);
+  // The trade the customer told the AI about in the conversation (agentic-upsell slots: qualification_facts
+  // trade_in.year / make / model / mileage, current values only), when nobody has added a trade-in record yet
+  // (Betsy, 25 Nov 2026: "she traded in her GMC - I saw that in the conversation" but the Trade column was empty).
+  const convTrades = await conversationTrades(customerIds, leadIdList).catch(() => new Map());
   const tradeOf = (lead) => trades.find((t) => String(t.lead_id) === String(lead._id))
-    || trades.find((t) => lead.customer_id && String(t.customer_id) === String(lead.customer_id)) || null;
+    || trades.find((t) => lead.customer_id && String(t.customer_id) === String(lead.customer_id))
+    || (lead.customer_id && convTrades.get(String(lead.customer_id))) || null;
   const leadNotes = await latestLeadNotes(leadIdList);
   const latestVisitOfLead = new Set();
   // Handoffs (SOW Deliverable C manager view): the lead is waiting for a manager - Managerial Review, or the AI handed
@@ -109,7 +114,8 @@ export async function deskLogList({ dealerId, tz, from, to, view = 'all', q = ''
     const vehicle = e.stock_number || edited('vehicle') || !(leadCar.year || leadCar.make || leadCar.model)
       ? e.vehicle || {} : leadCar;
     const t = edited('trade') ? null : tradeOf(lead);
-    const trade = t ? { year: t.year ?? null, make: t.make ?? null, model: t.model ?? null, trim: t.trim ?? null, vin: t.vin ?? null }
+    const trade = t ? { year: t.year ?? null, make: t.make ?? null, model: t.model ?? null, trim: t.trim ?? null, vin: t.vin ?? null,
+      ...(t.from_conversation ? { from_conversation: true, mileage: t.mileage ?? null } : {}) }
       : e.trade || {};
     // The outcome set on the Leads page after this visit (before 18 Nov 2026 it wasn't written to the visit): the
     // lead's newest visit shows it.
@@ -218,4 +224,23 @@ export async function deskLogDetail(entry) {
     history: (entry.history || []).map((h) => ({ ...h, by: h.by_name || name(h.by) })).reverse(),
     notes: (entry.notes || []).map((n) => ({ text: n.text, at: n.at, by: n.by_name || name(n.by) })).reverse(),
   };
+}
+
+// customer id -> { year, make, model, mileage, from_conversation } from the AI's current trade-in facts.
+export async function conversationTrades(customerIds, leadIds = [], { db = mongoose.connection.db } = {}) {
+  const ids = [...new Set(customerIds.map(String))];
+  if (!ids.length || !db) return new Map();
+  const facts = await db.collection('qualification_facts').find({
+    customer_id: { $in: [...ids, ...ids.filter((i) => mongoose.isValidObjectId(i)).map((i) => new mongoose.Types.ObjectId(i))] },
+    path: { $in: ['trade_in.year', 'trade_in.make', 'trade_in.model', 'trade_in.mileage'] }, valid_to: null,
+    lead_id: { $in: [null, ...leadIds.map(String)] },
+  }, { projection: { customer_id: 1, path: 1, value: 1 } }).toArray();
+  const out = new Map();
+  for (const f of facts) {
+    const k = String(f.customer_id);
+    if (!out.has(k)) out.set(k, { from_conversation: true });
+    out.get(k)[f.path.slice('trade_in.'.length)] = f.value ?? null;
+  }
+  for (const [k, t] of out) if (!(t.year || t.make || t.model)) out.delete(k);
+  return out;
 }

@@ -10,7 +10,11 @@ import {
   isEmailSentinel,
   finalizeCustomerIdentity,
   resolveCustomerForLead,
+  autoLinkAllowed,
 } from "./app/lib/customerResolver.js";
+
+// Customer.find(query).sort().limit() stub: `pick(query)` gives the customers found for that contact query.
+const findStub = (pick) => (query) => ({ sort: () => ({ limit: async () => [].concat(pick(query) || []) }) });
 
 test("Customer and Lead schemas expose the required fields and indexes", () => {
   assert.equal(Customer.schema.path("dealer_id").options.required, true);
@@ -56,13 +60,13 @@ test("normalizeEmail rejects AI-extraction sentinel placeholders", () => {
 });
 
 test("new Customer identifiers defer first_seen_lead_id until finalization", async () => {
-  const originalFindOne = Customer.findOne;
+  const originalFind = Customer.find;
   const originalSave = Customer.prototype.save;
   const leadId = new mongoose.Types.ObjectId();
   let savedCustomer;
 
   try {
-    Customer.findOne = async () => null;
+    Customer.find = findStub(() => null);
     Customer.prototype.save = async function save() {
       savedCustomer = this;
       return this;
@@ -89,18 +93,18 @@ test("new Customer identifiers defer first_seen_lead_id until finalization", asy
     assert.equal(savedCustomer.inbound_lead, true);
     assert.equal(savedCustomer.dealervault_upload, false);
   } finally {
-    Customer.findOne = originalFindOne;
+    Customer.find = originalFind;
     Customer.prototype.save = originalSave;
   }
 });
 
 test("smsOptIn is recorded on a newly created phone identifier when passed", async () => {
-  const originalFindOne = Customer.findOne;
+  const originalFind = Customer.find;
   const originalSave = Customer.prototype.save;
   let savedCustomer;
 
   try {
-    Customer.findOne = async () => null;
+    Customer.find = findStub(() => null);
     Customer.prototype.save = async function save() {
       savedCustomer = this;
       return this;
@@ -117,19 +121,19 @@ test("smsOptIn is recorded on a newly created phone identifier when passed", asy
 
     assert.equal(savedCustomer.phones[0].sms_opt_in, true);
   } finally {
-    Customer.findOne = originalFindOne;
+    Customer.find = originalFind;
     Customer.prototype.save = originalSave;
   }
 });
 
 test("smsOptIn updates an already-existing phone on the matched Customer", async () => {
-  const originalFindOne = Customer.findOne;
+  const originalFind = Customer.find;
   const originalUpdateOne = Customer.updateOne;
   const customer = { _id: new mongoose.Types.ObjectId() };
   const updateCalls = [];
 
   try {
-    Customer.findOne = async (query) => (query["phones.value"] ? customer : null);
+    Customer.find = findStub((query) => (query["phones.value"] ? customer : null));
     Customer.updateOne = async (query, update) => {
       updateCalls.push({ query, update });
       // The $push attempt never matches because the phone already exists.
@@ -152,7 +156,7 @@ test("smsOptIn updates an already-existing phone on the matched Customer", async
     assert.ok(updateCalls.some(({ update }) => update.$set?.inbound_lead === true));
     assert.ok(updateCalls.some(({ update }) => update.$set?.["phones.$.sms_opt_in"] === true));
   } finally {
-    Customer.findOne = originalFindOne;
+    Customer.find = originalFind;
     Customer.updateOne = originalUpdateOne;
   }
 });
@@ -165,13 +169,12 @@ test("isEmailSentinel flags AI-extraction placeholders without touching real ema
 });
 
 test("email and phone matches from different Customers leave the Lead unresolved", async () => {
-  const originalFindOne = Customer.findOne;
+  const originalFind = Customer.find;
   const emailCustomer = { _id: new mongoose.Types.ObjectId() };
   const phoneCustomer = { _id: new mongoose.Types.ObjectId() };
 
   try {
-    Customer.findOne = async (query) =>
-      query["emails.value"] ? emailCustomer : phoneCustomer;
+    Customer.find = findStub((query) => (query["emails.value"] ? emailCustomer : phoneCustomer));
 
     const result = await resolveCustomerForLead({
       dealerId: "dealer-1",
@@ -186,19 +189,18 @@ test("email and phone matches from different Customers leave the Lead unresolved
     assert.deepEqual(result.introducedEmails, []);
     assert.deepEqual(result.introducedPhones, []);
   } finally {
-    Customer.findOne = originalFindOne;
+    Customer.find = originalFind;
   }
 });
 
 test("conditional enrichment treats matchedCount zero as a no-op", async () => {
-  const originalFindOne = Customer.findOne;
+  const originalFind = Customer.find;
   const originalUpdateOne = Customer.updateOne;
   const customer = { _id: new mongoose.Types.ObjectId() };
   let updateCount = 0;
 
   try {
-    Customer.findOne = async (query) =>
-      query["emails.value"] ? customer : null;
+    Customer.find = findStub((query) => (query["emails.value"] ? customer : null));
     Customer.updateOne = async () => {
       updateCount += 1;
       return { matchedCount: 0, modifiedCount: 0 };
@@ -215,59 +217,78 @@ test("conditional enrichment treats matchedCount zero as a no-op", async () => {
     assert.deepEqual(result.introducedEmails, []);
     assert.equal(updateCount, 2);
   } finally {
-    Customer.findOne = originalFindOne;
+    Customer.find = originalFind;
     Customer.updateOne = originalUpdateOne;
   }
 });
 
-test("DealerVault-only Customer requires both contacts before an inbound Lead joins it", async () => {
-  const originalFindOne = Customer.findOne;
+// Betsy, 25 Nov 2026: a lead is "tethered, not merged" to a customer with DealerVault (sale / service) history until a
+// manager confirms the match - even when both the phone and the email match.
+test("a DealerVault customer is not joined by a new lead until a manager confirms the match", async () => {
+  const originalFind = Customer.find;
   const originalUpdateOne = Customer.updateOne;
   const originalSave = Customer.prototype.save;
-  const existing = {
-    _id: new mongoose.Types.ObjectId(),
-    dealervault_upload: true,
-    inbound_lead: false,
-  };
-  const updates = [];
-  let savedCustomer;
-
+  const soldCustomer = { _id: new mongoose.Types.ObjectId(), dealervault_upload: true, inbound_lead: false };
+  let saved;
   try {
-    Customer.findOne = async ({ "emails.value": email, "phones.value": phone }) =>
-      email === "both@example.com" || phone === "4155551212" ? existing : null;
-    Customer.updateOne = async (filter, update) => {
-      updates.push({ filter, update });
-      return { matchedCount: 1, modifiedCount: 1 };
-    };
-    Customer.prototype.save = async function save() {
-      savedCustomer = this;
-      return this;
-    };
+    Customer.find = findStub((q) => (q["emails.value"] === "both@example.com" || q["phones.value"] === "4155551212" ? soldCustomer : null));
+    Customer.updateOne = async () => ({ matchedCount: 1, modifiedCount: 1 });
+    Customer.prototype.save = async function save() { saved = this; return this; };
 
-    const joined = await resolveCustomerForLead({
-      dealerId: "dealer-1",
-      email: "both@example.com",
-      phone: "4155551212",
-      source: "test",
+    const result = await resolveCustomerForLead({
+      dealerId: "dealer-1", email: "both@example.com", phone: "4155551212", source: "test",
       leadId: new mongoose.Types.ObjectId(),
     });
-    assert.deepEqual(joined.customerId, existing._id);
-    assert.ok(updates.some(({ update }) => update.$set?.inbound_lead === true));
-
-    const separate = await resolveCustomerForLead({
-      dealerId: "dealer-1",
-      email: "both@example.com",
-      source: "test",
-      leadId: new mongoose.Types.ObjectId(),
-    });
-    assert.notDeepEqual(separate.customerId, existing._id);
-    assert.equal(savedCustomer.inbound_lead, true);
-    assert.equal(savedCustomer.dealervault_upload, false);
+    assert.equal(result.created, true);
+    assert.notDeepEqual(result.customerId, soldCustomer._id);
+    assert.deepEqual(result.possibleMatchIds, [String(soldCustomer._id)]);
+    assert.equal(saved.dealervault_upload, false);
+    assert.equal(saved.inbound_lead, true);
   } finally {
-    Customer.findOne = originalFindOne;
+    Customer.find = originalFind;
     Customer.updateOne = originalUpdateOne;
     Customer.prototype.save = originalSave;
   }
+});
+
+test("an earlier lead's own customer is joined instead of the held-back DealerVault customer", async () => {
+  const originalFind = Customer.find;
+  const originalUpdateOne = Customer.updateOne;
+  const soldCustomer = { _id: new mongoose.Types.ObjectId(), dealervault_upload: true };
+  const leadCustomer = { _id: new mongoose.Types.ObjectId(), inbound_lead: true };
+  try {
+    Customer.find = findStub(() => [soldCustomer, leadCustomer]);
+    Customer.updateOne = async () => ({ matchedCount: 1, modifiedCount: 1 });
+    const result = await resolveCustomerForLead({
+      dealerId: "dealer-1", phone: "4155551212", source: "test", leadId: new mongoose.Types.ObjectId(),
+    });
+    assert.deepEqual(result.customerId, leadCustomer._id);
+    assert.equal(result.created, false);
+  } finally {
+    Customer.find = originalFind;
+    Customer.updateOne = originalUpdateOne;
+  }
+});
+
+test("a manager's merge confirms a DealerVault customer; an undone merge does not", async () => {
+  const originalFind = Customer.find;
+  const originalUpdateOne = Customer.updateOne;
+  const confirmed = { _id: new mongoose.Types.ObjectId(), dealervault_upload: true,
+    merge_history: [{ merged_customer_id: new mongoose.Types.ObjectId(), merged_at: new Date() }] };
+  try {
+    Customer.find = findStub(() => confirmed);
+    Customer.updateOne = async () => ({ matchedCount: 1, modifiedCount: 1 });
+    const result = await resolveCustomerForLead({
+      dealerId: "dealer-1", phone: "4155551212", source: "test", leadId: new mongoose.Types.ObjectId(),
+    });
+    assert.deepEqual(result.customerId, confirmed._id);
+  } finally {
+    Customer.find = originalFind;
+    Customer.updateOne = originalUpdateOne;
+  }
+  assert.equal(autoLinkAllowed({ extra: { dealervault: { customer_numbers: ["D1"] } } }), false);
+  assert.equal(autoLinkAllowed({ dealervault_upload: true, merge_history: [{ reversed_at: new Date() }] }), false);
+  assert.equal(autoLinkAllowed({ inbound_lead: true }), true);
 });
 
 test("finalization assigns the Lead id only to introduced unset identities", async () => {

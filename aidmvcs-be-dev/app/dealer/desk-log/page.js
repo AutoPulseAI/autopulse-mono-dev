@@ -29,8 +29,9 @@ const OUTCOME_OPTIONS = [["none", "Still open (no outcome)"], ["SOLD PENDING", "
   ["SOLD DELIVERED", "Sold Delivered"], ["UNSOLD", "Unsold (any reason)"],
   ...["Negative Equity", "Price/Payment", "Credit", "Hot", "Future Follow-Up", "Car Finder", "DND"]
     .map((r) => [`UNSOLD|${r}`, `Unsold - ${r}`])];
+// Betsy, 25 Nov 2026: internet, walk-in or phone - no "Other". Campaign stays for dealer-imported lists.
 const LEAD_TYPES = [["Internet", "Internet"], ["Phone", "Phone Up"], ["Walk-in", "Walk-In"], ["Campaign", "Campaign"],
-  ["Other", "Other"]];
+  ["Not set", "Not set"]];
 
 export default function DeskLogPage() {
   const { dealerParent, loadingParent } = useUser();

@@ -5,8 +5,11 @@
 // HTML as texts). The appointment messages and the Settings > Follow-ups rules are not affected.
 // Relative imports only: used by the BullMQ workers.
 
+// Removed for good (the user, 27 Nov 2026: "If we turn off the AI, the older CRM reminders should never, ever go
+// out"): there is no switch any more - LEGACY_N8N_AUTOREPLY is ignored.
+// eslint-disable-next-line no-unused-vars
 export function legacyAutoReplyOn(env = process.env) {
-  return ['1', 'true', 'yes'].includes(String(env.LEGACY_N8N_AUTOREPLY || '').toLowerCase());
+  return false;
 }
 
 // With the old auto-reply off nothing was sent, so nothing n8n decided about the lead is true either (client, 9 Oct

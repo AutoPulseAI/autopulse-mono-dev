@@ -252,7 +252,10 @@ export function isUnmappedSource(leadSource) {
 
 const UP_TYPES = Object.freeze({ internet: 'Internet', phone: 'Phone', walk_in: 'Walk-in', campaign: 'Campaign' });
 
-/** The lead type ("Up Type") of a lead: Internet, Phone, Walk-in, Campaign, else Other. */
+/** The lead type ("Up Type") of a lead: Internet, Phone, Walk-in, Campaign (dealer-imported data), else 'Not set' -
+ * there is no "Other" (Betsy, 25 Nov 2026: "It's either internet, walk in or phone ... There's no other"); staff set
+ * the type on the lead. 'Not set' is the Leads page's word for the same leads (app/lib/leadContactType.js). */
+export const NOT_SET_TYPE = 'Not set';
 export function upType(lead) {
-  return UP_TYPES[normalizeChannel(lead || {})] || 'Other';
+  return UP_TYPES[normalizeChannel(lead || {})] || NOT_SET_TYPE;
 }

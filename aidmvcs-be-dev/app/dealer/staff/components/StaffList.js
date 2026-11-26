@@ -4,6 +4,7 @@ import { Button, Col, ListGroup, Row } from "react-bootstrap";
 import Pagination from "../../components/Pagination";
 import useFetch from "../../../hooks/useFetch";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
+import { startViewAs } from "../../components/ViewAsBanner";
 
 export default function StaffList({
   staff,
@@ -124,6 +125,11 @@ export default function StaffList({
                     <Col xl={1} lg={1} sm={2} xs={2}>
                       <div className="d-flex gap-1 w_card_list_btns justify-content-end">
                         {/*  Edit Dealer Basic Info */}
+                        <Button variant="outline-custom" size="sm" title={`View as ${s.name || "this employee"}`}
+                          aria-label={`View as ${s.name || "this employee"}`}
+                          onClick={() => startViewAs(s).catch((e) => window.alert(e.message))}>
+                          <i className="fa-regular fa-eye"></i>
+                        </Button>
                         <Button variant="custom" size="sm" onClick={() => setEditStaff(s)}>
                           <i className="fa-regular fa-pen-to-square"></i>
                         </Button>

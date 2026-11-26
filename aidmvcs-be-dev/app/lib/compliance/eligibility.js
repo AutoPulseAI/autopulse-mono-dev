@@ -30,6 +30,18 @@ import { normalizeEmail, normalizePhone } from '../customerResolver.js';
 import { stopsForLeads } from '../ai/stopLabels.js';
 
 const DND_STATUSES = ['DND'];
+async function staffOptedOutContact({ dealerId, channel, to }) {
+  try {
+    const isPhone = channel !== 'email';
+    const value = isPhone ? normalizePhone(to) : normalizeEmail(to);
+    if (!value) return false;
+    const contact = isPhone ? { phone: { $in: phoneVariants(value) } }
+      : { email: { $regex: `^\\s*${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, $options: 'i' } };
+    return Boolean(await Lead.exists({ dealer_id: { $in: dealerForms(String(dealerId)) }, ...contact,
+      fe_lead_status: 'Opted Out', status_source: 'staff' }));
+  } catch { return false; }
+}
+export const staffOptedOut = (lead) => lead?.fe_lead_status === 'Opted Out' && lead?.status_source === 'staff';
 
 export function phoneVariants(digits) {
   if (!digits) return [];
@@ -74,7 +86,7 @@ export async function checkEligibility({ dealerId, channel, to, origin = 'unknow
 
     const leads = await Lead.find({ dealer_id: { $in: forms }, ...(isPhone ? { phone: { $in: phoneVariants(value) } }
       : { email: { $regex: `^\\s*${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, $options: 'i' } }) })
-      .select('_id fe_lead_status customer_id').limit(50).lean();
+      .select('_id fe_lead_status status_source customer_id').limit(50).lean();
     const customers = await Customer.find({ dealer_id: dealer, ...(isPhone ? { 'phones.value': { $in: phoneVariants(value) } }
       : { 'emails.value': value }) }).select('phones').limit(20).lean();
     const suppressed = await ContactSuppression.findOne({ dealer_id: { $in: [dealer, 'platform'] }, kind: isPhone ? 'phone' : 'email',
@@ -91,7 +103,9 @@ export async function checkEligibility({ dealerId, channel, to, origin = 'unknow
     // 3. internal list and opt-outs
     checks.internal_dnc = suppressed ? 'fail' : 'pass';
     if (suppressed) reasons.push(suppressed.dealer_id === 'platform' ? 'platform_dnc' : 'internal_dnc');
-    const dnd = leads.some((l) => DND_STATUSES.includes(l.fe_lead_status));
+    // Staff setting "Opted Out" by hand stops every channel, like DND (the user, 27 Nov 2026). The AI's own "Opted Out"
+    // (a customer's STOP) stays per channel - that one is status_source 'ai' and is read from the stops below.
+    const dnd = leads.some((l) => DND_STATUSES.includes(l.fe_lead_status) || staffOptedOut(l));
     const stops = leads.length ? await stopsForLeads(leads.map((l) => String(l._id))) : {};
     const stopped = Object.values(stops).some((s) => (channel === 'email' ? s.email : s.sms));
     checks.opt_out = dnd || stopped ? 'fail' : 'pass';
@@ -138,6 +152,7 @@ export const REASON_TEXT = Object.freeze({
   email_stop: 'The customer stopped emails',
   outside_contact_window: "Outside the dealership's contact hours",
   check_failed: 'The check could not run',
+  dealership_paused: 'The dealership is paused or deactivated (Admin > Dealers)',
 });
 
 // The check as senders use it (sendSMS / sendEmail). In 'log_only' mode it runs beside the send and never delays or
@@ -153,6 +168,14 @@ async function modeFor(dealerId) {
 
 export async function contactGate(req) {
   if (!req?.dealerId) return { stop: false };
+  // A paused / deactivated dealership sends nothing at all, whatever its compliance mode (the user, 27 Nov 2026: "when
+  // the dealership is paused, it should pause everything for the messages, email, activities").
+  if (await dealershipPaused(String(req.dealerId))) {
+    return { stop: true, decision: 'block', reasons: ['dealership_paused'] };
+  }
+  // A lead staff set to "Opted Out" by hand stops this customer on every channel, whatever the compliance mode -
+  // campaigns and automations included (the user, 27 Nov 2026: "stop everything on all channels").
+  if (await staffOptedOutContact(req)) return { stop: true, decision: 'block', reasons: ['dnd'] };
   const mode = await modeFor(String(req.dealerId));
   if (mode !== 'enforce') {
     checkEligibility(req).catch(() => null);
@@ -160,6 +183,23 @@ export async function contactGate(req) {
   }
   return checkEligibility(req);
 }
+
+const pausedCache = new Map(); // dealer id -> { paused, at }: re-read at most once a minute
+export async function dealershipPaused(dealerId, { now = Date.now() } = {}) {
+  const hit = pausedCache.get(dealerId);
+  if (hit && now - hit.at < 60_000) return hit.paused;
+  let paused = false;
+  try {
+    if (mongoose.isValidObjectId(dealerId)) {
+      const u = await User.findById(dealerId).select('account_status parent_id').lean();
+      const owner = u?.parent_id ? await User.findById(u.parent_id).select('account_status').lean() : u;
+      paused = ['paused', 'deactivated'].includes(owner?.account_status);
+    }
+  } catch { paused = false; }
+  pausedCache.set(dealerId, { paused, at: now });
+  return paused;
+}
+export function forgetDealershipPaused(dealerId) { pausedCache.delete(String(dealerId)); }
 
 export function blockedError(result) {
   const err = new Error(`Not sent: ${(result.reasons || []).map((r) => REASON_TEXT[r] || r).join('; ') || 'contact not eligible'}`);

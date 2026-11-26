@@ -3,6 +3,7 @@ import { getToken } from "next-auth/jwt";
 import User from "@models/User";
 import jwt from "jsonwebtoken";
 import { cookies } from 'next/headers';
+import { mayViewAs } from "@lib/viewAs";
 
 export async function POST(req) {
   try {
@@ -23,7 +24,8 @@ export async function POST(req) {
       } catch {
         return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
       }
-      currentUser = await User.findById(decoded.userId).select('_id name email type');
+      currentUser = await User.findById(decoded.userId).select('_id name email type parent_id role')
+        .populate({ path: 'role', populate: { path: 'permissions' } });
       if (!currentUser) {
         return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
       }
@@ -44,7 +46,10 @@ export async function POST(req) {
     // signed-in user could take over any account.
     const isAdmin = currentUser.type === 'admin';
     const isOwnAgency = currentUser.type === 'vendor' && String(user.vendor_id || '') === String(currentUser._id);
-    if (!isAdmin && !isOwnAgency) {
+    // "View as" (app/lib/viewAs.js): the dealership or its employee managers, as one of their own staff, look-only.
+    const viewerPerms = (currentUser.role?.permissions || []).map((p) => p?.permission_name);
+    const viewAs = !isAdmin && !isOwnAgency && mayViewAs(currentUser, user, viewerPerms);
+    if (!isAdmin && !isOwnAgency && !viewAs) {
       return new Response(JSON.stringify({ message: "Not allowed to sign in as this account" }), { status: 403 });
     }
 
@@ -55,12 +60,20 @@ export async function POST(req) {
         userId: user._id, 
         role: user?.role?.name, 
         type: user.type,
-        impersonated_by: String(currentUser._id),
-        impersonator_type: currentUser.type,
+        // "View as" is not "login as": no impersonated_by (which skips the IP restriction and lets a super admin
+        // edit), only view_as, which makes the session look-only (middleware.js).
+        ...(viewAs
+          ? { view_as: true, viewed_by: String(currentUser._id), viewer_name: currentUser.name || null }
+          : { impersonated_by: String(currentUser._id), impersonator_type: currentUser.type }),
       },
       process.env.JWT_SECRET,
       { expiresIn: "24h" } // Shorter expiration for impersonation
     );
+
+    // "View as" keeps the viewer's own sign-in cookie: the view lives only in this browser tab's token.
+    if (viewAs) {
+      return new Response(JSON.stringify({ token, view_as: true, user: { _id: user._id, name: user.name } }), { status: 200 });
+    }
 
     // Set cookie
     const cookiename= user.type+'token';

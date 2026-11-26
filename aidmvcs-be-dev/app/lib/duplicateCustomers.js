@@ -6,13 +6,21 @@ import mongoose from 'mongoose';
 import Customer from '../models/Customer.js';
 import Lead from '../models/Lead.js';
 import DuplicateReview from '../models/DuplicateReview.js';
+import User from '../models/User.js';
+
+// A sale or a service visit came from DealerVault (same test as app/lib/customerResolver.js): a new lead with this
+// customer's phone / email gets its own customer and waits here for a manager to confirm (Betsy, 25 Nov 2026).
+export function hasDealershipHistory(c) {
+  const nums = c?.extra?.dealervault?.customer_numbers;
+  return c?.dealervault_upload === true || (Array.isArray(nums) ? nums.length > 0 : typeof nums === 'string');
+}
 
 export const pairKey = (a, b) => [String(a), String(b)].sort().join(':');
 const digits = (v) => String(v || '').replace(/\D/g, '').slice(-10);
 
 export async function duplicateGroups(dealerId, { limit = 100 } = {}) {
   const docs = await Customer.find({ dealer_id: String(dealerId), merged_into: { $in: [null] } })
-    .select('name emails phones addresses createdAt assigned_to').lean();
+    .select('name emails phones addresses createdAt assigned_to dealervault_upload extra.dealervault.customer_numbers merge_history').lean();
   const owners = new Map();
   for (const c of docs) {
     const keys = new Set([
@@ -65,7 +73,8 @@ export async function duplicateGroups(dealerId, { limit = 100 } = {}) {
       return { _id: id, name: c.name || null, emails: (c.emails || []).map((e) => e.value),
         phones: (c.phones || []).map((p) => p.value), created_at: c.createdAt || null,
         address: (() => { const a = (c.addresses || []).find((x) => x.is_primary) || (c.addresses || [])[0]; return a ? [a.line1, a.city, a.state, a.zip].filter(Boolean).join(', ') : null; })(),
-        leads: leadInfo.get(id)?.leads || 0, last_lead_at: leadInfo.get(id)?.last_lead_at || null };
+        leads: leadInfo.get(id)?.leads || 0, last_lead_at: leadInfo.get(id)?.last_lead_at || null,
+        dealership_history: hasDealershipHistory(c) };
     }).sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
     const pairs = [];
     for (let i = 0; i < ids.length; i += 1) for (let j = i + 1; j < ids.length; j += 1) {
@@ -85,7 +94,33 @@ export async function duplicateGroups(dealerId, { limit = 100 } = {}) {
     && String(mergedNames.get(String(h.merged_customer_id))?.merged_into || '') === String(k._id))
     .map((h) => ({ kept_id: String(k._id), kept_name: k.name || null, merged_id: String(h.merged_customer_id),
       merged_name: mergedNames.get(String(h.merged_customer_id))?.name || null, merged_at: h.merged_at || null,
-      reason: h.reason || null })))
+      reason: h.reason || null, merged_by: h.merged_by ? String(h.merged_by) : null })))
     .sort((a, b) => new Date(b.merged_at || 0) - new Date(a.merged_at || 0)).slice(0, 50);
+  // Who merged (Betsy, 25 Nov 2026: "track to see which user merged a customer").
+  const byIds = [...new Set(recentMerges.map((m) => m.merged_by).filter((id) => mongoose.isValidObjectId(id)))];
+  const byNames = new Map((byIds.length ? await User.find({ _id: { $in: byIds } }).select('name').lean() : [])
+    .map((u) => [String(u._id), u.name || null]));
+  for (const m of recentMerges) m.merged_by_name = byNames.get(m.merged_by) || null;
   return { total: groups.length, groups: groups.slice(0, limit), recent_merges: recentMerges };
+}
+
+// The customers that share a phone or an email with this one (not merged, not marked "not the same person"), for the
+// "Possible match" notice on the customer profile. Uses the same rule as duplicateGroups, for one customer only.
+export async function possibleMatchesFor(dealerId, customerId) {
+  const me = await Customer.findOne({ _id: customerId, dealer_id: String(dealerId) }).select('emails phones merged_into').lean();
+  if (!me || me.merged_into) return [];
+  const emails = (me.emails || []).map((e) => String(e?.value || '').trim().toLowerCase()).filter(Boolean);
+  const phones = (me.phones || []).map((p) => digits(p?.value)).filter((d) => d.length === 10);
+  if (!emails.length && !phones.length) return [];
+  const phoneRx = phones.map((d) => new RegExp(`${d}$`));
+  const others = await Customer.find({ dealer_id: String(dealerId), _id: { $ne: me._id }, merged_into: { $in: [null] },
+    $or: [...(emails.length ? [{ 'emails.value': { $in: emails } }] : []), ...phoneRx.map((rx) => ({ 'phones.value': rx }))] })
+    .select('name emails phones dealervault_upload extra.dealervault.customer_numbers').limit(20).lean();
+  const dismissed = new Set((await DuplicateReview.find({ dealer_id: String(dealerId), decision: 'not_duplicate' })
+    .select('pair').lean()).map((r) => r.pair));
+  return others.filter((o) => !dismissed.has(pairKey(me._id, o._id))).map((o) => ({
+    _id: String(o._id), name: o.name || null, dealership_history: hasDealershipHistory(o),
+    shared: [...(o.emails || []).map((e) => String(e?.value || '').toLowerCase()).filter((e) => emails.includes(e)),
+      ...(o.phones || []).map((p) => digits(p?.value)).filter((d) => phones.includes(d))],
+  }));
 }

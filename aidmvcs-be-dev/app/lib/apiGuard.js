@@ -61,6 +61,7 @@ async function userFromToken(token) {
   if (!decoded?.userId || !mongoose.isValidObjectId(decoded.userId)) return null;
   await dbConnect(); // some routes (e.g. /api/cron/report-service) never connect themselves
   const user = await User.findById(decoded.userId).select(USER_FIELDS);
+  if (user && decoded.view_as === true) user.$locals.viewAs = true; // "view as" an employee: look-only (app/lib/viewAs.js)
   return user || null;
 }
 
@@ -93,7 +94,9 @@ export async function requireSuperAdmin(req) {
 // A change (not GET / HEAD) by a staff member whose role is read-only.
 async function readOnlyStaffWrite(req, user) {
   const method = String(req?.method || 'GET').toUpperCase();
-  if (method === 'GET' || method === 'HEAD' || !user?.parent_id || user.type !== 'dealer' || !user.role) return false;
+  if (method === 'GET' || method === 'HEAD') return false;
+  if (user?.$locals?.viewAs) return true; // "view as" an employee changes nothing (app/lib/viewAs.js)
+  if (!user?.parent_id || user.type !== 'dealer' || !user.role) return false;
   const full = await User.findById(user._id).select('role').populate({ path: 'role', populate: { path: 'permissions' } }).lean();
   return isReadOnly((full?.role?.permissions || []).map((p) => p?.permission_name).filter(Boolean));
 }

@@ -208,7 +208,7 @@ export const FIELDS = Object.freeze([
     collection: 'leads',
     source: 'Staff (Add lead, Desk Log, lead card); portal and website leads are Internet.',
     truth: 'Staff edit > how the lead arrived.',
-    transform: 'upType(): Internet / Phone / Walk-in; Campaign when the source is a campaign.',
+    transform: 'upType(): Internet / Phone / Walk-in; Campaign when the source is a campaign; Not set when staff have not picked one (no "Other").',
     nulls: 'A manual lead nobody typed = "Not set".',
     usedBy: 'Lead sources report (Up Type), Desk Log cards (Internet / Phone Ups / Walk-Ins).',
   }),

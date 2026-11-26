@@ -59,12 +59,15 @@ const drillRangeText = (range) => {
 const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, selectedLeadId, compact = false, ...props }, ref) => {
   // All hooks must be called unconditionally at the top level
   const canAssignLeads = useCan("Assign Leads");
+  // Reassigning several leads at once needs its own permission (Betsy, 25 Nov 2026; app/lib/bulkPermission.js).
+  const canBulkReassign = useCan("Bulk Reassign Leads") && canAssignLeads;
   // SOW B b5 (G-010), the user's design of 24 Nov 2026: Actions > Select leads turns on bulk mode (a tick column, the
   // bulk bar and the scope line). `selected` is the truth: lead id -> { _id, name, owner, status }. `scope` only says
   // how it was made (all matching / this page / first N / pages / ticked one by one); `unticked` counts leads taken
   // out of a scope by hand.
   const [selectMode, setSelectMode] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false); // phones: the filters fold behind a button
+  const shownOnce = useRef(false); // the list has been on screen once (later loads keep the filters mounted)
   const [selected, setSelected] = useState(() => new Map());
   const [scope, setScope] = useState("page");
   const [unticked, setUnticked] = useState(0);
@@ -140,12 +143,14 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
   const [filters, setFilters] = useState(() => {
     const params = urlSearchParams;
     return {
+      q: params.get('q') || '', // the one search box: name, phone, email or stock # (Betsy, 25 Nov 2026)
       name: params.get('name') || '',
       email: params.get('email') || '',
       phone: params.get('phone') || '',
       status: params.get('status') || '',
       lead_source: params.get('lead_source') || '',
       department: params.get('department') || '', // Betsy, 14 Nov 2026: Sales / Service / Parts
+      owner: params.get('owner') || '', // one staff member's leads (Betsy, 25 Nov 2026: bulk reassign a rep's leads)
       source: params.get('source') || '',
       message_filter: params.get('message_filter') || '',
       messages: params.get('messages') || '', // the dashboard's Messages card: who we messaged in the range
@@ -174,12 +179,14 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
   });
 
   const [inputValues, setInputValues] = useState({
+    q: filters.q,
     name: filters.name,
     email: filters.email,
     phone: filters.phone,
     status: filters.status,
     lead_source: filters.lead_source,
     department: filters.department,
+    owner: filters.owner,
     source: filters.source,
     message_filter: filters.message_filter
   });
@@ -266,13 +273,15 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       }
 
       // Add filters to query
-      if (filters.name) queryParams += `&name=${encodeURIComponent(filters.name)}`;
+      if (filters.q) queryParams += `&q=${encodeURIComponent(filters.q)}`;
+    if (filters.name) queryParams += `&name=${encodeURIComponent(filters.name)}`;
       if (filters.email) queryParams += `&email=${encodeURIComponent(filters.email)}`;
       if (filters.phone) queryParams += `&phone=${encodeURIComponent(filters.phone)}`;
       if (filters.status) queryParams += `&fe_lead_status=${encodeURIComponent(filters.status)}`;
       if (filters.stopped) queryParams += '&stopped=1';
       if (filters.lead_source) queryParams += `&lead_source=${encodeURIComponent(filters.lead_source)}`;
       if (filters.department) queryParams += `&department=${encodeURIComponent(filters.department)}`;
+      if (filters.owner) queryParams += `&owner=${encodeURIComponent(filters.owner)}`;
       if (filters.source) queryParams += `&source=${encodeURIComponent(filters.source)}`;
       if (filters.message_filter) queryParams += `&message_filter=${encodeURIComponent(filters.message_filter)}`;
       if (filters.messages) queryParams += `&messages=${encodeURIComponent(filters.messages)}`;
@@ -526,7 +535,8 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       let url = `/api/leads?format=csv&dealer_id=${activeEntity.id}`;
       
       // Add applied filters to export URL
-      if (filters.name) url += `&name=${encodeURIComponent(filters.name)}`;
+      if (filters.q) url += `&q=${encodeURIComponent(filters.q)}`;
+    if (filters.name) url += `&name=${encodeURIComponent(filters.name)}`;
       if (filters.email) url += `&email=${encodeURIComponent(filters.email)}`;
       if (filters.phone) url += `&phone=${encodeURIComponent(filters.phone)}`;
       if (filters.status) url += `&fe_lead_status=${encodeURIComponent(filters.status)}`;
@@ -538,6 +548,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       url += drillQuery(filters);
       if (filters.lead_source) url += `&lead_source=${encodeURIComponent(filters.lead_source)}`;
       if (filters.department) url += `&department=${encodeURIComponent(filters.department)}`;
+      if (filters.owner) url += `&owner=${encodeURIComponent(filters.owner)}`;
       if (filters.source) url += `&source=${encodeURIComponent(filters.source)}`;
       if (filters.dateRange.startDate) url += `&startDate=${filters.dateRange.startDate.toISOString()}`;
       if (filters.dateRange.endDate) url += `&endDate=${filters.dateRange.endDate.toISOString()}`;
@@ -583,6 +594,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
   const listFilterQuery = () => {
     let q = `dealer_id=${activeEntity.id}`;
     if (assignmentFilter && assignmentFilter !== 'all') q += `&assignment=${assignmentFilter}`;
+    if (filters.q) q += `&q=${encodeURIComponent(filters.q)}`;
     if (filters.name) q += `&name=${encodeURIComponent(filters.name)}`;
     if (filters.email) q += `&email=${encodeURIComponent(filters.email)}`;
     if (filters.phone) q += `&phone=${encodeURIComponent(filters.phone)}`;
@@ -590,6 +602,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     if (filters.stopped) q += '&stopped=1';
     if (filters.lead_source) q += `&lead_source=${encodeURIComponent(filters.lead_source)}`;
     if (filters.department) q += `&department=${encodeURIComponent(filters.department)}`;
+    if (filters.owner) q += `&owner=${encodeURIComponent(filters.owner)}`;
     if (filters.source) q += `&source=${encodeURIComponent(filters.source)}`;
     if (filters.message_filter) q += `&message_filter=${encodeURIComponent(filters.message_filter)}`;
     if (filters.messages) q += `&messages=${encodeURIComponent(filters.messages)}`;
@@ -601,8 +614,8 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     if (filters.dateRange.endDate) q += `&endDate=${filters.dateRange.endDate.toISOString()}`;
     return q;
   };
-  const filtersActive = Boolean(filters.name || filters.email || filters.phone || filters.status || filters.lead_source
-    || filters.department || filters.source || filters.message_filter || filters.messages || filters.stopped
+  const filtersActive = Boolean(filters.q || filters.name || filters.email || filters.phone || filters.status || filters.lead_source
+    || filters.department || filters.owner || filters.source || filters.message_filter || filters.messages || filters.stopped
     || filters.replyCohort || filters.apptAttribution || filters.reportKpi || filters.dateRange.startDate
     || (assignmentFilter && assignmentFilter !== 'all'));
   const lightRow = (l) => ({ _id: String(l._id), name: l.name || null, owner: l.assigned_to?.name || null,
@@ -679,11 +692,11 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
   };
   // "Filters on": each applied filter as a chip; its x clears that filter only (the same way the field does).
   const FILTER_CHIPS = [
-    ['name', 'Name'], ['email', 'Email'], ['phone', 'Phone'], ['status', 'Status'], ['lead_source', 'Lead source'],
-    ['department', 'Department'], ['source', 'Source type'], ['message_filter', 'Messages'],
+    ['q', 'Search'], ['name', 'Name'], ['email', 'Email'], ['phone', 'Phone'], ['status', 'Status'], ['lead_source', 'Lead source'],
+    ['department', 'Department'], ['owner', 'Assigned to'], ['source', 'Source type'], ['message_filter', 'Messages'],
   ];
   const filterChips = [
-    ...FILTER_CHIPS.filter(([key]) => filters[key]).map(([key, label]) => ({ key, text: `${label}: ${key === 'status' ? statusLabel(filters[key]) : key === 'source' ? (UP_TYPE_OPTIONS.find(([v]) => v === filters[key])?.[1] || filters[key]) : key === 'department' ? (DEPT_TABS.find(([v]) => v === filters[key])?.[1] || filters[key]) : filters[key]}` })),
+    ...FILTER_CHIPS.filter(([key]) => filters[key]).map(([key, label]) => ({ key, text: `${label}: ${key === 'status' ? statusLabel(filters[key]) : key === 'source' ? (UP_TYPE_OPTIONS.find(([v]) => v === filters[key])?.[1] || filters[key]) : key === 'department' ? (DEPT_TABS.find(([v]) => v === filters[key])?.[1] || filters[key]) : key === 'owner' ? (staffList.find((st) => String(st._id) === filters[key])?.name || 'Staff member') : filters[key]}` })),
     ...(filters.dateRange.startDate ? [{ key: 'dateRange', text: `Dates: ${moment(filters.dateRange.startDate).format('MMM D')} – ${moment(filters.dateRange.endDate || filters.dateRange.startDate).format('MMM D, YYYY')}` }] : []),
     ...(filters.stopped ? [{ key: 'stopped', text: 'Stopped' }] : []),
   ];
@@ -742,7 +755,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
 
   const applyFilters = useCallback(() => {
     const params = new URLSearchParams(window.location.search);
-    const textKeys = ['name', 'email', 'phone', 'status', 'lead_source', 'department', 'source', 'message_filter'];
+    const textKeys = ['q', 'name', 'email', 'phone', 'status', 'lead_source', 'department', 'owner', 'source', 'message_filter'];
     textKeys.forEach(key => {
       if (inputValues[key]) params.set(key, inputValues[key]);
       else params.delete(key);
@@ -757,12 +770,14 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
 
     setFilters(prev => ({
       ...prev,
+      q: inputValues.q,
       name: inputValues.name,
       email: inputValues.email,
       phone: inputValues.phone,
       status: inputValues.status,
       lead_source: inputValues.lead_source,
       department: inputValues.department,
+      owner: inputValues.owner,
       source: inputValues.source,
       message_filter: inputValues.message_filter,
       page: 1
@@ -792,12 +807,14 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     return () => clearTimeout(searchDebounceRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    inputValues.q,
     inputValues.name,
     inputValues.email,
     inputValues.phone,
     inputValues.status,
     inputValues.lead_source,
     inputValues.department,
+    inputValues.owner,
     inputValues.source,
     inputValues.message_filter,
   ]);
@@ -833,22 +850,26 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
   const clearFilters = () => {
     clearTimeout(searchDebounceRef.current);
     setInputValues({
+      q: "",
       name: "",
       email: "",
       phone: "",
       status: "",
       lead_source: "",
       department: "",
+      owner: "",
       source: "",
       message_filter: ""
     });
     const newFilters = {
+      q: "",
       name: "",
       email: "",
       phone: "",
       status: "",
       lead_source: "",
       department: "",
+      owner: "",
       source: "",
       message_filter: "",
       dateRange: {
@@ -960,6 +981,8 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     const params = new URLSearchParams(window.location.search);
     
     // Preserve filters
+    if (filters.q) params.set('q', filters.q);
+    else params.delete('q');
     if (filters.name) params.set('name', filters.name);
     else params.delete('name');
     if (filters.email) params.set('email', filters.email);
@@ -970,6 +993,8 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     else params.delete('status');
     if (filters.lead_source) params.set('lead_source', filters.lead_source);
     else params.delete('lead_source');
+    if (filters.owner) params.set('owner', filters.owner);
+    else params.delete('owner');
     if (filters.department) params.set('department', filters.department);
     else params.delete('department');
     if (filters.source) params.set('source', filters.source);
@@ -1020,13 +1045,15 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       }
       
       // Add filters to query
-      if (filters.name) queryParams += `&name=${encodeURIComponent(filters.name)}`;
+      if (filters.q) queryParams += `&q=${encodeURIComponent(filters.q)}`;
+    if (filters.name) queryParams += `&name=${encodeURIComponent(filters.name)}`;
       if (filters.email) queryParams += `&email=${encodeURIComponent(filters.email)}`;
       if (filters.phone) queryParams += `&phone=${encodeURIComponent(filters.phone)}`;
       if (filters.status) queryParams += `&fe_lead_status=${encodeURIComponent(filters.status)}`;
       if (filters.stopped) queryParams += '&stopped=1';
       if (filters.lead_source) queryParams += `&lead_source=${encodeURIComponent(filters.lead_source)}`;
       if (filters.department) queryParams += `&department=${encodeURIComponent(filters.department)}`;
+      if (filters.owner) queryParams += `&owner=${encodeURIComponent(filters.owner)}`;
       if (filters.source) queryParams += `&source=${encodeURIComponent(filters.source)}`;
       if (filters.message_filter) queryParams += `&message_filter=${encodeURIComponent(filters.message_filter)}`;
       if (filters.messages) queryParams += `&messages=${encodeURIComponent(filters.messages)}`;
@@ -1435,13 +1462,17 @@ useImperativeHandle(ref, () => ({
 }), [leads, pagination, handleLeadClick, fetchLeadsForPage, clearSelectedLead]);
 
 
-  if (loading) {
+  // Only the first load replaces the page. Later loads (typing in a search box, changing a filter) keep the filters on
+  // screen, so the box keeps its cursor and what was typed (Betsy, 25 Nov 2026: typing a phone number refreshed the page
+  // after three digits and she had to click back into the box).
+  if (loading && !shownOnce.current) {
     return (
       <div className="w_card">
         <div className="text-center py-4">Loading leads...</div>
       </div>
     );
   }
+  if (!loading) shownOnce.current = true;
 
   return (
     <>
@@ -1611,30 +1642,11 @@ useImperativeHandle(ref, () => ({
             <Row className="search_filters gx-1 gy-1">
               <Col xxl={12} xl={12} lg={12} md={12}>
                 <Form.Control
-                  type="text"
-                  placeholder="Name"
-                  name="name"
-                  value={inputValues.name}
-                  onChange={handleInputChange}
-                  size="sm"
-                />
-              </Col>
-              <Col xxl={12} xl={12} lg={12} md={12}>
-                <Form.Control
-                  type="text"
-                  placeholder="Email"
-                  name="email"
-                  value={inputValues.email}
-                  onChange={handleInputChange}
-                  size="sm"
-                />
-              </Col>
-              <Col xxl={7} xl={7} lg={7} md={7} xs={7}>
-                <Form.Control
-                  type="text"
-                  placeholder="Phone"
-                  name="phone"
-                  value={inputValues.phone}
+                  type="search"
+                  placeholder="Search name, phone, email or stock #"
+                  aria-label="Search name, phone, email or stock number"
+                  name="q"
+                  value={inputValues.q || ""}
                   onChange={handleInputChange}
                   size="sm"
                 />
@@ -1719,7 +1731,7 @@ useImperativeHandle(ref, () => ({
                   <Button
                     variant="secondary"
                     onClick={clearFilters}
-                    disabled={!inputValues.name && !inputValues.email && !inputValues.phone && !inputValues.status && !inputValues.lead_source && !inputValues.source && !filters.dateRange.startDate}
+                    disabled={!inputValues.q && !inputValues.name && !inputValues.email && !inputValues.phone && !inputValues.status && !inputValues.lead_source && !inputValues.source && !filters.dateRange.startDate}
                     size="sm"
                     className="w-50"
                   >
@@ -1739,32 +1751,13 @@ useImperativeHandle(ref, () => ({
               <i className="fa-solid fa-filter me-1" aria-hidden="true"></i>{filtersOpen ? "Hide filters" : "Search and filter"}
             </Button>
             <Row className={`search_filters gx-1 gy-xxl-0 gy-1${filtersOpen ? "" : " d-none d-md-flex"}`}>
-              <Col xxl={2} xl={3} lg={3} md={3} xs={12}>
+              <Col xxl={3} xl={3} lg={3} md={3} xs={12}>
                 <Form.Control
-                  type="text"
-                  placeholder="Name"
-                  name="name"
-                  value={inputValues.name}
-                  onChange={handleInputChange}
-                  size="sm"
-                />
-              </Col>
-              <Col xxl={2} xl={3} lg={3} md={3} xs={12}>
-                <Form.Control
-                  type="text"
-                  placeholder="Email"
-                  name="email"
-                  value={inputValues.email}
-                  onChange={handleInputChange}
-                  size="sm"
-                />
-              </Col>
-              <Col xxl={2} xl={3} lg={3} md={3} xs={6}>
-                <Form.Control
-                  type="text"
-                  placeholder="Phone"
-                  name="phone"
-                  value={inputValues.phone}
+                  type="search"
+                  placeholder="Search name, phone, email or stock #"
+                  aria-label="Search name, phone, email or stock number"
+                  name="q"
+                  value={inputValues.q || ""}
                   onChange={handleInputChange}
                   size="sm"
                 />
@@ -1807,6 +1800,15 @@ useImperativeHandle(ref, () => ({
                   {inputValues.source && !inputValues.source.startsWith("up:") && <option value={inputValues.source}>{inputValues.source}</option>}
                 </Form.Select>
               </Col>
+              {canManageLeads && (
+                <Col xxl={2} xl={2} lg={2} md={2} xs={6}>
+                  <Form.Select name="owner" value={inputValues.owner || ""} onChange={handleInputChange} size="sm"
+                    aria-label="Assigned to">
+                    <option value="">Anyone (assigned to)</option>
+                    {staffList.map((st) => <option key={st._id} value={st._id}>{st.name}</option>)}
+                  </Form.Select>
+                </Col>
+              )}
               <Col xxl={1} xl={2} lg={2} md={2} xs={6}>
                 <Form.Select
                   name="message_filter"
@@ -1840,7 +1842,7 @@ useImperativeHandle(ref, () => ({
                   <Button
                     variant="secondary"
                     onClick={clearFilters}
-                    disabled={!inputValues.name && !inputValues.email && !inputValues.phone && !inputValues.status && !inputValues.lead_source && !inputValues.source && !filters.dateRange.startDate}
+                    disabled={!inputValues.q && !inputValues.name && !inputValues.email && !inputValues.phone && !inputValues.status && !inputValues.lead_source && !inputValues.source && !filters.dateRange.startDate}
                     size="sm"
                     className="w-50"
                   >
@@ -1913,7 +1915,7 @@ useImperativeHandle(ref, () => ({
         )}
         {selectMode && !compact && (
           <div className="mt-2">
-            <BulkBar count={selected.size} canAssign={canAssignLeads} canChangeStatus={canManageLeads}
+            <BulkBar count={selected.size} canAssign={canBulkReassign} canChangeStatus={canManageLeads}
               busy={scopeLoading} exporting={bulkExporting} onAction={bulkAction} onClose={stopSelecting} />
             <BulkScope scope={scope} count={selected.size} pageCount={leads.length} perPage={pagination.itemsPerPage || 10}
               matching={matching.leads ? matching.total : pagination.totalItems} capped={matching.capped}
@@ -1923,7 +1925,8 @@ useImperativeHandle(ref, () => ({
           </div>
         )}
 
-        <div className="w_card_list mt-3">
+        {loading && <div className="text-muted small mt-2" role="status">Loading leads...</div>}
+        <div className="w_card_list mt-3" style={loading ? { opacity: 0.5 } : undefined}>
           <ListGroup as="ul" variant="flush">
             {!compact && (
             <ListGroup.Item as="li" className={`w_card_list_head lead_list_head border-bottom-0${selectMode ? ' d-flex align-items-center' : ''}`}>

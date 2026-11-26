@@ -13,6 +13,8 @@ import { notifyAiOfStaffReply } from '@lib/ai/aiStaff';
 import jwt from 'jsonwebtoken';
 import { requireUser, requireDealerAccess } from "@lib/apiGuard";
 import { DEPARTMENT_NAMES, canReplyInDepartment, leadDepartment } from '@lib/departmentNames';
+import { cleanStaffMedia, emailWithPhotoLinks } from '@lib/staffMedia';
+import { mediaAttachments } from '@lib/ai/aiMessageRecord';
 
 function normalizeUserLanguage(raw) {
   const v = raw == null ? '' : String(raw).trim();
@@ -73,8 +75,11 @@ export async function POST(request) {
       content,
       subject,
       communicationType,
-      originalMessage
+      originalMessage,
+      media_urls: rawMediaUrls,
     } = await request.json();
+    // Vehicle photos picked in the reply window (app/lib/staffMedia.js).
+    const mediaUrls = cleanStaffMedia(rawMediaUrls);
 
     // Validate required fields
     if ((!parent_message_id && !leadId) || !content || !communicationType) {
@@ -196,6 +201,16 @@ export async function POST(request) {
       }
     }
 
+    // Staff set the lead to "Opted Out" by hand: nothing goes to this customer on any channel, like DND (the user,
+    // 27 Nov 2026). The AI's own "Opted Out" (a customer's STOP) is per channel and checked just above.
+    if (parentMessage.lead_id) {
+      const optLead = await Lead.findById(parentMessage.lead_id).select('fe_lead_status status_source').lean();
+      if (optLead?.fe_lead_status === 'Opted Out' && optLead?.status_source === 'staff') {
+        return NextResponse.json({ message: 'This lead was set to Opted Out by staff, so nothing is sent to this customer. '
+          + 'Change the status first if they asked to be contacted again.' }, { status: 403 });
+      }
+    }
+
     if (parentMessage.lead_id && ['sms', 'email'].includes(communicationType)) {
       // Ebony Mingo, 30 Oct 2026: "Please stop" on 26 Oct, and a staff text still reached her - this check only knew
       // STOP / unsubscribe, not a stop on the lead. It ends when the customer writes to us again.
@@ -276,7 +291,7 @@ export async function POST(request) {
         sentMessageId = await sendEmail(
           to,
           subjectToSend,
-          contentToSend,
+          emailWithPhotoLinks(contentToSend, mediaUrls),
           from,
           latestMessageId,
           dealer,
@@ -285,7 +300,7 @@ export async function POST(request) {
         );
         console.log('Email sent successfully. Message ID:', sentMessageId);
       } else if (communicationType === 'sms') {
-        sentMessageId = await sendSMS(to, contentToSend, dealer, [],
+        sentMessageId = await sendSMS(to, contentToSend, dealer, mediaUrls,
           { origin: 'staff', leadId: parentMessage?.lead_id || leadId || null });
         console.log('SMS sent successfully. Message ID:', sentMessageId);
       }
@@ -302,7 +317,8 @@ export async function POST(request) {
       sender: from,
       recipient: to,
       subject: communicationType === 'email' ? subjectToSend : undefined,
-      mail_content:  contentToSend,
+      mail_content: communicationType === 'email' ? emailWithPhotoLinks(contentToSend, mediaUrls) : contentToSend,
+      ...(mediaUrls.length ? { has_attachments: true, attachments: mediaAttachments(mediaUrls) } : {}),
     
       communication_type: communicationType,
       message_by: messageBy, // Set based on token verification (defaults to 'user')

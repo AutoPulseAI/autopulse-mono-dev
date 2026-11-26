@@ -98,8 +98,8 @@ test('up type: internet, phone, walk-in, campaign, else other', () => {
   assert.equal(upType({ contact_type: 'walk_in' }), 'Walk-in');
   assert.equal(upType({ lead_source: 'campaign_Spring' }), 'Campaign');
   assert.equal(upType({ source: 'CarGurus', lead_source: 'CarGurus' }), 'Internet');
-  assert.equal(upType({ source: 'sms' }), 'Other');
-  assert.equal(upType(null), 'Other');
+  assert.equal(upType({ source: 'sms' }), 'Not set');
+  assert.equal(upType(null), 'Not set');
 });
 
 test('CSV: never a spreadsheet formula, commas and quotes kept', () => {

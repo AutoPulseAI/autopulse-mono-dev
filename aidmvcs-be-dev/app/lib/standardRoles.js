@@ -12,13 +12,13 @@ export const READ_ONLY = 'View All Leads (Read Only)';
 export const WRITE_PERMISSIONS = Object.freeze(['Manage Employee', "Manage Employee's  Role", 'Manage Email Accounts',
   'Manage Account Information', 'Manage Leads', 'View Assigned Leads', 'Assign Leads', 'Manage Appoinment',
   'Manage Follow-up setting', 'Manage Subscription', 'Manage Support Ticket', 'Manage Customer Conversation',
-  'Dismiss Tasks']);
+  'Dismiss Tasks', 'Bulk Reassign Leads']);
 
 export const STANDARD_ROLES = Object.freeze([
   { name: 'Rooftop Admin', permissions: [...WRITE_PERMISSIONS] },
   { name: 'Executive', permissions: [READ_ONLY] },
   { name: 'Sales Manager', permissions: ['Manage Leads', 'Assign Leads', 'Manage Appoinment', 'Manage Customer Conversation',
-    'Manage Employee', 'Dismiss Tasks'] },
+    'Manage Employee', 'Dismiss Tasks', 'Bulk Reassign Leads'] },
   { name: 'BDC / Sales', permissions: ['View Assigned Leads', 'Manage Appoinment', 'Manage Customer Conversation'] },
   { name: 'Service', permissions: ['View Assigned Leads', 'Manage Appoinment', 'Manage Customer Conversation'] },
   { name: 'Read-only', permissions: [READ_ONLY] },

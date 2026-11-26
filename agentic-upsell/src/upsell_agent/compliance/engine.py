@@ -190,8 +190,11 @@ async def _find(db: DealerScopedDatabase, collection: str, doc_id: str | None) -
 
 def _is_dnd(lead: dict | None) -> bool:
     lead = lead or {}
-    return any(str(lead.get(k) or "").strip().lower() in DND_STATUSES
-               for k in ("fe_lead_status", "lead_status", "status"))
+    if any(str(lead.get(k) or "").strip().lower() in DND_STATUSES for k in ("fe_lead_status", "lead_status", "status")):
+        return True
+    # Staff set "Opted Out" by hand (status_source 'staff'): every channel stops, like DND (the user, 27 Nov 2026).
+    # The AI's own "Opted Out" (a customer's STOP, status_source 'ai') stays per channel: rule 2 reads the stops.
+    return str(lead.get("fe_lead_status") or "") == "Opted Out" and lead.get("status_source") == "staff"
 
 
 _DND_PATTERN = {"$regex": r"^\s*(dnd|do not disturb|do not contact)\s*$", "$options": "i"}
@@ -363,6 +366,17 @@ async def _decide(db: DealerScopedDatabase, check, *, dealer_id: str, customer_i
                   lead_id: str | None, channel: str, purpose: Purpose, is_reply: bool, at: datetime,
                   to: str | None, lead: dict | None, customer: dict | None, campaign: bool,
                   origin: LeadOrigin) -> Decision:
+    # 0. A paused / deactivated dealership (Admin > Dealers; the user, 27 Nov 2026: "when the dealership is paused, it
+    # should pause everything"). Nothing goes out, the opt-out confirmation included; the message is HELD, not dropped,
+    # and is looked at again a day later - after a reactivation it goes through every check again.
+    from upsell_agent.integrations.dealer_mode import dealer_account_state
+    state = await dealer_account_state(dealer_id)
+    if state != "active":
+        check("dealership_active", False, f"the dealership is {state}")
+        return Decision("HOLD", f"the dealership is {state}: nothing is sent until it is reactivated",
+                        "dealership_paused", until=at + timedelta(days=1))
+    check("dealership_active", True, "the dealership is active")
+
     # 1. AI voice.
     if channel == "voice":
         check("ai_voice", False, "AI voice calls are a separate, higher-risk channel and are off")

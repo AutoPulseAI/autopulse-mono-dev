@@ -1135,6 +1135,23 @@ export default function ViewConversations({
                       ))}
                     </details>
                   )}
+                  {/* Type the reply right here, above the newest message, like a chat (Betsy, 25 Nov 2026). Same form as the
+                      Reply button's window: templates, Write with AI, dealer links, car photos and details. */}
+                  {replyAllowed && latestOn(activeChannelTab) && (activeChannelTab === "sms"
+                    ? lead?.phone && !stoppedChannels.sms : lead?.email && !stoppedChannels.email) && (
+                    <EmailReplyModal
+                      inline
+                      key={`${lead?._id}-${activeChannelTab}`}
+                      lead={lead}
+                      dealer_id={lead.dealer_id}
+                      onClose={() => {}}
+                      selectedConversation={latestOn(activeChannelTab)}
+                      communicationType={activeChannelTab}
+                      leadUserLanguage={latestConversationUserLanguageLabel}
+                      onReplySuccess={handleReplySuccess}
+                      conversationThread={emails}
+                    />
+                  )}
                   {activeChannelEmails.map((email) => {
                       const cleaned = cleanEmailContent(email.mail_content || "");
                       const originalText = getMessageTextForTranslation(email);
@@ -1160,7 +1177,11 @@ export default function ViewConversations({
                             borderLeft: '4px solid #ffc107',
                             backgroundColor: '#fff8e1',
                             border: '1px solid #ffc107'
-                          }) : {}}
+                          }) : ["received", "incoming"].includes(email.status) ? {
+                            // Chat style (Betsy, 25 Nov 2026: "we don't know which message come from customer"): the
+                            // customer's messages on the left with a green edge, ours on the right.
+                            marginRight: '10%', borderLeft: '4px solid #198754', backgroundColor: '#f3faf5'
+                          } : { marginLeft: '10%', borderRight: '4px solid #0d6efd' }}
                         >
                           <div className="conversation-header d-flex justify-content-between align-items-start mb-2">
                             <div>

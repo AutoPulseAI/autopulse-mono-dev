@@ -8,6 +8,8 @@ import { renewedToken, SESSION_DAYS } from "@lib/session";
 import Subscription from "@models/Subscription";
 import Package from "@models/Package";
 import { DISMISS_TASKS, ensureDismissPermission } from "@lib/taskPermission";
+import { dealershipBlockedMessage } from "@lib/dealerAccountStatus";
+import { BULK_REASSIGN, ensureBulkReassignPermission } from "@lib/bulkPermission";
 
 export async function GET(req) {
   try {
@@ -68,6 +70,13 @@ export async function GET(req) {
     // IP restriction (lib/ipRestriction.js): checked on every page load, so a sign-in made at the dealership stops
     // working elsewhere. "login as" (AutoPulse / agency) is never restricted.
     if (await ipBlocked(req, user, { impersonated: Boolean(decoded.impersonated_by), where: "page" })) return ipBlockedResponse();
+    // A paused / deactivated dealership: its sessions stop here; AutoPulse's "login as" still opens it.
+    if (!decoded.impersonated_by) {
+      const pausedMessage = await dealershipBlockedMessage(user);
+      if (pausedMessage) {
+        return new Response(JSON.stringify({ message: pausedMessage, code: "dealership_paused" }), { status: 403 });
+      }
+    }
 
     // Extract permissions
     const permissions = user.role?.permissions?.map((p) => p.permission_name) || [];
@@ -75,6 +84,8 @@ export async function GET(req) {
     // always hold it, as the server's check does.
     await ensureDismissPermission().catch(() => null);
     if (user.type === "dealer" && !user.parent_id && !permissions.includes(DISMISS_TASKS)) permissions.push(DISMISS_TASKS);
+    await ensureBulkReassignPermission().catch(() => null);
+    if (user.type === "dealer" && !user.parent_id && !permissions.includes(BULK_REASSIGN)) permissions.push(BULK_REASSIGN);
 
     // Prepare subscription data
     let subscriptionData = null;

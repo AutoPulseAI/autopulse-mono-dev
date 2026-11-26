@@ -12,6 +12,7 @@ import Lead from '@models/Lead';
 import User from '@models/User';
 import { requireDealerAccess } from '@lib/apiGuard';
 import { hasPermission } from '@lib/staffPermission';
+import { BULK_REASSIGN, canReassign, ensureBulkReassignPermission } from '@lib/bulkPermission';
 import { logActivity } from '@lib/activityLog';
 import { recordBulkCall, validBatchId } from '@lib/bulkChanges';
 
@@ -30,6 +31,10 @@ export async function POST(req) {
 
   const raw = Array.isArray(body.lead_ids) ? body.lead_ids.map(String) : [];
   const ids = [...new Set(raw)];
+  await ensureBulkReassignPermission().catch(() => null);
+  if (!(await canReassign(access.user, ids.length))) {
+    return fail(`You do not have permission to reassign several leads at once (${BULK_REASSIGN})`, 403);
+  }
   if (!ids.length) return fail('Pick at least one lead', 400);
   if (ids.length > MAX) return fail(`At most ${MAX} leads at a time`, 400);
   if (ids.some((id) => !mongoose.isValidObjectId(id))) return fail('Some lead ids are not valid', 400);

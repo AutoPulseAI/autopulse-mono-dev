@@ -8,6 +8,7 @@ import CustomerHeader, { primaryContact } from "./CustomerHeader";
 import OverviewTab from "./OverviewTab";
 import DmsDetails, { LeaseBar } from "./DmsDetails";
 import OpenTasks from "./OpenTasks";
+import PossibleMatch from "./PossibleMatch";
 import LeadsTab from "./LeadsTab";
 import SalesTab from "./SalesTab";
 import ServiceTab from "./ServiceTab";
@@ -161,6 +162,7 @@ export default function CustomerDetail({ customerId }) {
         </Alert>
       )}
 
+      <PossibleMatch customerId={customerId} dealerId={customer.dealer_id} />
       <LeaseBar dms={dms} />
       <CustomerHeader
         customer={customer}

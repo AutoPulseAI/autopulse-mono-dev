@@ -5,6 +5,7 @@ import { UserProvider } from "./context/UserContext";
 import { useSidebar } from "../hooks/useSidebar";
 import Sidebar from "./components/Sidebar";
 import AiPausedBanner from "../components/AiPausedBanner";
+import ViewAsBanner from "./components/ViewAsBanner";
 import Topbar from "./components/Topbar";
 import { PermissionsProvider } from '../hooks/PermissionsContext';
 import "../styles.css";
@@ -22,6 +23,7 @@ export default function AdminLayout({ children }) {
             <Topbar toggleSidebar={toggleSidebar} />
             <Sidebar isOpen={isOpen} onClose={closeSidebar} />
             <div className={`content_main ${isOpen ? "shifted" : ""}`}>
+              <ViewAsBanner />
               <AiPausedBanner />
               {children}
             </div>

@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-26T20:02:00.613Z",
+ "generatedAt": "2026-11-26T22:33:59.020Z",
  "app": {
   "name": "AutoPulse CRM",
   "url": "https://www.autopulse.ai",
@@ -40,12 +40,12 @@
    "title": "Sign-in & public pages"
   }
  ],
- "inventoryAt": "2026-11-26T20:01:48.945Z",
+ "inventoryAt": "2026-11-26T22:19:58.664Z",
  "totals": {
   "sections": 81,
-  "features": 175,
-  "buttons": 789,
-  "fields": 319
+  "features": 211,
+  "buttons": 749,
+  "fields": 320
  },
  "sections": [
   {
@@ -63,7 +63,7 @@
      "id": "dealer/_menu.f.menu-links",
      "title": "Every menu item opens its page",
      "steps": [
-      "Open each item of the left menu in turn (open the AI Assistant and Admin groups first).",
+      "Open each item of the left menu in turn (open the Sales, Service and Admin groups first).",
       "Use the browser Back button after each one."
      ],
      "expect": "Each item opens its page in the same tab; the open item is highlighted; Back returns to the page before.",
@@ -71,6 +71,35 @@
      "auto": [],
      "access": null,
      "code": "DMA-01"
+    },
+    {
+     "id": "dealer/_menu.f.menu-groups",
+     "title": "Sales and Service groups (shorter menu)",
+     "about": "Betsy / Bibi, 25 Nov 2026: everything for Sales under Sales, everything for Service under Service.",
+     "steps": [
+      "Look at the menu.",
+      "Close and open Sales, then Service.",
+      "Open Service Appointments, then look at the menu again."
+     ],
+     "expect": "Sales holds Sales Dashboard, Desk Log, Tasks, Leads, Customers, Appointments, AI Messages, AI Insights; Service holds Service Dashboard, Service Customers, Service Appointments, Parts Inventory; Campaigns and Sold Customers are on their own; Report Scheduling is only under Admin; the group of the page on screen is open.",
+     "status": "live",
+     "auto": [],
+     "access": null,
+     "code": "DMA-02"
+    },
+    {
+     "id": "dealer/_menu.f.view-as-banner",
+     "title": "Viewing as an employee: banner and Back to my account",
+     "steps": [
+      "From Admin → Employee Management press the eye on a test employee.",
+      "Try to change anything (a lead's status).",
+      "Press Back to my account."
+     ],
+     "expect": "A blue bar says whose view it is and that nothing can be changed; the change is refused; Back returns to your own account on Employee Management.",
+     "status": "live",
+     "auto": [],
+     "access": null,
+     "code": "DMA-03"
     },
     {
      "id": "dealer/_menu.f.menu-collapse",
@@ -82,7 +111,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "DMA-02"
+     "code": "DMA-04"
     },
     {
      "id": "dealer/_menu.f.store-switch",
@@ -96,7 +125,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "DMA-03"
+     "code": "DMA-05"
     },
     {
      "id": "dealer/_menu.f.notifications",
@@ -109,19 +138,19 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "DMA-04"
+     "code": "DMA-06"
     },
     {
      "id": "dealer/_menu.f.dept-dashboards",
      "title": "Sales Dashboard / Service Dashboard",
      "steps": [
-      "Press Sales Dashboard, then Service Dashboard."
+      "Press Sales → Sales Dashboard, then Service → Service Dashboard."
      ],
      "expect": "The Dashboard opens filtered to that department (the address ends with ?department=sales / service).",
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "DMA-05"
+     "code": "DMA-07"
     },
     {
      "id": "dealer/_menu.f.tasks-badge",
@@ -134,7 +163,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "DMA-06"
+     "code": "DMA-08"
     }
    ],
    "buttons": [
@@ -152,10 +181,10 @@
      "code": "DMA-B01"
     },
     {
-     "id": "dealer/_menu.b.x.react-aria5730412510-r-2",
+     "id": "dealer/_menu.b.x.react-aria6750042824-r-2",
      "label": "Switch store",
      "kind": "button",
-     "el": "#react-aria5730412510-_r_2_",
+     "el": "#react-aria6750042824-_r_2_",
      "href": null,
      "panel": "",
      "about": "Switch store.",
@@ -165,10 +194,10 @@
      "code": "DMA-B02"
     },
     {
-     "id": "dealer/_menu.b.x.react-aria5730412510-r-0",
+     "id": "dealer/_menu.b.x.react-aria6750042824-r-0",
      "label": "Notifications",
      "kind": "button",
-     "el": "#react-aria5730412510-_r_0_",
+     "el": "#react-aria6750042824-_r_0_",
      "href": null,
      "panel": "",
      "about": "Opens the notifications list.",
@@ -204,6 +233,19 @@
      "code": "DMA-B05"
     },
     {
+     "id": "dealer/_menu.b.x.sales",
+     "label": "Sales",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "",
+     "about": "Filter: Sales.",
+     "expect": "The list / numbers narrow to it; the active choice is highlighted; refresh keeps it.",
+     "status": "live",
+     "access": null,
+     "code": "DMA-B06"
+    },
+    {
      "id": "dealer/_menu.b.x.sales-dashboard.dealer-dashboard-department-sales",
      "label": "Sales Dashboard",
      "kind": "link",
@@ -211,19 +253,6 @@
      "href": "/dealer/dashboard?department=sales",
      "panel": "",
      "about": "Goes to /dealer/dashboard?department=sales.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "DMA-B06"
-    },
-    {
-     "id": "dealer/_menu.b.x.service-dashboard.dealer-dashboard-department-service",
-     "label": "Service Dashboard",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/dashboard?department=service",
-     "panel": "",
-     "about": "Goes to /dealer/dashboard?department=service.",
      "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
      "status": "live",
      "access": null,
@@ -282,19 +311,6 @@
      "code": "DMA-B11"
     },
     {
-     "id": "dealer/_menu.b.x.campaigns.dealer-campaigns",
-     "label": "Campaigns",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/campaigns",
-     "panel": "",
-     "about": "Goes to /dealer/campaigns.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "DMA-B12"
-    },
-    {
      "id": "dealer/_menu.b.x.appointments.dealer-booking",
      "label": "Appointments",
      "kind": "link",
@@ -305,20 +321,7 @@
      "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
      "status": "live",
      "access": null,
-     "code": "DMA-B13"
-    },
-    {
-     "id": "dealer/_menu.b.x.ai-assistant",
-     "label": "AI Assistant",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "",
-     "about": "AI Assistant.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "DMA-B14"
+     "code": "DMA-B12"
     },
     {
      "id": "dealer/_menu.b.x.ai-messages.dealer-ai-messages",
@@ -331,7 +334,7 @@
      "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
      "status": "live",
      "access": null,
-     "code": "DMA-B15"
+     "code": "DMA-B13"
     },
     {
      "id": "dealer/_menu.b.x.ai-insights.dealer-ai-insights",
@@ -344,20 +347,98 @@
      "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
      "status": "live",
      "access": null,
+     "code": "DMA-B14"
+    },
+    {
+     "id": "dealer/_menu.b.x.service",
+     "label": "Service",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "",
+     "about": "Filter: Service.",
+     "expect": "The list / numbers narrow to it; the active choice is highlighted; refresh keeps it.",
+     "status": "live",
+     "access": null,
+     "code": "DMA-B15"
+    },
+    {
+     "id": "dealer/_menu.b.x.service-dashboard.dealer-dashboard-department-service",
+     "label": "Service Dashboard",
+     "kind": "link",
+     "el": null,
+     "href": "/dealer/dashboard?department=service",
+     "panel": "",
+     "about": "Goes to /dealer/dashboard?department=service.",
+     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
+     "status": "live",
+     "access": null,
      "code": "DMA-B16"
     },
     {
-     "id": "dealer/_menu.b.x.report-scheduling.dealer-report-schedule",
-     "label": "Report Scheduling",
+     "id": "dealer/_menu.b.x.service-customers.dealer-service",
+     "label": "Service Customers",
      "kind": "link",
      "el": null,
-     "href": "/dealer/report-schedule",
+     "href": "/dealer/service",
      "panel": "",
-     "about": "Goes to /dealer/report-schedule.",
+     "about": "Goes to /dealer/service.",
      "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
      "status": "live",
      "access": null,
      "code": "DMA-B17"
+    },
+    {
+     "id": "dealer/_menu.b.x.service-appointments.dealer-service-appointments",
+     "label": "Service Appointments",
+     "kind": "link",
+     "el": null,
+     "href": "/dealer/service-appointments",
+     "panel": "",
+     "about": "Goes to /dealer/service-appointments.",
+     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
+     "status": "live",
+     "access": null,
+     "code": "DMA-B18"
+    },
+    {
+     "id": "dealer/_menu.b.x.parts-inventory.dealer-parts-inventory",
+     "label": "Parts Inventory",
+     "kind": "link",
+     "el": null,
+     "href": "/dealer/parts-inventory",
+     "panel": "",
+     "about": "Goes to /dealer/parts-inventory.",
+     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
+     "status": "live",
+     "access": null,
+     "code": "DMA-B19"
+    },
+    {
+     "id": "dealer/_menu.b.x.campaigns.dealer-campaigns",
+     "label": "Campaigns",
+     "kind": "link",
+     "el": null,
+     "href": "/dealer/campaigns",
+     "panel": "",
+     "about": "Goes to /dealer/campaigns.",
+     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
+     "status": "live",
+     "access": null,
+     "code": "DMA-B20"
+    },
+    {
+     "id": "dealer/_menu.b.x.sold-customers.dealer-sales",
+     "label": "Sold Customers",
+     "kind": "link",
+     "el": null,
+     "href": "/dealer/sales",
+     "panel": "",
+     "about": "Goes to /dealer/sales.",
+     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
+     "status": "live",
+     "access": null,
+     "code": "DMA-B21"
     },
     {
      "id": "dealer/_menu.b.x.message-template.dealer-message-template",
@@ -371,7 +452,7 @@
      "status": "live",
      "access": null,
      "deadLink": true,
-     "code": "DMA-B18"
+     "code": "DMA-B22"
     },
     {
      "id": "dealer/_menu.b.x.my-subscription.dealer-subscribe",
@@ -384,7 +465,7 @@
      "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
      "status": "live",
      "access": null,
-     "code": "DMA-B19"
+     "code": "DMA-B23"
     },
     {
      "id": "dealer/_menu.b.x.support-ticket.dealer-support",
@@ -397,7 +478,7 @@
      "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
      "status": "live",
      "access": null,
-     "code": "DMA-B20"
+     "code": "DMA-B24"
     },
     {
      "id": "dealer/_menu.b.x.manage-vehicle.dealer-vehicle",
@@ -407,58 +488,6 @@
      "href": "/dealer/vehicle",
      "panel": "",
      "about": "Goes to /dealer/vehicle.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "DMA-B21"
-    },
-    {
-     "id": "dealer/_menu.b.x.sales.dealer-sales",
-     "label": "Sales",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/sales",
-     "panel": "",
-     "about": "Goes to /dealer/sales.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "DMA-B22"
-    },
-    {
-     "id": "dealer/_menu.b.x.service.dealer-service",
-     "label": "Service",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/service",
-     "panel": "",
-     "about": "Goes to /dealer/service.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "DMA-B23"
-    },
-    {
-     "id": "dealer/_menu.b.x.service-appointments.dealer-service-appointments",
-     "label": "Service Appointments",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/service-appointments",
-     "panel": "",
-     "about": "Goes to /dealer/service-appointments.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "DMA-B24"
-    },
-    {
-     "id": "dealer/_menu.b.x.parts-inventory.dealer-parts-inventory",
-     "label": "Parts Inventory",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/parts-inventory",
-     "panel": "",
-     "about": "Goes to /dealer/parts-inventory.",
      "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
      "status": "live",
      "access": null,
@@ -491,84 +520,6 @@
      "code": "DMA-B27"
     },
     {
-     "id": "dealer/_menu.b.x.administration.dealer-admin",
-     "label": "Administration",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/admin",
-     "panel": "",
-     "about": "Goes to /dealer/admin.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "DMA-B28"
-    },
-    {
-     "id": "dealer/_menu.b.x.employee-roles.dealer-roles",
-     "label": "Employee Roles",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/roles",
-     "panel": "",
-     "about": "Goes to /dealer/roles.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "DMA-B29"
-    },
-    {
-     "id": "dealer/_menu.b.x.employee-management.dealer-staff",
-     "label": "Employee Management",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/staff",
-     "panel": "",
-     "about": "Goes to /dealer/staff.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "DMA-B30"
-    },
-    {
-     "id": "dealer/_menu.b.x.email-setup.dealer-email-accounts",
-     "label": "Email Setup",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/email-accounts",
-     "panel": "",
-     "about": "Goes to /dealer/email-accounts.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "DMA-B31"
-    },
-    {
-     "id": "dealer/_menu.b.x.settings.dealer-settings",
-     "label": "Settings",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/settings",
-     "panel": "",
-     "about": "Goes to /dealer/settings.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "DMA-B32"
-    },
-    {
-     "id": "dealer/_menu.b.x.forms-library.dealer-forms",
-     "label": "Forms Library",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/forms",
-     "panel": "",
-     "about": "Goes to /dealer/forms.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "DMA-B33"
-    },
-    {
      "id": "dealer/_menu.b.in-the-window-menu-that-switch-store-opens.autopulse-demo-motorsspringfield",
      "label": "Autopulse Demo MotorsSpringfield",
      "kind": "link",
@@ -579,7 +530,7 @@
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
-     "code": "DMA-B34"
+     "code": "DMA-B28"
     },
     {
      "id": "dealer/_menu.b.in-the-window-menu-that-switch-store-opens.sign-up-test",
@@ -592,7 +543,7 @@
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
-     "code": "DMA-B35"
+     "code": "DMA-B29"
     },
     {
      "id": "dealer/_menu.b.in-the-window-menu-that-notifications-opens.see-all.dealer-leads-assignment-unassigned",
@@ -605,7 +556,7 @@
      "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
      "status": "live",
      "access": null,
-     "code": "DMA-B36"
+     "code": "DMA-B30"
     },
     {
      "id": "dealer/_menu.b.in-the-window-menu-that-autopulse-demo-motors-opens.update-profile",
@@ -618,7 +569,7 @@
      "expect": "Saves; a success message shows and the value stays after a refresh; a wrong value is refused with a message.",
      "status": "live",
      "access": null,
-     "code": "DMA-B37"
+     "code": "DMA-B31"
     },
     {
      "id": "dealer/_menu.b.in-the-window-menu-that-autopulse-demo-motors-opens.change-password",
@@ -631,7 +582,7 @@
      "expect": "The edit form opens with the current values; saving keeps the change after a refresh.",
      "status": "live",
      "access": null,
-     "code": "DMA-B38"
+     "code": "DMA-B32"
     },
     {
      "id": "dealer/_menu.b.in-the-window-menu-that-autopulse-demo-motors-opens.dealer-setup",
@@ -644,7 +595,7 @@
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
-     "code": "DMA-B39"
+     "code": "DMA-B33"
     },
     {
      "id": "dealer/_menu.b.in-the-window-menu-that-autopulse-demo-motors-opens.email-branding-setup",
@@ -657,7 +608,7 @@
      "expect": "Only to a test contact: it is sent once, shows in the conversation, in the customer's language.",
      "status": "live",
      "access": null,
-     "code": "DMA-B40"
+     "code": "DMA-B34"
     },
     {
      "id": "dealer/_menu.b.in-the-window-menu-that-autopulse-demo-motors-opens.logout",
@@ -670,7 +621,7 @@
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
-     "code": "DMA-B41"
+     "code": "DMA-B35"
     }
    ],
    "fields": [
@@ -1097,7 +1048,7 @@
    "id": "dealer/dashboard",
    "area": "sales",
    "title": "Dashboard",
-   "open": "Menu → Sales Dashboard (or Service Dashboard)",
+   "open": "Menu → Sales → Sales Dashboard (or Service → Service Dashboard)",
    "who": "Everyone in the dealership",
    "access": null,
    "autoScreen": "UI-dealer/dashboard",
@@ -1171,6 +1122,22 @@
      "code": "DAS-05"
     },
     {
+     "id": "dealer/dashboard.f.inventory-report",
+     "title": "Leads by car in stock (inventory report)",
+     "access": "admin",
+     "why": "Only AutoPulse super admins see this today (feature flag); sign in as a super admin and use Login as this dealer to test it.",
+     "about": "Betsy, 25 Nov 2026: how many leads came in on each car, and how long it has been in stock.",
+     "steps": [
+      "Press the Lead sources tag.",
+      "Read the chart Leads by car in stock; press Show all numbers and find the table Leads by car in stock.",
+      "Click a count."
+     ],
+     "expect": "One row per car with a lead: stock #, year make model, days in stock, number of leads in the dates picked; cars no longer in stock are not listed; the count opens the Leads list with exactly those leads.",
+     "status": "live",
+     "auto": [],
+     "code": "DAS-06"
+    },
+    {
      "id": "dealer/dashboard.f.report-tags",
      "title": "Report sections (click-to-load tags)",
      "access": "admin",
@@ -1184,7 +1151,7 @@
      "expect": "Only the pressed section loads; each number opens its Leads list; the PDF and CSV download with the same numbers as on screen.",
      "status": "live",
      "auto": [],
-     "code": "DAS-06"
+     "code": "DAS-07"
     },
     {
      "id": "dealer/dashboard.f.calendar",
@@ -1197,7 +1164,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "DAS-07"
+     "code": "DAS-08"
     },
     {
      "id": "dealer/dashboard.t.G-043",
@@ -1211,7 +1178,7 @@
      "status": "live",
      "access": "admin",
      "auto": [],
-     "code": "DAS-08"
+     "code": "DAS-09"
     },
     {
      "id": "dealer/dashboard.t.G-049",
@@ -1225,7 +1192,7 @@
      "status": "live",
      "access": "admin",
      "auto": [],
-     "code": "DAS-09"
+     "code": "DAS-10"
     },
     {
      "id": "dealer/dashboard.t.G-050",
@@ -1239,7 +1206,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "DAS-10"
+     "code": "DAS-11"
     },
     {
      "id": "dealer/dashboard.t.G-051",
@@ -1253,7 +1220,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "DAS-11"
+     "code": "DAS-12"
     },
     {
      "id": "dealer/dashboard.t.E-04",
@@ -1267,7 +1234,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "DAS-12"
+     "code": "DAS-13"
     },
     {
      "id": "dealer/dashboard.t.E-07",
@@ -1281,7 +1248,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "DAS-13"
+     "code": "DAS-14"
     },
     {
      "id": "dealer/dashboard.t.E-09",
@@ -1295,7 +1262,21 @@
      "status": "live",
      "access": "admin",
      "auto": [],
-     "code": "DAS-14"
+     "code": "DAS-15"
+    },
+    {
+     "id": "dealer/dashboard.t.M25-08",
+     "title": "M25-08 · Inventory report: leads per car in stock, days in stock",
+     "about": "SOW v6 item (Meeting 25 Nov): Done · live: After merge.",
+     "steps": [
+      "Go to: Dashboard > Lead sources > Leads by car in stock",
+      "Use it as described there."
+     ],
+     "expect": "Works as described in 'Go to'; numbers match their lists; no error message.",
+     "status": "live",
+     "access": null,
+     "auto": [],
+     "code": "DAS-16"
     }
    ],
    "buttons": [
@@ -1313,10 +1294,10 @@
      "code": "DAS-B01"
     },
     {
-     "id": "dealer/dashboard.b.x.react-aria8575079303-r-3",
+     "id": "dealer/dashboard.b.x.react-aria3785255313-r-5",
      "label": "Download report",
      "kind": "button",
-     "el": "#react-aria8575079303-_r_3_",
+     "el": "#react-aria3785255313-_r_5_",
      "href": null,
      "panel": "Leads Dashboard",
      "about": "Download report.",
@@ -1729,10 +1710,10 @@
      "code": "DAS-B33"
     },
     {
-     "id": "dealer/dashboard.b.after-pressing-lead-sources.react-aria9290552424-r-4",
+     "id": "dealer/dashboard.b.after-pressing-lead-sources.react-aria5044324228-r-6",
      "label": "Download",
      "kind": "button",
-     "el": "#react-aria9290552424-_r_4_",
+     "el": "#react-aria5044324228-_r_6_",
      "href": null,
      "panel": "Where leads come from · after pressing 'Lead sources'",
      "about": "Download. (after pressing 'Lead sources')",
@@ -1742,13 +1723,13 @@
      "code": "DAS-B34"
     },
     {
-     "id": "dealer/dashboard.b.after-pressing-lead-sources.show-all-numbers-12",
-     "label": "Show all numbers (12)",
+     "id": "dealer/dashboard.b.after-pressing-lead-sources.show-all-numbers-13",
+     "label": "Show all numbers (13)",
      "kind": "button",
      "el": null,
      "href": null,
-     "panel": "Campaign leads · after pressing 'Lead sources'",
-     "about": "Filter: Show all numbers (12). (after pressing 'Lead sources')",
+     "panel": "Leads by car in stock (stock #, days in stock) · after pressing 'Lead sources'",
+     "about": "Filter: Show all numbers (13). (after pressing 'Lead sources')",
      "expect": "The list / numbers narrow to it; the active choice is highlighted; refresh keeps it.",
      "status": "live",
      "access": null,
@@ -1922,266 +1903,6 @@
      "status": "live",
      "access": null,
      "code": "DAS-B48"
-    },
-    {
-     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.hide",
-     "label": "Hide",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "0 · after pressing 'How numbers are counted'",
-     "about": "Hide. (after pressing 'How numbers are counted')",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "DAS-B49"
-    },
-    {
-     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.numbers",
-     "label": "Numbers",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted · after pressing 'How numbers are counted'",
-     "about": "Numbers. (after pressing 'How numbers are counted')",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "DAS-B50"
-    },
-    {
-     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.fields",
-     "label": "Fields",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted · after pressing 'How numbers are counted'",
-     "about": "Fields. (after pressing 'How numbers are counted')",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "DAS-B51"
-    },
-    {
-     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.leads-received-dashboard-leads-of-the-dealer-whose-createdat",
-     "label": "Leads received Dashboard Leads of the dealer whose createdAt is in the range.",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted · after pressing 'How numbers are counted'",
-     "about": "Leads received Dashboard Leads of the dealer whose createdAt is in the range.. (after pressing 'How numbers are counted')",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "DAS-B52"
-    },
-    {
-     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.customer-replied-leads-dashboard-leads-of-the-dealer-any-lea",
-     "label": "Customer Replied (leads) Dashboard Leads of the dealer (any lead date) with at l",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted · after pressing 'How numbers are counted'",
-     "about": "Customer Replied (leads) Dashboard Leads of the dealer (any lead date) with at l. (after pressing 'How numbers are counted')",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "DAS-B53"
-    },
-    {
-     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.appointments-made-dashboard-bookings-of-the-dealer-created-i",
-     "label": "Appointments made Dashboard Bookings of the dealer created in the range (any sta",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted · after pressing 'How numbers are counted'",
-     "about": "Appointments made Dashboard Bookings of the dealer created in the range (any sta. (after pressing 'How numbers are counted')",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "DAS-B54"
-    },
-    {
-     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.appointments-for-these-dates-dashboard-bookings-of-the-deale",
-     "label": "Appointments for these dates Dashboard Bookings of the dealer set for a day in t",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted · after pressing 'How numbers are counted'",
-     "about": "Appointments for these dates Dashboard Bookings of the dealer set for a day in t. (after pressing 'How numbers are counted')",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "DAS-B55"
-    },
-    {
-     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.showed-dashboard-scheduled-bookings-appt-scheduled-marked-sh",
-     "label": "Showed Dashboard Scheduled bookings (appt.scheduled) marked showed, or completed",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted · after pressing 'How numbers are counted'",
-     "about": "Showed Dashboard Scheduled bookings (appt.scheduled) marked showed, or completed. (after pressing 'How numbers are counted')",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "DAS-B56"
-    },
-    {
-     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.customer-days-with-a-reply-dashboard-all-customer-dealer-loc",
-     "label": "Customer-days with a reply Dashboard All (customer, dealer-local day) pairs with",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted · after pressing 'How numbers are counted'",
-     "about": "Customer-days with a reply Dashboard All (customer, dealer-local day) pairs with. (after pressing 'How numbers are counted')",
-     "expect": "Only to a test contact: it is sent once, shows in the conversation, in the customer's language.",
-     "status": "live",
-     "access": null,
-     "code": "DAS-B57"
-    },
-    {
-     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.customer-days-replied-from-today-s-leads-dashboard-customer-",
-     "label": "Customer-days replied from today's leads Dashboard Customer-days whose reply lea",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted · after pressing 'How numbers are counted'",
-     "about": "Customer-days replied from today's leads Dashboard Customer-days whose reply lea. (after pressing 'How numbers are counted')",
-     "expect": "Only to a test contact: it is sent once, shows in the conversation, in the customer's language.",
-     "status": "live",
-     "access": null,
-     "code": "DAS-B58"
-    },
-    {
-     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.customer-days-replied-from-past-leads-dashboard-customer-day",
-     "label": "Customer-days replied from past leads Dashboard Customer-days whose reply lead i",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted · after pressing 'How numbers are counted'",
-     "about": "Customer-days replied from past leads Dashboard Customer-days whose reply lead i. (after pressing 'How numbers are counted')",
-     "expect": "Only to a test contact: it is sent once, shows in the conversation, in the customer's language.",
-     "status": "live",
-     "access": null,
-     "code": "DAS-B59"
-    },
-    {
-     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.customer-days-needing-review-dashboard-customer-days-whose-r",
-     "label": "Customer-days needing review Dashboard Customer-days whose reply could not be ti",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted · after pressing 'How numbers are counted'",
-     "about": "Customer-days needing review Dashboard Customer-days whose reply could not be ti. (after pressing 'How numbers are counted')",
-     "expect": "Only to a test contact: it is sent once, shows in the conversation, in the customer's language.",
-     "status": "live",
-     "access": null,
-     "code": "DAS-B60"
-    },
-    {
-     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.customer-days-replied-lead-7-days-old-overlapping-dashboard-",
-     "label": "Customer-days replied, lead 7+ days old (overlapping) Dashboard Customer-days wi",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted · after pressing 'How numbers are counted'",
-     "about": "Customer-days replied, lead 7+ days old (overlapping) Dashboard Customer-days wi. (after pressing 'How numbers are counted')",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "DAS-B61"
-    },
-    {
-     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.customer-days-replied-lead-15-days-old-overlapping-dashboard",
-     "label": "Customer-days replied, lead 15+ days old (overlapping) Dashboard Customer-days w",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted · after pressing 'How numbers are counted'",
-     "about": "Customer-days replied, lead 15+ days old (overlapping) Dashboard Customer-days w. (after pressing 'How numbers are counted')",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "DAS-B62"
-    },
-    {
-     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.customer-days-replied-lead-30-days-old-overlapping-dashboard",
-     "label": "Customer-days replied, lead 30+ days old (overlapping) Dashboard Customer-days w",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted · after pressing 'How numbers are counted'",
-     "about": "Customer-days replied, lead 30+ days old (overlapping) Dashboard Customer-days w. (after pressing 'How numbers are counted')",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "DAS-B63"
-    },
-    {
-     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.customer-days-replied-lead-60-days-old-overlapping-dashboard",
-     "label": "Customer-days replied, lead 60+ days old (overlapping) Dashboard Customer-days w",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted · after pressing 'How numbers are counted'",
-     "about": "Customer-days replied, lead 60+ days old (overlapping) Dashboard Customer-days w. (after pressing 'How numbers are counted')",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "DAS-B64"
-    },
-    {
-     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.customer-days-replied-lead-60-90-days-old-dashboard-customer",
-     "label": "Customer-days replied, lead 60-90 days old Dashboard Customer-days with lead age",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted · after pressing 'How numbers are counted'",
-     "about": "Customer-days replied, lead 60-90 days old Dashboard Customer-days with lead age. (after pressing 'How numbers are counted')",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "DAS-B65"
-    },
-    {
-     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.customer-days-replied-lead-older-than-90-days-came-back-afte",
-     "label": "Customer-days replied, lead older than 90 days (came back after follow-ups ended",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted · after pressing 'How numbers are counted'",
-     "about": "Customer-days replied, lead older than 90 days (came back after follow-ups ended. (after pressing 'How numbers are counted')",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "DAS-B66"
-    },
-    {
-     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.page-buttons-previous-next-number",
-     "label": "Page buttons (previous / next / number)",
-     "kind": "link",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted · after pressing 'How numbers are counted'",
-     "about": "Pages through a long list. (after pressing 'How numbers are counted')",
-     "expect": "The next / previous page of rows shows; the page number is highlighted.",
-     "status": "live",
-     "access": null,
-     "code": "DAS-B67"
-    },
-    {
-     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.next",
-     "label": "› Next",
-     "kind": "link",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted · after pressing 'How numbers are counted'",
-     "about": "› Next. (after pressing 'How numbers are counted')",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "DAS-B68"
     }
    ],
    "fields": [
@@ -2370,18 +2091,6 @@
      "kind": "select",
      "panel": "0 · after pressing 'Data health'",
      "tip": ""
-    },
-    {
-     "label": "Report",
-     "kind": "select",
-     "panel": "How each number is counted · after pressing 'How numbers are counted'",
-     "tip": ""
-    },
-    {
-     "label": "Search a number",
-     "kind": "input:text",
-     "panel": "How each number is counted · after pressing 'How numbers are counted'",
-     "tip": ""
     }
    ],
    "panels": [
@@ -2430,12 +2139,6 @@
      "via": "Show 'Data health'",
      "buttons": 2,
      "fields": 5
-    },
-    {
-     "key": "dealer/dashboard~How numbers are counted",
-     "via": "Show 'How numbers are counted'",
-     "buttons": 20,
-     "fields": 2
     }
    ],
    "code": "DAS"
@@ -2444,7 +2147,7 @@
    "id": "dealer/leads",
    "area": "sales",
    "title": "Leads",
-   "open": "Menu → Leads",
+   "open": "Menu → Sales → Leads",
    "who": "Everyone (Mine / All depends on role)",
    "access": null,
    "autoScreen": "UI-dealer/leads",
@@ -2468,6 +2171,87 @@
      "code": "LEA-01"
     },
     {
+     "id": "dealer/leads.f.one-search",
+     "title": "One search box: name, phone, email or stock #",
+     "about": "Betsy, 25 Nov 2026.",
+     "steps": [
+      "Type a full phone number slowly, digit by digit, in the search box (e.g. 718-555-0101).",
+      "Clear it; type a customer's name; then an email; then a stock number of a car in stock."
+     ],
+     "expect": "The cursor stays in the box while typing and nothing you typed is lost; each search lists the matching leads (by stock #: the leads about that car).",
+     "status": "live",
+     "auto": [],
+     "access": null,
+     "code": "LEA-02"
+    },
+    {
+     "id": "dealer/leads.f.assigned-to",
+     "title": "Assigned to filter (managers)",
+     "steps": [
+      "Pick a person in Anyone (assigned to).",
+      "Actions → Select leads → All leads matching your filters → Reassign to another test user."
+     ],
+     "expect": "Only that person's leads list; the reassignment moves them all and is in Bulk history with Undo.",
+     "status": "live",
+     "auto": [],
+     "access": null,
+     "code": "LEA-03"
+    },
+    {
+     "id": "dealer/leads.f.bulk-reassign-permission",
+     "title": "Reassigning several leads needs Bulk Reassign Leads",
+     "steps": [
+      "Sign in as a test user whose role has Assign Leads but not Bulk Reassign Leads.",
+      "Select two leads."
+     ],
+     "expect": "Reassign is not offered for several leads (one lead can still be reassigned on its card); with the permission ticked in Employee Roles it is.",
+     "status": "live",
+     "auto": [],
+     "access": null,
+     "code": "LEA-04"
+    },
+    {
+     "id": "dealer/leads.f.chat-reply",
+     "title": "Reply box in the conversation (chat style)",
+     "about": "Betsy, 25 Nov 2026: type right in the conversation; know which messages are the customer's.",
+     "steps": [
+      "Open a test lead's conversation (SMS tab).",
+      "Read the messages.",
+      "Type in the Reply by text box above the newest message and send it to your own test phone."
+     ],
+     "expect": "The customer's messages are on the left with a green edge, ours on the right; the message sends from the box, appears in the conversation and the box empties.",
+     "status": "live",
+     "auto": [],
+     "access": null,
+     "code": "LEA-05"
+    },
+    {
+     "id": "dealer/leads.f.vehicle-photos",
+     "title": "Attach Vehicle: photos and facts",
+     "steps": [
+      "In the reply box press Templates, Write with AI, links, car photos → Attach Vehicle; search a stock # and pick the car.",
+      "Tick two photos; click Miles, Drivetrain and Vehicle page.",
+      "Send to your own test phone."
+     ],
+     "expect": "The car's photos show; the clicked facts are added as lines to the message; the text arrives with the two photos as a picture message (by email: photo links under the message).",
+     "status": "live",
+     "auto": [],
+     "access": null,
+     "code": "LEA-06"
+    },
+    {
+     "id": "dealer/leads.f.dealer-links",
+     "title": "Send a link (credit application...)",
+     "steps": [
+      "Open the reply tools; press Full Credit Application (or another link shown)."
+     ],
+     "expect": "The link is added to the message as a line; only links set in Settings → AI → Links are shown.",
+     "status": "live",
+     "auto": [],
+     "access": null,
+     "code": "LEA-07"
+    },
+    {
      "id": "dealer/leads.f.open-lead",
      "title": "Open a lead (lead card)",
      "steps": [
@@ -2479,7 +2263,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-02"
+     "code": "LEA-08"
     },
     {
      "id": "dealer/leads.f.reply",
@@ -2493,7 +2277,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-03"
+     "code": "LEA-09"
     },
     {
      "id": "dealer/leads.f.edit-lead",
@@ -2506,7 +2290,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-04"
+     "code": "LEA-10"
     },
     {
      "id": "dealer/leads.f.actions-menu",
@@ -2521,7 +2305,22 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-05"
+     "code": "LEA-11"
+    },
+    {
+     "id": "dealer/leads.f.staff-opted-out",
+     "title": "Opted Out set by staff stops everything (like DND)",
+     "about": "The user, 27 Nov 2026.",
+     "steps": [
+      "On a test lead choose Update Status → Opted Out.",
+      "Try to reply by text and by email.",
+      "Text the lead's number from the test phone."
+     ],
+     "expect": "Both replies are refused with 'set to Opted Out by staff'; the AI sends nothing on any channel and does not move the lead off Opted Out when the customer writes; a customer's own STOP still stops only texts.",
+     "status": "live",
+     "auto": [],
+     "access": null,
+     "code": "LEA-12"
     },
     {
      "id": "dealer/leads.f.stopped",
@@ -2533,7 +2332,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-06"
+     "code": "LEA-13"
     },
     {
      "id": "dealer/leads.t.G-006",
@@ -2547,7 +2346,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-07"
+     "code": "LEA-14"
     },
     {
      "id": "dealer/leads.t.G-009",
@@ -2561,7 +2360,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-08"
+     "code": "LEA-15"
     },
     {
      "id": "dealer/leads.t.G-010",
@@ -2575,7 +2374,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-09"
+     "code": "LEA-16"
     },
     {
      "id": "dealer/leads.t.G-027",
@@ -2589,7 +2388,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-10"
+     "code": "LEA-17"
     },
     {
      "id": "dealer/leads.t.G-082",
@@ -2603,7 +2402,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-11"
+     "code": "LEA-18"
     },
     {
      "id": "dealer/leads.t.G-083",
@@ -2617,7 +2416,119 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-12"
+     "code": "LEA-19"
+    },
+    {
+     "id": "dealer/leads.t.M25-03",
+     "title": "M25-03 · Leads search box keeps the cursor while typing a phone number",
+     "about": "SOW v6 item (Meeting 25 Nov): Done · live: After merge.",
+     "steps": [
+      "Go to: Leads > search box",
+      "Use it as described there."
+     ],
+     "expect": "Works as described in 'Go to'; numbers match their lists; no error message.",
+     "status": "live",
+     "access": null,
+     "auto": [],
+     "code": "LEA-20"
+    },
+    {
+     "id": "dealer/leads.t.M25-07",
+     "title": "M25-07 · One search box: name, phone, email or stock #",
+     "about": "SOW v6 item (Meeting 25 Nov): Done · live: After merge.",
+     "steps": [
+      "Go to: Leads > search box",
+      "Use it as described there."
+     ],
+     "expect": "Works as described in 'Go to'; numbers match their lists; no error message.",
+     "status": "live",
+     "access": null,
+     "auto": [],
+     "code": "LEA-21"
+    },
+    {
+     "id": "dealer/leads.t.M25-10",
+     "title": "M25-10 · Filter leads by who they are assigned to (for bulk reassign)",
+     "about": "SOW v6 item (Meeting 25 Nov): Done · live: After merge.",
+     "steps": [
+      "Go to: Leads > Assigned to filter",
+      "Use it as described there."
+     ],
+     "expect": "Works as described in 'Go to'; numbers match their lists; no error message.",
+     "status": "live",
+     "access": null,
+     "auto": [],
+     "code": "LEA-22"
+    },
+    {
+     "id": "dealer/leads.t.M25-11",
+     "title": "M25-11 · Undo a reassignment later",
+     "about": "SOW v6 item (Meeting 25 Nov): Done · live: Yes.",
+     "steps": [
+      "Go to: Leads > Actions > Bulk history > Undo",
+      "Use it as described there."
+     ],
+     "expect": "Works as described in 'Go to'; numbers match their lists; no error message.",
+     "status": "live",
+     "access": null,
+     "auto": [],
+     "code": "LEA-23"
+    },
+    {
+     "id": "dealer/leads.t.M25-12",
+     "title": "M25-12 · Bulk reassign is its own permission",
+     "about": "SOW v6 item (Meeting 25 Nov): Done · live: After merge.",
+     "steps": [
+      "Go to: Admin > Employee Roles > Bulk Reassign Leads",
+      "Use it as described there."
+     ],
+     "expect": "Works as described in 'Go to'; numbers match their lists; no error message.",
+     "status": "live",
+     "access": null,
+     "auto": [],
+     "code": "LEA-24"
+    },
+    {
+     "id": "dealer/leads.t.M25-16",
+     "title": "M25-16 · Reply box in the conversation (chat style), customer left / ours right",
+     "about": "SOW v6 item (Meeting 25 Nov): Done · live: After merge.",
+     "steps": [
+      "Go to: Lead conversation",
+      "Use it as described there."
+     ],
+     "expect": "Works as described in 'Go to'; numbers match their lists; no error message.",
+     "status": "live",
+     "access": null,
+     "auto": [],
+     "code": "LEA-25"
+    },
+    {
+     "id": "dealer/leads.t.M25-17",
+     "title": "M25-17 · Attach vehicle: photos and facts",
+     "about": "SOW v6 item (Meeting 25 Nov): Done · live: After merge.",
+     "steps": [
+      "Go to: Reply window > Attach Vehicle",
+      "Use it as described there."
+     ],
+     "expect": "Works as described in 'Go to'; numbers match their lists; no error message.",
+     "status": "live",
+     "access": null,
+     "auto": [],
+     "code": "LEA-26"
+    },
+    {
+     "id": "dealer/leads.t.M25-18",
+     "title": "M25-18 · One-click dealer links (credit application...)",
+     "about": "SOW v6 item (Meeting 25 Nov): Done · live: After merge.",
+     "steps": [
+      "Go to: Reply window > Send a link",
+      "Use it as described there."
+     ],
+     "expect": "Works as described in 'Go to'; numbers match their lists; no error message.",
+     "status": "live",
+     "access": null,
+     "auto": [],
+     "code": "LEA-27"
     }
    ],
    "buttons": [
@@ -2955,20 +2866,8 @@
      "tip": ""
     },
     {
-     "label": "Name",
-     "kind": "input:text",
-     "panel": "Lead List",
-     "tip": ""
-    },
-    {
-     "label": "Email",
-     "kind": "input:text",
-     "panel": "Lead List",
-     "tip": ""
-    },
-    {
-     "label": "Phone",
-     "kind": "input:text",
+     "label": "Search name, phone, email or stock number",
+     "kind": "input:search",
      "panel": "Lead List",
      "tip": ""
     },
@@ -2986,6 +2885,12 @@
     },
     {
      "label": "source",
+     "kind": "select",
+     "panel": "Lead List",
+     "tip": ""
+    },
+    {
+     "label": "Assigned to",
      "kind": "select",
      "panel": "Lead List",
      "tip": ""
@@ -3223,7 +3128,7 @@
    "id": "dealer/customers",
    "area": "sales",
    "title": "Customers",
-   "open": "Menu → Customers",
+   "open": "Menu → Sales → Customers",
    "who": "Everyone",
    "access": null,
    "autoScreen": "UI-dealer/customers",
@@ -3660,6 +3565,21 @@
      "code": "CUP-03"
     },
     {
+     "id": "dealer/customers/[id].f.possible-match",
+     "title": "Possible match (linked, not merged)",
+     "about": "Betsy, 25 Nov 2026: a new lead that matches a sales / service customer is not joined to them until a manager confirms it is the same person.",
+     "steps": [
+      "Send a test lead with the phone and email of a test customer who has a DealerVault sale.",
+      "Open the new lead's customer (as a manager).",
+      "Press Review match."
+     ],
+     "expect": "The lead has its own customer; a yellow Possible match bar names the sales / service customer; nothing from that customer's sales shows on the new one; Review match opens Possible duplicates where Merge links them.",
+     "status": "live",
+     "auto": [],
+     "access": null,
+     "code": "CUP-04"
+    },
+    {
      "id": "dealer/customers/[id].f.export-form",
      "title": "Export to form / Print",
      "steps": [
@@ -3670,7 +3590,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "CUP-04"
+     "code": "CUP-05"
     },
     {
      "id": "dealer/customers/[id].t.G-005",
@@ -3684,7 +3604,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "CUP-05"
+     "code": "CUP-06"
     },
     {
      "id": "dealer/customers/[id].t.G-007",
@@ -3698,7 +3618,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "CUP-06"
+     "code": "CUP-07"
     },
     {
      "id": "dealer/customers/[id].t.G-026",
@@ -3712,7 +3632,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "CUP-07"
+     "code": "CUP-08"
     },
     {
      "id": "dealer/customers/[id].t.G-059",
@@ -3726,7 +3646,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "CUP-08"
+     "code": "CUP-09"
     },
     {
      "id": "dealer/customers/[id].t.G-061",
@@ -3740,7 +3660,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "CUP-09"
+     "code": "CUP-10"
     },
     {
      "id": "dealer/customers/[id].t.G-062",
@@ -3754,7 +3674,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "CUP-10"
+     "code": "CUP-11"
     },
     {
      "id": "dealer/customers/[id].t.G-063",
@@ -3768,7 +3688,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "CUP-11"
+     "code": "CUP-12"
     },
     {
      "id": "dealer/customers/[id].t.G-066",
@@ -3782,7 +3702,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "CUP-12"
+     "code": "CUP-13"
     },
     {
      "id": "dealer/customers/[id].t.M-10.8",
@@ -3793,7 +3713,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "CUP-13"
+     "code": "CUP-14"
     },
     {
      "id": "dealer/customers/[id].t.M-10.9",
@@ -3804,7 +3724,35 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "CUP-14"
+     "code": "CUP-15"
+    },
+    {
+     "id": "dealer/customers/[id].t.M25-01",
+     "title": "M25-01 · Customer name opens the customer profile",
+     "about": "SOW v6 item (Meeting 25 Nov): Done · live: Yes.",
+     "steps": [
+      "Go to: Tasks, Call Tasks, Desk Log, Appointments today: click the name",
+      "Use it as described there."
+     ],
+     "expect": "Works as described in 'Go to'; numbers match their lists; no error message.",
+     "status": "live",
+     "access": null,
+     "auto": [],
+     "code": "CUP-16"
+    },
+    {
+     "id": "dealer/customers/[id].t.M25-02",
+     "title": "M25-02 · Lead linked, not merged, to a sales/service customer (manager confirms)",
+     "about": "SOW v6 item (Meeting 25 Nov): Done · live: After merge.",
+     "steps": [
+      "Go to: Customer profile > Possible match; Customers > Possible duplicates",
+      "Use it as described there."
+     ],
+     "expect": "Works as described in 'Go to'; numbers match their lists; no error message.",
+     "status": "live",
+     "access": null,
+     "auto": [],
+     "code": "CUP-17"
     }
    ],
    "buttons": [
@@ -4108,10 +4056,10 @@
      "code": "CUP-B23"
     },
     {
-     "id": "dealer/customers/[id].b.x.react-aria5730412510-r-3",
+     "id": "dealer/customers/[id].b.x.react-aria9004375460-r-5",
      "label": "Forms",
      "kind": "button",
-     "el": "#react-aria5730412510-_r_3_",
+     "el": "#react-aria9004375460-_r_5_",
      "href": null,
      "panel": "Customer Details",
      "about": "Forms.",
@@ -4847,6 +4795,19 @@
    "skipped": null,
    "features": [
     {
+     "id": "dealer/customers/duplicates.f.history-badge",
+     "title": "Sales / service customers marked; who merged",
+     "steps": [
+      "Find a pair with a Sales / service customer badge.",
+      "Merge a test pair; read Recent merges."
+     ],
+     "expect": "The badge marks customers with DealerVault sales or service; Recent merges shows By (the user who merged) and Undo.",
+     "status": "live",
+     "auto": [],
+     "access": null,
+     "code": "PDC-01"
+    },
+    {
      "id": "dealer/customers/duplicates.f.merge",
      "title": "Merge or mark not the same person",
      "steps": [
@@ -4859,7 +4820,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "PDC-01"
+     "code": "PDC-02"
     },
     {
      "id": "dealer/customers/duplicates.t.G-008",
@@ -4873,7 +4834,35 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "PDC-02"
+     "code": "PDC-03"
+    },
+    {
+     "id": "dealer/customers/duplicates.t.M25-02",
+     "title": "M25-02 · Lead linked, not merged, to a sales/service customer (manager confirms)",
+     "about": "SOW v6 item (Meeting 25 Nov): Done · live: After merge.",
+     "steps": [
+      "Go to: Customer profile > Possible match; Customers > Possible duplicates",
+      "Use it as described there."
+     ],
+     "expect": "Works as described in 'Go to'; numbers match their lists; no error message.",
+     "status": "live",
+     "access": null,
+     "auto": [],
+     "code": "PDC-04"
+    },
+    {
+     "id": "dealer/customers/duplicates.t.M25-06",
+     "title": "M25-06 · Merge / unmerge duplicates, who merged",
+     "about": "SOW v6 item (Meeting 25 Nov): Done · live: After merge.",
+     "steps": [
+      "Go to: Customers > Possible duplicates > Recent merges (By column, Undo)",
+      "Use it as described there."
+     ],
+     "expect": "Works as described in 'Go to'; numbers match their lists; no error message.",
+     "status": "live",
+     "access": null,
+     "auto": [],
+     "code": "PDC-05"
     }
    ],
    "buttons": [
@@ -4902,7 +4891,7 @@
    "id": "dealer/booking",
    "area": "sales",
    "title": "Appointments",
-   "open": "Menu → Appointments",
+   "open": "Menu → Sales → Appointments",
    "who": "Everyone",
    "access": null,
    "autoScreen": "UI-dealer/booking",
@@ -5299,7 +5288,7 @@
    "id": "dealer/desk-log",
    "area": "sales",
    "title": "Desk Log",
-   "open": "Menu → Desk Log",
+   "open": "Menu → Sales → Desk Log",
    "who": "Managers and sales staff",
    "access": "admin",
    "autoScreen": "UI-dealer/desk-log",
@@ -5345,6 +5334,31 @@
      "code": "DEL-03"
     },
     {
+     "id": "dealer/desk-log.f.trade-from-conversation",
+     "title": "Trade column shows the trade from the conversation",
+     "steps": [
+      "Check in a test customer who told the AI about a trade (e.g. 'I have a 2019 GMC Terrain') and has no trade-in record."
+     ],
+     "expect": "The Trade column shows the car with 'from the conversation' under it; a trade-in record, once added, is shown instead.",
+     "status": "live",
+     "auto": [],
+     "access": null,
+     "code": "DEL-04"
+    },
+    {
+     "id": "dealer/desk-log.f.lead-type",
+     "title": "Lead type: Internet, Phone Up, Walk-In, Campaign (no Other)",
+     "about": "Betsy, 25 Nov 2026: there is no such thing as Other.",
+     "steps": [
+      "Open All Lead Types."
+     ],
+     "expect": "The choices are Internet, Phone Up, Walk-In, Campaign and Not set (a lead whose type staff have not picked); there is no Other.",
+     "status": "live",
+     "auto": [],
+     "access": null,
+     "code": "DEL-05"
+    },
+    {
      "id": "dealer/desk-log.f.filters-print",
      "title": "Filters, search, paging and Print",
      "steps": [
@@ -5355,7 +5369,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "DEL-04"
+     "code": "DEL-06"
     },
     {
      "id": "dealer/desk-log.t.G-011",
@@ -5369,7 +5383,7 @@
      "status": "live",
      "access": "admin",
      "auto": [],
-     "code": "DEL-05"
+     "code": "DEL-07"
     },
     {
      "id": "dealer/desk-log.t.G-012",
@@ -5383,7 +5397,7 @@
      "status": "live",
      "access": "admin",
      "auto": [],
-     "code": "DEL-06"
+     "code": "DEL-08"
     },
     {
      "id": "dealer/desk-log.t.G-013",
@@ -5397,7 +5411,7 @@
      "status": "live",
      "access": "admin",
      "auto": [],
-     "code": "DEL-07"
+     "code": "DEL-09"
     },
     {
      "id": "dealer/desk-log.t.G-014",
@@ -5411,7 +5425,7 @@
      "status": "live",
      "access": "admin",
      "auto": [],
-     "code": "DEL-08"
+     "code": "DEL-10"
     },
     {
      "id": "dealer/desk-log.t.G-015",
@@ -5425,7 +5439,7 @@
      "status": "live",
      "access": "admin",
      "auto": [],
-     "code": "DEL-09"
+     "code": "DEL-11"
     },
     {
      "id": "dealer/desk-log.t.G-016",
@@ -5439,7 +5453,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "DEL-10"
+     "code": "DEL-12"
     },
     {
      "id": "dealer/desk-log.t.G-017",
@@ -5453,7 +5467,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "DEL-11"
+     "code": "DEL-13"
     },
     {
      "id": "dealer/desk-log.t.G-018",
@@ -5467,7 +5481,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "DEL-12"
+     "code": "DEL-14"
     },
     {
      "id": "dealer/desk-log.t.G-024",
@@ -5481,7 +5495,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "DEL-13"
+     "code": "DEL-15"
     },
     {
      "id": "dealer/desk-log.t.G-056",
@@ -5495,7 +5509,35 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "DEL-14"
+     "code": "DEL-16"
+    },
+    {
+     "id": "dealer/desk-log.t.M25-13",
+     "title": "M25-13 · Lead type Internet / Phone / Walk-in (no Other)",
+     "about": "SOW v6 item (Meeting 25 Nov): Done · live: After merge.",
+     "steps": [
+      "Go to: Desk Log lead type; reports",
+      "Use it as described there."
+     ],
+     "expect": "Works as described in 'Go to'; numbers match their lists; no error message.",
+     "status": "live",
+     "access": null,
+     "auto": [],
+     "code": "DEL-17"
+    },
+    {
+     "id": "dealer/desk-log.t.M25-14",
+     "title": "M25-14 · Trade-in from the conversation on the Desk Log",
+     "about": "SOW v6 item (Meeting 25 Nov): Done · live: After merge.",
+     "steps": [
+      "Go to: Desk Log Trade column",
+      "Use it as described there."
+     ],
+     "expect": "Works as described in 'Go to'; numbers match their lists; no error message.",
+     "status": "live",
+     "access": null,
+     "auto": [],
+     "code": "DEL-18"
     }
    ],
    "buttons": [
@@ -5539,10 +5581,10 @@
      "code": "DEL-B03"
     },
     {
-     "id": "dealer/desk-log.b.x.react-aria9808330362-r-2",
+     "id": "dealer/desk-log.b.x.react-aria8816037714-r-2",
      "label": "More: check in, today's appointments, settings",
      "kind": "button",
-     "el": "#react-aria9808330362-_r_2_",
+     "el": "#react-aria8816037714-_r_2_",
      "href": null,
      "panel": "Desk Log",
      "about": "Filter: More: check in, today's appointments, settings.",
@@ -5772,7 +5814,7 @@
    "id": "dealer/ai/actions",
    "area": "ai",
    "title": "Tasks (Dealer Action Required, Tasks, Stuck leads, Team board)",
-   "open": "Menu → Tasks",
+   "open": "Menu → Sales → Tasks",
    "who": "Everyone (Team board: managers)",
    "access": null,
    "autoScreen": "UI-dealer/ai/actions",
@@ -6412,7 +6454,7 @@
    "id": "dealer/ai/messages",
    "area": "ai",
    "title": "AI Messages (inbox)",
-   "open": "Menu → AI Assistant → AI Messages",
+   "open": "Menu → Sales → AI Messages",
    "who": "Everyone",
    "access": null,
    "autoScreen": "UI-dealer/ai/messages",
@@ -6762,7 +6804,7 @@
    "id": "dealer/ai/insights",
    "area": "ai",
    "title": "AI Insights",
-   "open": "Menu → AI Assistant → AI Insights",
+   "open": "Menu → Sales → AI Insights",
    "who": "Managers",
    "access": null,
    "autoScreen": "UI-dealer/ai/insights",
@@ -7067,7 +7109,7 @@
    "id": "dealer/report-schedule",
    "area": "marketing",
    "title": "Report scheduling",
-   "open": "Menu → Report Scheduling",
+   "open": "Menu → Admin → Report Scheduling",
    "who": "Managers",
    "access": null,
    "autoScreen": "UI-dealer/report-schedule",
@@ -7214,10 +7256,10 @@
      "code": "REP-B01"
     },
     {
-     "id": "dealer/reports.b.x.react-aria1443015554-r-5",
+     "id": "dealer/reports.b.x.react-aria5030582122-r-5",
      "label": "Download report",
      "kind": "button",
-     "el": "#react-aria1443015554-_r_5_",
+     "el": "#react-aria5030582122-_r_5_",
      "href": null,
      "panel": "Leads Dashboard",
      "about": "Download report.",
@@ -7578,251 +7620,17 @@
      "code": "REP-B29"
     },
     {
-     "id": "dealer/reports.b.x.numbers",
-     "label": "Numbers",
+     "id": "dealer/reports.b.x.show-all-numbers-14",
+     "label": "Show all numbers (14)",
      "kind": "button",
      "el": null,
      "href": null,
-     "panel": "How each number is counted",
-     "about": "Numbers.",
-     "expect": "Works; no error message.",
+     "panel": "Data health",
+     "about": "Filter: Show all numbers (14).",
+     "expect": "The list / numbers narrow to it; the active choice is highlighted; refresh keeps it.",
      "status": "live",
      "access": null,
      "code": "REP-B30"
-    },
-    {
-     "id": "dealer/reports.b.x.fields",
-     "label": "Fields",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Fields.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B31"
-    },
-    {
-     "id": "dealer/reports.b.x.leads-received-dashboard-leads-of-the-dealer-whose-createdat",
-     "label": "Leads received Dashboard Leads of the dealer whose createdAt is in the range.",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Leads received Dashboard Leads of the dealer whose createdAt is in the range..",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B32"
-    },
-    {
-     "id": "dealer/reports.b.x.customer-replied-leads-dashboard-leads-of-the-dealer-any-lea",
-     "label": "Customer Replied (leads) Dashboard Leads of the dealer (any lead date) with at l",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Customer Replied (leads) Dashboard Leads of the dealer (any lead date) with at l.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B33"
-    },
-    {
-     "id": "dealer/reports.b.x.appointments-made-dashboard-bookings-of-the-dealer-created-i",
-     "label": "Appointments made Dashboard Bookings of the dealer created in the range (any sta",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Appointments made Dashboard Bookings of the dealer created in the range (any sta.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B34"
-    },
-    {
-     "id": "dealer/reports.b.x.appointments-for-these-dates-dashboard-bookings-of-the-deale",
-     "label": "Appointments for these dates Dashboard Bookings of the dealer set for a day in t",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Appointments for these dates Dashboard Bookings of the dealer set for a day in t.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B35"
-    },
-    {
-     "id": "dealer/reports.b.x.showed-dashboard-scheduled-bookings-appt-scheduled-marked-sh",
-     "label": "Showed Dashboard Scheduled bookings (appt.scheduled) marked showed, or completed",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Showed Dashboard Scheduled bookings (appt.scheduled) marked showed, or completed.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B36"
-    },
-    {
-     "id": "dealer/reports.b.x.customer-days-with-a-reply-dashboard-all-customer-dealer-loc",
-     "label": "Customer-days with a reply Dashboard All (customer, dealer-local day) pairs with",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Customer-days with a reply Dashboard All (customer, dealer-local day) pairs with.",
-     "expect": "Only to a test contact: it is sent once, shows in the conversation, in the customer's language.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B37"
-    },
-    {
-     "id": "dealer/reports.b.x.customer-days-replied-from-today-s-leads-dashboard-customer-",
-     "label": "Customer-days replied from today's leads Dashboard Customer-days whose reply lea",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Customer-days replied from today's leads Dashboard Customer-days whose reply lea.",
-     "expect": "Only to a test contact: it is sent once, shows in the conversation, in the customer's language.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B38"
-    },
-    {
-     "id": "dealer/reports.b.x.customer-days-replied-from-past-leads-dashboard-customer-day",
-     "label": "Customer-days replied from past leads Dashboard Customer-days whose reply lead i",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Customer-days replied from past leads Dashboard Customer-days whose reply lead i.",
-     "expect": "Only to a test contact: it is sent once, shows in the conversation, in the customer's language.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B39"
-    },
-    {
-     "id": "dealer/reports.b.x.customer-days-needing-review-dashboard-customer-days-whose-r",
-     "label": "Customer-days needing review Dashboard Customer-days whose reply could not be ti",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Customer-days needing review Dashboard Customer-days whose reply could not be ti.",
-     "expect": "Only to a test contact: it is sent once, shows in the conversation, in the customer's language.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B40"
-    },
-    {
-     "id": "dealer/reports.b.x.customer-days-replied-lead-7-days-old-overlapping-dashboard-",
-     "label": "Customer-days replied, lead 7+ days old (overlapping) Dashboard Customer-days wi",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Customer-days replied, lead 7+ days old (overlapping) Dashboard Customer-days wi.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B41"
-    },
-    {
-     "id": "dealer/reports.b.x.customer-days-replied-lead-15-days-old-overlapping-dashboard",
-     "label": "Customer-days replied, lead 15+ days old (overlapping) Dashboard Customer-days w",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Customer-days replied, lead 15+ days old (overlapping) Dashboard Customer-days w.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B42"
-    },
-    {
-     "id": "dealer/reports.b.x.customer-days-replied-lead-30-days-old-overlapping-dashboard",
-     "label": "Customer-days replied, lead 30+ days old (overlapping) Dashboard Customer-days w",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Customer-days replied, lead 30+ days old (overlapping) Dashboard Customer-days w.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B43"
-    },
-    {
-     "id": "dealer/reports.b.x.customer-days-replied-lead-60-days-old-overlapping-dashboard",
-     "label": "Customer-days replied, lead 60+ days old (overlapping) Dashboard Customer-days w",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Customer-days replied, lead 60+ days old (overlapping) Dashboard Customer-days w.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B44"
-    },
-    {
-     "id": "dealer/reports.b.x.customer-days-replied-lead-60-90-days-old-dashboard-customer",
-     "label": "Customer-days replied, lead 60-90 days old Dashboard Customer-days with lead age",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Customer-days replied, lead 60-90 days old Dashboard Customer-days with lead age.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B45"
-    },
-    {
-     "id": "dealer/reports.b.x.customer-days-replied-lead-older-than-90-days-came-back-afte",
-     "label": "Customer-days replied, lead older than 90 days (came back after follow-ups ended",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Customer-days replied, lead older than 90 days (came back after follow-ups ended.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B46"
-    },
-    {
-     "id": "dealer/reports.b.x.page-buttons-previous-next-number",
-     "label": "Page buttons (previous / next / number)",
-     "kind": "link",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Pages through a long list.",
-     "expect": "The next / previous page of rows shows; the page number is highlighted.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B47"
-    },
-    {
-     "id": "dealer/reports.b.x.next",
-     "label": "› Next",
-     "kind": "link",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "› Next.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B48"
     },
     {
      "id": "dealer/reports.b.x.emails-visible",
@@ -7835,7 +7643,7 @@
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
-     "code": "REP-B49"
+     "code": "REP-B31"
     },
     {
      "id": "dealer/reports.b.x.sms-visible",
@@ -7848,7 +7656,7 @@
      "expect": "Only to a test contact: it is sent once, shows in the conversation, in the customer's language.",
      "status": "live",
      "access": null,
-     "code": "REP-B50"
+     "code": "REP-B32"
     }
    ],
    "fields": [
@@ -7859,22 +7667,40 @@
      "tip": ""
     },
     {
-     "label": "Report",
+     "label": "Source",
      "kind": "select",
-     "panel": "How each number is counted",
+     "panel": "0",
      "tip": ""
     },
     {
-     "label": "Search a number",
-     "kind": "input:text",
-     "panel": "How each number is counted",
+     "label": "Lead source",
+     "kind": "select",
+     "panel": "0",
+     "tip": ""
+    },
+    {
+     "label": "Assigned staff",
+     "kind": "select",
+     "panel": "0",
+     "tip": ""
+    },
+    {
+     "label": "AI or human",
+     "kind": "select",
+     "panel": "0",
+     "tip": ""
+    },
+    {
+     "label": "Sales or service",
+     "kind": "select",
+     "panel": "0",
      "tip": ""
     }
    ],
    "panels": [
     "Leads Dashboard",
     "CUSTOMER REPLIES BY LEAD AGE0 + 0 = 0 customer replied",
-    "How each number is counted",
+    "Data health",
     "Lead Sources",
     "Lead Status",
     "Lead Received",
@@ -7888,8 +7714,8 @@
   {
    "id": "dealer/sales",
    "area": "dms",
-   "title": "Sales (DMS deals)",
-   "open": "Menu → Sales",
+   "title": "Sold Customers (DMS deals)",
+   "open": "Menu → Sold Customers",
    "who": "Everyone",
    "access": null,
    "autoScreen": "UI-dealer/sales",
@@ -7906,7 +7732,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "SAL-01"
+     "code": "SOC-01"
     }
    ],
    "buttons": [
@@ -7921,7 +7747,7 @@
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
-     "code": "SAL-B01"
+     "code": "SOC-B01"
     }
    ],
    "fields": [],
@@ -7930,7 +7756,7 @@
     "Deal List"
    ],
    "parts": [],
-   "code": "SAL"
+   "code": "SOC"
   },
   {
    "id": "dealer/sales/[id]",
@@ -7941,7 +7767,7 @@
    "access": null,
    "autoScreen": "UI-dealer/sales/[id]",
    "landed": null,
-   "skipped": "no example record linked from its list page",
+   "skipped": null,
    "features": [
     {
      "id": "dealer/sales/[id].f.opens",
@@ -7957,9 +7783,26 @@
      "code": "DED-01"
     }
    ],
-   "buttons": [],
+   "buttons": [
+    {
+     "id": "dealer/sales/[id].b.x.back-to-sales",
+     "label": "Back to Sales",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Unnamed buyer",
+     "about": "Filter: Back to Sales.",
+     "expect": "The list / numbers narrow to it; the active choice is highlighted; refresh keeps it.",
+     "status": "live",
+     "access": null,
+     "code": "DED-B01"
+    }
+   ],
    "fields": [],
-   "panels": [],
+   "panels": [
+    "Deal Details",
+    "Unnamed buyer"
+   ],
    "parts": [],
    "code": "DED"
   },
@@ -7967,7 +7810,7 @@
    "id": "dealer/service",
    "area": "dms",
    "title": "Service (repair orders)",
-   "open": "Menu → Service",
+   "open": "Menu → Service → Service Customers",
    "who": "Everyone",
    "access": null,
    "autoScreen": "UI-dealer/service",
@@ -8031,7 +7874,7 @@
    "id": "dealer/service-appointments",
    "area": "dms",
    "title": "Service appointments (DMS)",
-   "open": "Menu → Service Appointments",
+   "open": "Menu → Service → Service Appointments",
    "who": "Everyone",
    "access": null,
    "autoScreen": "UI-dealer/service-appointments",
@@ -8043,7 +7886,7 @@
      "title": "Service appointments (DMS) opens and shows its data",
      "about": "",
      "steps": [
-      "Open Menu → Service Appointments.",
+      "Open Menu → Service → Service Appointments.",
       "Use each button and field below on test data."
      ],
      "expect": "The page opens with no error message; lists, filters and buttons work as their rows below say.",
@@ -8110,7 +7953,7 @@
    "access": null,
    "autoScreen": "UI-dealer/service-appointments/[id]",
    "landed": null,
-   "skipped": "no example record linked from its list page",
+   "skipped": null,
    "features": [
     {
      "id": "dealer/service-appointments/[id].f.opens",
@@ -8126,9 +7969,26 @@
      "code": "SAD-01"
     }
    ],
-   "buttons": [],
+   "buttons": [
+    {
+     "id": "dealer/service-appointments/[id].b.x.back-to-service-appointments",
+     "label": "Back to Service Appointments",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Unnamed customer",
+     "about": "Filter: Back to Service Appointments.",
+     "expect": "The list / numbers narrow to it; the active choice is highlighted; refresh keeps it.",
+     "status": "live",
+     "access": null,
+     "code": "SAD-B01"
+    }
+   ],
    "fields": [],
-   "panels": [],
+   "panels": [
+    "Service Appointment Details",
+    "Unnamed customer"
+   ],
    "parts": [],
    "code": "SAD"
   },
@@ -8136,7 +7996,7 @@
    "id": "dealer/parts-inventory",
    "area": "dms",
    "title": "Parts inventory",
-   "open": "Menu → Parts Inventory",
+   "open": "Menu → Service → Parts Inventory",
    "who": "Everyone",
    "access": null,
    "autoScreen": "UI-dealer/parts-inventory",
@@ -8148,7 +8008,7 @@
      "title": "Parts inventory opens and shows its data",
      "about": "",
      "steps": [
-      "Open Menu → Parts Inventory.",
+      "Open Menu → Service → Parts Inventory.",
       "Use each button and field below on test data."
      ],
      "expect": "The page opens with no error message; lists, filters and buttons work as their rows below say.",
@@ -9172,10 +9032,10 @@
    ],
    "buttons": [
     {
-     "id": "dealer/forms.b.x.react-aria1145794186-r-3",
+     "id": "dealer/forms.b.x.react-aria5532102114-r-3",
      "label": "Add a standard form",
      "kind": "button",
-     "el": "#react-aria1145794186-_r_3_",
+     "el": "#react-aria5532102114-_r_3_",
      "href": null,
      "panel": "Forms Library",
      "about": "Add a standard form.",
@@ -9371,6 +9231,35 @@
      "auto": [],
      "access": null,
      "code": "EMM-01"
+    },
+    {
+     "id": "dealer/staff.f.view-as",
+     "title": "View as an employee (eye button)",
+     "about": "Betsy, 25 Nov 2026: see what an employee sees, for training and their questions.",
+     "steps": [
+      "Press the eye on a test employee.",
+      "Open the pages in the menu; try to change a lead's status.",
+      "Press Back to my account."
+     ],
+     "expect": "The CRM shows exactly that employee's menu and data with a blue View as bar; every change is refused; Back returns to your own account. Only the dealership account and staff who manage employees have the eye; only for their own staff.",
+     "status": "live",
+     "auto": [],
+     "access": null,
+     "code": "EMM-02"
+    },
+    {
+     "id": "dealer/staff.t.M25-21",
+     "title": "M25-21 · View as an employee",
+     "about": "SOW v6 item (Meeting 25 Nov): Done · live: After merge.",
+     "steps": [
+      "Go to: Admin > Employee Management > eye button",
+      "Use it as described there."
+     ],
+     "expect": "Works as described in 'Go to'; numbers match their lists; no error message.",
+     "status": "live",
+     "access": null,
+     "auto": [],
+     "code": "EMM-03"
     }
    ],
    "buttons": [
@@ -9414,6 +9303,19 @@
      "code": "EMM-B03"
     },
     {
+     "id": "dealer/staff.b.x.row-view-as-sam-sales",
+     "label": "Row: View as Sam Sales",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Employee List",
+     "about": "Filter: View as Sam Sales.",
+     "expect": "The list / numbers narrow to it; the active choice is highlighted; refresh keeps it.",
+     "status": "live",
+     "access": null,
+     "code": "EMM-B04"
+    },
+    {
      "id": "dealer/staff.b.x.row-regular-icon",
      "label": "Row: (regular icon)",
      "kind": "button",
@@ -9424,7 +9326,20 @@
      "expect": "Does what its tooltip says; no error message.",
      "status": "live",
      "access": null,
-     "code": "EMM-B04"
+     "code": "EMM-B05"
+    },
+    {
+     "id": "dealer/staff.b.x.row-view-as-maya-manager",
+     "label": "Row: View as Maya Manager",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Employee List",
+     "about": "View as Maya Manager for that row only.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "EMM-B06"
     },
     {
      "id": "dealer/staff.b.in-the-window-menu-that-add-emp-opens.close",
@@ -9437,7 +9352,7 @@
      "expect": "The window closes without saving anything.",
      "status": "live",
      "access": null,
-     "code": "EMM-B05"
+     "code": "EMM-B07"
     },
     {
      "id": "dealer/staff.b.in-the-window-menu-that-add-emp-opens.create-employee",
@@ -9450,7 +9365,7 @@
      "expect": "A form opens; required fields are checked; Save adds it and it shows in the list; Cancel adds nothing.",
      "status": "live",
      "access": null,
-     "code": "EMM-B06"
+     "code": "EMM-B08"
     }
    ],
    "fields": [
@@ -9560,18 +9475,30 @@
      "code": "EMR-01"
     },
     {
-     "id": "dealer/roles.t.G-054",
-     "title": "G-054 · Role model and tenant isolation",
-     "about": "SOW v6 item (Not in Betsy order): Done · live: Yes (main, 19 Nov 2026).",
+     "id": "dealer/roles.f.bulk-reassign",
+     "title": "Bulk Reassign Leads permission",
      "steps": [
-      "Go to: Employee Roles > Add standard roles",
+      "Open Rooftop Admin and Sales Manager; open a BDC role."
+     ],
+     "expect": "Bulk Reassign Leads is ticked for Rooftop Admin and Sales Manager, not for other roles until an admin ticks it.",
+     "status": "live",
+     "auto": [],
+     "access": null,
+     "code": "EMR-02"
+    },
+    {
+     "id": "dealer/roles.t.M25-12",
+     "title": "M25-12 · Bulk reassign is its own permission",
+     "about": "SOW v6 item (Meeting 25 Nov): Done · live: After merge.",
+     "steps": [
+      "Go to: Admin > Employee Roles > Bulk Reassign Leads",
       "Use it as described there."
      ],
      "expect": "Works as described in 'Go to'; numbers match their lists; no error message.",
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "EMR-02"
+     "code": "EMR-03"
     }
    ],
    "buttons": [
@@ -9731,6 +9658,12 @@
      "kind": "input:checkbox",
      "panel": "Add Role · in the window / menu that 'Add Role' opens",
      "tip": ""
+    },
+    {
+     "label": "Bulk Reassign Leads",
+     "kind": "input:checkbox",
+     "panel": "Add Role · in the window / menu that 'Add Role' opens",
+     "tip": ""
     }
    ],
    "panels": [
@@ -9742,7 +9675,7 @@
      "key": "dealer/roles::Add Role",
      "via": "Button 'Add Role'",
      "buttons": 2,
-     "fields": 15
+     "fields": 16
     }
    ],
    "code": "EMR"
@@ -10222,10 +10155,10 @@
    ],
    "buttons": [
     {
-     "id": "dealer/subscribe.b.x.react-aria3966500073-r-2-tab-currentplan",
+     "id": "dealer/subscribe.b.x.react-aria1551776446-r-2-tab-currentplan",
      "label": "My Current Plan",
      "kind": "tab",
-     "el": "#react-aria3966500073-_r_2_-tab-currentplan",
+     "el": "#react-aria1551776446-_r_2_-tab-currentplan",
      "href": null,
      "panel": "My Subscription",
      "about": "Tab: shows the 'My Current Plan' part of My subscription.",
@@ -10235,10 +10168,10 @@
      "code": "MYS-B01"
     },
     {
-     "id": "dealer/subscribe.b.x.react-aria3966500073-r-2-tab-subscriptionplan",
+     "id": "dealer/subscribe.b.x.react-aria1551776446-r-2-tab-subscriptionplan",
      "label": "Subscription Plans",
      "kind": "tab",
-     "el": "#react-aria3966500073-_r_2_-tab-subscriptionplan",
+     "el": "#react-aria1551776446-_r_2_-tab-subscriptionplan",
      "href": null,
      "panel": "My Subscription",
      "about": "Tab: shows the 'Subscription Plans' part of My subscription.",
@@ -10870,6 +10803,22 @@
    "skipped": null,
    "features": [
     {
+     "id": "admin/dealers.f.pause",
+     "title": "Pause, deactivate and reactivate a dealership",
+     "about": "Betsy, 25 Nov 2026: turn a dealership off when it does not keep to its contract.",
+     "steps": [
+      "On the TEST dealer: ... menu → Pause dealership; try without a reason, then with one.",
+      "Try to sign in as one of its users (not Login as).",
+      "Login as the dealer from here.",
+      "... → Reactivate dealership; sign in again."
+     ],
+     "expect": "A reason is required; the row shows Paused; its users cannot sign in and see that the account is paused; Login as still opens it; while paused no text or email goes out for it (staff reply, campaign, AI, alerts, daily report are all stopped) and new leads are still saved; after Reactivate they sign in again and messages go again.",
+     "status": "live",
+     "auto": [],
+     "access": null,
+     "code": "ADE-01"
+    },
+    {
      "id": "admin/dealers.f.login-as",
      "title": "Filter, export and Login as a dealer",
      "steps": [
@@ -10880,7 +10829,21 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "ADE-01"
+     "code": "ADE-02"
+    },
+    {
+     "id": "admin/dealers.t.M25-26",
+     "title": "M25-26 · Pause / deactivate a dealership",
+     "about": "SOW v6 item (Meeting 25 Nov): Done · live: After merge.",
+     "steps": [
+      "Go to: Admin > Dealers > ... menu",
+      "Use it as described there."
+     ],
+     "expect": "Works as described in 'Go to'; numbers match their lists; no error message.",
+     "status": "live",
+     "access": null,
+     "auto": [],
+     "code": "ADE-03"
     }
    ],
    "buttons": [
@@ -11390,10 +11353,10 @@
      "code": "AAI-B19"
     },
     {
-     "id": "admin/ai-studio.b.x.react-aria2967256983-r-1-tab-edit",
+     "id": "admin/ai-studio.b.x.react-aria5385019980-r-1-tab-edit",
      "label": "Edit",
      "kind": "tab",
-     "el": "#react-aria2967256983-_r_1_-tab-edit",
+     "el": "#react-aria5385019980-_r_1_-tab-edit",
      "href": null,
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "about": "Tab: shows the 'Edit' part of AI Studio.",
@@ -11403,10 +11366,10 @@
      "code": "AAI-B20"
     },
     {
-     "id": "admin/ai-studio.b.x.react-aria2967256983-r-1-tab-live",
+     "id": "admin/ai-studio.b.x.react-aria5385019980-r-1-tab-live",
      "label": "Live (v1)",
      "kind": "tab",
-     "el": "#react-aria2967256983-_r_1_-tab-live",
+     "el": "#react-aria5385019980-_r_1_-tab-live",
      "href": null,
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "about": "Tab: shows the 'Live (v1)' part of AI Studio.",
@@ -11416,10 +11379,10 @@
      "code": "AAI-B21"
     },
     {
-     "id": "admin/ai-studio.b.x.react-aria2967256983-r-1-tab-history",
+     "id": "admin/ai-studio.b.x.react-aria5385019980-r-1-tab-history",
      "label": "History (1)",
      "kind": "tab",
-     "el": "#react-aria2967256983-_r_1_-tab-history",
+     "el": "#react-aria5385019980-_r_1_-tab-history",
      "href": null,
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "about": "Tab: shows the 'History (1)' part of AI Studio.",
@@ -13014,6 +12977,18 @@
    "skipped": null,
    "features": [
     {
+     "id": "admin/contact-compliance.f.dealer-list",
+     "title": "The dealer list shows dealerships only",
+     "steps": [
+      "Open Choose a dealer."
+     ],
+     "expect": "Only dealerships are listed, no employees.",
+     "status": "live",
+     "auto": [],
+     "access": null,
+     "code": "ACO-01"
+    },
+    {
      "id": "admin/contact-compliance.f.policy",
      "title": "Policy, decisions and Do-Not-Contact per dealer",
      "steps": [
@@ -13023,7 +12998,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "ACO-01"
+     "code": "ACO-02"
     },
     {
      "id": "admin/contact-compliance.t.G-068",
@@ -13037,7 +13012,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "ACO-02"
+     "code": "ACO-03"
     },
     {
      "id": "admin/contact-compliance.t.G-069",
@@ -13051,7 +13026,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "ACO-03"
+     "code": "ACO-04"
     },
     {
      "id": "admin/contact-compliance.t.G-070",
@@ -13065,7 +13040,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "ACO-04"
+     "code": "ACO-05"
     },
     {
      "id": "admin/contact-compliance.t.G-071",
@@ -13079,7 +13054,21 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "ACO-05"
+     "code": "ACO-06"
+    },
+    {
+     "id": "admin/contact-compliance.t.M25-05",
+     "title": "M25-05 · Contact compliance lists dealerships only",
+     "about": "SOW v6 item (Meeting 25 Nov): Done · live: After merge.",
+     "steps": [
+      "Go to: Admin > Contact compliance",
+      "Use it as described there."
+     ],
+     "expect": "Works as described in 'Go to'; numbers match their lists; no error message.",
+     "status": "live",
+     "access": null,
+     "auto": [],
+     "code": "ACO-07"
     }
    ],
    "buttons": [],
@@ -13897,10 +13886,10 @@
      "code": "APA-B05"
     },
     {
-     "id": "admin/package.b.in-the-window-menu-that-add-package-opens.react-aria6839930414-r-1-tab-general",
+     "id": "admin/package.b.in-the-window-menu-that-add-package-opens.react-aria2575402185-r-1-tab-general",
      "label": "General",
      "kind": "tab",
-     "el": "#react-aria6839930414-_r_1_-tab-general",
+     "el": "#react-aria2575402185-_r_1_-tab-general",
      "href": null,
      "panel": "Add Package · in the window / menu that 'Add Package' opens",
      "about": "Tab: shows the 'General' part of Packages. (in the window / menu that 'Add Package' opens)",
@@ -13910,10 +13899,10 @@
      "code": "APA-B06"
     },
     {
-     "id": "admin/package.b.in-the-window-menu-that-add-package-opens.react-aria6839930414-r-1-tab-features",
+     "id": "admin/package.b.in-the-window-menu-that-add-package-opens.react-aria2575402185-r-1-tab-features",
      "label": "Features",
      "kind": "tab",
-     "el": "#react-aria6839930414-_r_1_-tab-features",
+     "el": "#react-aria2575402185-_r_1_-tab-features",
      "href": null,
      "panel": "Add Package · in the window / menu that 'Add Package' opens",
      "about": "Tab: shows the 'Features' part of Packages. (in the window / menu that 'Add Package' opens)",

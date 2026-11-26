@@ -3,9 +3,19 @@ import { authMiddleware } from './app/agency/middleware/auth';
 import { subscriptionMiddleware } from './app/agency/middleware/subscription';
 import { dealerauthMiddleware } from './app/dealer/middleware/dealerauth';
 import { dealersubscriptionMiddleware } from './app/dealer/middleware/dealersubscription';
+import { viewAsWriteRequest } from './app/lib/viewAs';
 
 export async function middleware(request) {
   const { pathname } = request.nextUrl;
+
+  // "View as" an employee is look-only (app/lib/viewAs.js): no change is made with that sign-in. Other API calls pass
+  // straight through (the API is matched only for this check).
+  if (pathname.startsWith('/api/') && !pathname.startsWith('/api/cron')) {
+    if (viewAsWriteRequest({ method: request.method, pathname, authorization: request.headers.get('authorization') })) {
+      return NextResponse.json({ message: 'You are viewing as an employee: nothing can be changed. Go back to your own account to make changes.' }, { status: 403 });
+    }
+    return NextResponse.next();
+  }
 
   // `make crm-live-db`: this local copy runs against the live database, so the platform-wide cron jobs
   // (reports, CSV imports, campaigns, appointment reminders for every dealer) are the live servers' job, never ours.
@@ -91,6 +101,8 @@ export const config = {
   runtime: 'nodejs',
   matcher: [
     "/api/cron/:path*",
+    // Every other API route except /api/auth (see below), only for the "view as" look-only check.
+    "/api/((?!auth/).*)",
     "/agency",
     "/agency/:path*",
     "/agency/register/:path*",

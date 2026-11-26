@@ -1,5 +1,5 @@
 {
- "crawledAt": "2026-11-26T20:01:48.945Z",
+ "crawledAt": "2026-11-26T22:19:58.664Z",
  "app": "http://127.0.0.1:3137",
  "screens": {
   "admin/ai-studio": {
@@ -157,21 +157,21 @@
     },
     {
      "label": "Edit",
-     "id": "react-aria2967256983-_r_1_-tab-edit",
+     "id": "react-aria5385019980-_r_1_-tab-edit",
      "kind": "tab",
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "href": null
     },
     {
      "label": "Live (v1)",
-     "id": "react-aria2967256983-_r_1_-tab-live",
+     "id": "react-aria5385019980-_r_1_-tab-live",
      "kind": "tab",
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "href": null
     },
     {
      "label": "History (1)",
-     "id": "react-aria2967256983-_r_1_-tab-history",
+     "id": "react-aria5385019980-_r_1_-tab-history",
      "kind": "tab",
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "href": null
@@ -2258,14 +2258,14 @@
     },
     {
      "label": "General",
-     "id": "react-aria6839930414-_r_1_-tab-general",
+     "id": "react-aria2575402185-_r_1_-tab-general",
      "kind": "tab",
      "panel": "Add Package",
      "href": null
     },
     {
      "label": "Features",
-     "id": "react-aria6839930414-_r_1_-tab-features",
+     "id": "react-aria2575402185-_r_1_-tab-features",
      "kind": "tab",
      "panel": "Add Package",
      "href": null
@@ -3486,7 +3486,7 @@
   },
   "dealer/_menu": {
    "route": "/dealer",
-   "url": "/dealer/customers/6b05f1b3bd8975fd49baea04",
+   "url": "/dealer/admin",
    "chrome": true,
    "title": "",
    "panels": [],
@@ -3501,14 +3501,14 @@
     },
     {
      "label": "Switch store",
-     "id": "react-aria5730412510-_r_2_",
+     "id": "react-aria6750042824-_r_2_",
      "kind": "button",
      "panel": "",
      "href": null
     },
     {
      "label": "Notifications",
-     "id": "react-aria5730412510-_r_0_",
+     "id": "react-aria6750042824-_r_0_",
      "kind": "button",
      "panel": "",
      "href": null
@@ -3528,18 +3528,18 @@
      "href": null
     },
     {
+     "label": "Sales",
+     "id": null,
+     "kind": "button",
+     "panel": "",
+     "href": null
+    },
+    {
      "label": "Sales Dashboard",
      "id": null,
      "kind": "link",
      "panel": "",
      "href": "/dealer/dashboard?department=sales"
-    },
-    {
-     "label": "Service Dashboard",
-     "id": null,
-     "kind": "link",
-     "panel": "",
-     "href": "/dealer/dashboard?department=service"
     },
     {
      "label": "Desk Log",
@@ -3570,25 +3570,11 @@
      "href": "/dealer/customers"
     },
     {
-     "label": "Campaigns",
-     "id": null,
-     "kind": "link",
-     "panel": "",
-     "href": "/dealer/campaigns"
-    },
-    {
      "label": "Appointments",
      "id": null,
      "kind": "link",
      "panel": "",
      "href": "/dealer/booking"
-    },
-    {
-     "label": "AI Assistant",
-     "id": null,
-     "kind": "button",
-     "panel": "",
-     "href": null
     },
     {
      "label": "AI Messages",
@@ -3605,11 +3591,53 @@
      "href": "/dealer/ai/insights"
     },
     {
-     "label": "Report Scheduling",
+     "label": "Service",
+     "id": null,
+     "kind": "button",
+     "panel": "",
+     "href": null
+    },
+    {
+     "label": "Service Dashboard",
      "id": null,
      "kind": "link",
      "panel": "",
-     "href": "/dealer/report-schedule"
+     "href": "/dealer/dashboard?department=service"
+    },
+    {
+     "label": "Service Customers",
+     "id": null,
+     "kind": "link",
+     "panel": "",
+     "href": "/dealer/service"
+    },
+    {
+     "label": "Service Appointments",
+     "id": null,
+     "kind": "link",
+     "panel": "",
+     "href": "/dealer/service-appointments"
+    },
+    {
+     "label": "Parts Inventory",
+     "id": null,
+     "kind": "link",
+     "panel": "",
+     "href": "/dealer/parts-inventory"
+    },
+    {
+     "label": "Campaigns",
+     "id": null,
+     "kind": "link",
+     "panel": "",
+     "href": "/dealer/campaigns"
+    },
+    {
+     "label": "Sold Customers",
+     "id": null,
+     "kind": "link",
+     "panel": "",
+     "href": "/dealer/sales"
     },
     {
      "label": "Message Template",
@@ -3640,34 +3668,6 @@
      "href": "/dealer/vehicle"
     },
     {
-     "label": "Sales",
-     "id": null,
-     "kind": "link",
-     "panel": "",
-     "href": "/dealer/sales"
-    },
-    {
-     "label": "Service",
-     "id": null,
-     "kind": "link",
-     "panel": "",
-     "href": "/dealer/service"
-    },
-    {
-     "label": "Service Appointments",
-     "id": null,
-     "kind": "link",
-     "panel": "",
-     "href": "/dealer/service-appointments"
-    },
-    {
-     "label": "Parts Inventory",
-     "id": null,
-     "kind": "link",
-     "panel": "",
-     "href": "/dealer/parts-inventory"
-    },
-    {
      "label": "Autopulse Chat",
      "id": null,
      "kind": "link",
@@ -3680,48 +3680,6 @@
      "kind": "button",
      "panel": "",
      "href": null
-    },
-    {
-     "label": "Administration",
-     "id": null,
-     "kind": "link",
-     "panel": "",
-     "href": "/dealer/admin"
-    },
-    {
-     "label": "Employee Roles",
-     "id": null,
-     "kind": "link",
-     "panel": "",
-     "href": "/dealer/roles"
-    },
-    {
-     "label": "Employee Management",
-     "id": null,
-     "kind": "link",
-     "panel": "",
-     "href": "/dealer/staff"
-    },
-    {
-     "label": "Email Setup",
-     "id": null,
-     "kind": "link",
-     "panel": "",
-     "href": "/dealer/email-accounts"
-    },
-    {
-     "label": "Settings",
-     "id": null,
-     "kind": "link",
-     "panel": "",
-     "href": "/dealer/settings"
-    },
-    {
-     "label": "Forms Library",
-     "id": null,
-     "kind": "link",
-     "panel": "",
-     "href": "/dealer/forms"
     }
    ],
    "fields": []
@@ -5144,7 +5102,7 @@
     },
     {
      "label": "Download report",
-     "id": "react-aria8575079303-_r_3_",
+     "id": "react-aria3785255313-_r_5_",
      "kind": "button",
      "panel": "Leads Dashboard",
      "href": null
@@ -5362,7 +5320,8 @@
     "Where leads come from",
     "Top sources: leads, appointments, shown, sold",
     "Leads by source",
-    "Campaign leads"
+    "Campaign leads",
+    "Leads by car in stock (stock #, days in stock)"
    ],
    "tabs": [],
    "buttons": [
@@ -5389,16 +5348,16 @@
     },
     {
      "label": "Download",
-     "id": "react-aria9290552424-_r_4_",
+     "id": "react-aria5044324228-_r_6_",
      "kind": "button",
      "panel": "Where leads come from",
      "href": null
     },
     {
-     "label": "Show all numbers (12)",
+     "label": "Show all numbers (13)",
      "id": null,
      "kind": "button",
-     "panel": "Campaign leads",
+     "panel": "Leads by car in stock (stock #, days in stock)",
      "href": null
     }
    ],
@@ -5798,175 +5757,6 @@
    "parent": "dealer/dashboard",
    "via": "Show 'Data health'"
   },
-  "dealer/dashboard~How numbers are counted": {
-   "title": "Leads Dashboard",
-   "panels": [
-    "How each number is counted"
-   ],
-   "tabs": [],
-   "buttons": [
-    {
-     "label": "Hide",
-     "id": null,
-     "kind": "button",
-     "panel": "0",
-     "href": null
-    },
-    {
-     "label": "Numbers",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Fields",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Leads received Dashboard Leads of the dealer whose createdAt is in the range.",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Customer Replied (leads) Dashboard Leads of the dealer (any lead date) with at l",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Appointments made Dashboard Bookings of the dealer created in the range (any sta",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Appointments for these dates Dashboard Bookings of the dealer set for a day in t",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Showed Dashboard Scheduled bookings (appt.scheduled) marked showed, or completed",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Customer-days with a reply Dashboard All (customer, dealer-local day) pairs with",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Customer-days replied from today's leads Dashboard Customer-days whose reply lea",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Customer-days replied from past leads Dashboard Customer-days whose reply lead i",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Customer-days needing review Dashboard Customer-days whose reply could not be ti",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Customer-days replied, lead 7+ days old (overlapping) Dashboard Customer-days wi",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Customer-days replied, lead 15+ days old (overlapping) Dashboard Customer-days w",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Customer-days replied, lead 30+ days old (overlapping) Dashboard Customer-days w",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Customer-days replied, lead 60+ days old (overlapping) Dashboard Customer-days w",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Customer-days replied, lead 60-90 days old Dashboard Customer-days with lead age",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Customer-days replied, lead older than 90 days (came back after follow-ups ended",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Page buttons (previous / next / number)",
-     "id": null,
-     "kind": "link",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "› Next",
-     "id": null,
-     "kind": "link",
-     "panel": "How each number is counted",
-     "href": null
-    }
-   ],
-   "fields": [
-    {
-     "label": "Report",
-     "id": null,
-     "name": null,
-     "kind": "select",
-     "panel": "How each number is counted"
-    },
-    {
-     "label": "Search a number",
-     "id": null,
-     "name": null,
-     "kind": "input:text",
-     "panel": "How each number is counted"
-    }
-   ],
-   "route": "/dealer/dashboard",
-   "url": "/dealer/dashboard",
-   "parent": "dealer/dashboard",
-   "via": "Show 'How numbers are counted'"
-  },
   "dealer/desk-log": {
    "route": "/dealer/desk-log",
    "url": "/dealer/desk-log",
@@ -5999,7 +5789,7 @@
     },
     {
      "label": "More: check in, today's appointments, settings",
-     "id": "react-aria9808330362-_r_2_",
+     "id": "react-aria8816037714-_r_2_",
      "kind": "button",
      "panel": "Desk Log",
      "href": null
@@ -6323,7 +6113,7 @@
    "buttons": [
     {
      "label": "Add a standard form",
-     "id": "react-aria1145794186-_r_3_",
+     "id": "react-aria5532102114-_r_3_",
      "kind": "button",
      "panel": "Forms Library",
      "href": null
@@ -6702,24 +6492,10 @@
      "panel": "Leads"
     },
     {
-     "label": "Name",
+     "label": "Search name, phone, email or stock number",
      "id": null,
-     "name": "name",
-     "kind": "input:text",
-     "panel": "Lead List"
-    },
-    {
-     "label": "Email",
-     "id": null,
-     "name": "email",
-     "kind": "input:text",
-     "panel": "Lead List"
-    },
-    {
-     "label": "Phone",
-     "id": null,
-     "name": "phone",
-     "kind": "input:text",
+     "name": "q",
+     "kind": "input:search",
      "panel": "Lead List"
     },
     {
@@ -6740,6 +6516,13 @@
      "label": "source",
      "id": null,
      "name": "source",
+     "kind": "select",
+     "panel": "Lead List"
+    },
+    {
+     "label": "Assigned to",
+     "id": null,
+     "name": "owner",
      "kind": "select",
      "panel": "Lead List"
     },
@@ -7073,7 +6856,7 @@
    "panels": [
     "Leads Dashboard",
     "CUSTOMER REPLIES BY LEAD AGE0 + 0 = 0 customer replied",
-    "How each number is counted",
+    "Data health",
     "Lead Sources",
     "Lead Status",
     "Lead Received",
@@ -7092,7 +6875,7 @@
     },
     {
      "label": "Download report",
-     "id": "react-aria1443015554-_r_5_",
+     "id": "react-aria5030582122-_r_5_",
      "kind": "button",
      "panel": "Leads Dashboard",
      "href": null
@@ -7287,136 +7070,10 @@
      "href": null
     },
     {
-     "label": "Numbers",
+     "label": "Show all numbers (14)",
      "id": null,
      "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Fields",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Leads received Dashboard Leads of the dealer whose createdAt is in the range.",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Customer Replied (leads) Dashboard Leads of the dealer (any lead date) with at l",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Appointments made Dashboard Bookings of the dealer created in the range (any sta",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Appointments for these dates Dashboard Bookings of the dealer set for a day in t",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Showed Dashboard Scheduled bookings (appt.scheduled) marked showed, or completed",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Customer-days with a reply Dashboard All (customer, dealer-local day) pairs with",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Customer-days replied from today's leads Dashboard Customer-days whose reply lea",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Customer-days replied from past leads Dashboard Customer-days whose reply lead i",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Customer-days needing review Dashboard Customer-days whose reply could not be ti",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Customer-days replied, lead 7+ days old (overlapping) Dashboard Customer-days wi",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Customer-days replied, lead 15+ days old (overlapping) Dashboard Customer-days w",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Customer-days replied, lead 30+ days old (overlapping) Dashboard Customer-days w",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Customer-days replied, lead 60+ days old (overlapping) Dashboard Customer-days w",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Customer-days replied, lead 60-90 days old Dashboard Customer-days with lead age",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Customer-days replied, lead older than 90 days (came back after follow-ups ended",
-     "id": null,
-     "kind": "button",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "Page buttons (previous / next / number)",
-     "id": null,
-     "kind": "link",
-     "panel": "How each number is counted",
-     "href": null
-    },
-    {
-     "label": "› Next",
-     "id": null,
-     "kind": "link",
-     "panel": "How each number is counted",
+     "panel": "Data health",
      "href": null
     },
     {
@@ -7443,18 +7100,39 @@
      "panel": "Leads Dashboard"
     },
     {
-     "label": "Report",
+     "label": "Source",
      "id": null,
      "name": null,
      "kind": "select",
-     "panel": "How each number is counted"
+     "panel": "0"
     },
     {
-     "label": "Search a number",
+     "label": "Lead source",
      "id": null,
      "name": null,
-     "kind": "input:text",
-     "panel": "How each number is counted"
+     "kind": "select",
+     "panel": "0"
+    },
+    {
+     "label": "Assigned staff",
+     "id": null,
+     "name": null,
+     "kind": "select",
+     "panel": "0"
+    },
+    {
+     "label": "AI or human",
+     "id": null,
+     "name": null,
+     "kind": "select",
+     "panel": "0"
+    },
+    {
+     "label": "Sales or service",
+     "id": null,
+     "name": null,
+     "kind": "select",
+     "panel": "0"
     }
    ]
   },
@@ -7622,6 +7300,13 @@
     {
      "label": "Dismiss Tasks",
      "id": "perm-6b06189a7e729ab8aa19a66a",
+     "name": null,
+     "kind": "input:checkbox",
+     "panel": "Add Role"
+    },
+    {
+     "label": "Bulk Reassign Leads",
+     "id": "perm-6b089e2d935a7cce8d36730f",
      "name": null,
      "kind": "input:checkbox",
      "panel": "Add Role"
@@ -7931,7 +7616,23 @@
      "href": null
     },
     {
+     "label": "Row: View as Sam Sales",
+     "id": null,
+     "kind": "button",
+     "panel": "Employee List",
+     "href": null,
+     "row": true
+    },
+    {
      "label": "Row: (regular icon)",
+     "id": null,
+     "kind": "button",
+     "panel": "Employee List",
+     "href": null,
+     "row": true
+    },
+    {
+     "label": "Row: View as Maya Manager",
      "id": null,
      "kind": "button",
      "panel": "Employee List",
@@ -7961,7 +7662,11 @@
      "kind": "select",
      "panel": "Employee Management"
     }
-   ]
+   ],
+   "leadsTo": {
+    "View as Sam Sales": "/dealer/dashboard",
+    "View as Maya Manager": "/dealer/dashboard"
+   }
   },
   "dealer/staff::Add Emp": {
    "route": "/dealer/staff",
@@ -8064,14 +7769,14 @@
    "buttons": [
     {
      "label": "My Current Plan",
-     "id": "react-aria3966500073-_r_2_-tab-currentplan",
+     "id": "react-aria1551776446-_r_2_-tab-currentplan",
      "kind": "tab",
      "panel": "My Subscription",
      "href": null
     },
     {
      "label": "Subscription Plans",
-     "id": "react-aria3966500073-_r_2_-tab-subscriptionplan",
+     "id": "react-aria1551776446-_r_2_-tab-subscriptionplan",
      "kind": "tab",
      "panel": "My Subscription",
      "href": null
@@ -9308,46 +9013,6 @@
    "buttons": [],
    "fields": []
   },
-  "dealer/parts-inventory/[id]": {
-   "route": "/dealer/parts-inventory/[id]",
-   "skipped": "no example record linked from its list page",
-   "panels": [],
-   "tabs": [],
-   "buttons": [],
-   "fields": []
-  },
-  "dealer/sales/[id]": {
-   "route": "/dealer/sales/[id]",
-   "skipped": "no example record linked from its list page",
-   "panels": [],
-   "tabs": [],
-   "buttons": [],
-   "fields": []
-  },
-  "dealer/service-appointments/[id]": {
-   "route": "/dealer/service-appointments/[id]",
-   "skipped": "no example record linked from its list page",
-   "panels": [],
-   "tabs": [],
-   "buttons": [],
-   "fields": []
-  },
-  "dealer/service/[id]": {
-   "route": "/dealer/service/[id]",
-   "skipped": "no example record linked from its list page",
-   "panels": [],
-   "tabs": [],
-   "buttons": [],
-   "fields": []
-  },
-  "iframe/lead/[leadId]": {
-   "route": "/iframe/lead/[leadId]",
-   "skipped": "no example record linked from its list page",
-   "panels": [],
-   "tabs": [],
-   "buttons": [],
-   "fields": []
-  },
   "dealer/customers/[id]": {
    "route": "/dealer/customers/[id]",
    "url": "/dealer/customers/6b05f1b3bd8975fd49baea04",
@@ -9535,7 +9200,7 @@
     },
     {
      "label": "Forms",
-     "id": "react-aria5730412510-_r_3_",
+     "id": "react-aria9004375460-_r_5_",
      "kind": "button",
      "panel": "Customer Details",
      "href": null
@@ -10048,6 +9713,70 @@
      "panel": "Add a task"
     }
    ]
+  },
+  "dealer/parts-inventory/[id]": {
+   "route": "/dealer/parts-inventory/[id]",
+   "skipped": "no example record linked from its list page",
+   "panels": [],
+   "tabs": [],
+   "buttons": [],
+   "fields": []
+  },
+  "dealer/sales/[id]": {
+   "route": "/dealer/sales/[id]",
+   "url": "/dealer/sales/6af238d15195a9aa245ec039",
+   "title": "Deal Details",
+   "panels": [
+    "Deal Details",
+    "Unnamed buyer"
+   ],
+   "tabs": [],
+   "buttons": [
+    {
+     "label": "Back to Sales",
+     "id": null,
+     "kind": "button",
+     "panel": "Unnamed buyer",
+     "href": null
+    }
+   ],
+   "fields": []
+  },
+  "dealer/service-appointments/[id]": {
+   "route": "/dealer/service-appointments/[id]",
+   "url": "/dealer/service-appointments/6af238d15195a9aa245ec030",
+   "title": "Service Appointment Details",
+   "panels": [
+    "Service Appointment Details",
+    "Unnamed customer"
+   ],
+   "tabs": [],
+   "buttons": [
+    {
+     "label": "Back to Service Appointments",
+     "id": null,
+     "kind": "button",
+     "panel": "Unnamed customer",
+     "href": null
+    }
+   ],
+   "fields": []
+  },
+  "dealer/service/[id]": {
+   "route": "/dealer/service/[id]",
+   "skipped": "no example record linked from its list page",
+   "panels": [],
+   "tabs": [],
+   "buttons": [],
+   "fields": []
+  },
+  "iframe/lead/[leadId]": {
+   "route": "/iframe/lead/[leadId]",
+   "skipped": "no example record linked from its list page",
+   "panels": [],
+   "tabs": [],
+   "buttons": [],
+   "fields": []
   }
  }
 }

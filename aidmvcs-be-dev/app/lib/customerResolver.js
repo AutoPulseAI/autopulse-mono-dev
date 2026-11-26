@@ -62,8 +62,18 @@ function hasDealerVaultOrigin(customer) {
     || (Array.isArray(customerNumbers) ? customerNumbers.length > 0 : typeof customerNumbers === "string");
 }
 
-function isDealerVaultOnly(customer) {
-  return hasDealerVaultOrigin(customer) && customer.inbound_lead !== true;
+// A customer with dealership history from DealerVault (a sale or a service visit) is joined by a new lead only after a
+// manager has confirmed who they are - here, a merge that is still in place (app/api/customers/merge records the
+// manager and the time). Betsy, 25 Nov 2026: "they should be tethered, not merged ... if the dealership wants to merge
+// it, they can click a button and say yes, this is a match" - otherwise anyone with a customer's phone and email could
+// send a lead and have the AI and the staff see that customer's purchases. Such a lead gets its own customer, which
+// shares the phone / email and so is listed under Customers > Possible duplicates for a manager to link.
+export function identityConfirmed(customer) {
+  return (customer?.merge_history || []).some((h) => h && !h.reversed_at);
+}
+
+export function autoLinkAllowed(customer) {
+  return !hasDealerVaultOrigin(customer) || identityConfirmed(customer);
 }
 
 function sameCustomer(first, second) {
@@ -76,37 +86,33 @@ async function keptCustomer(customer, dealerId) {
   return Customer.findOne({ _id: await survivorOf(customer._id, dealerId), dealer_id: String(dealerId) });
 }
 
-async function findContactMatches(dealerId, email, phone) {
-  const [emailFound, phoneFound] = await Promise.all([
-    email
-      ? Customer.findOne({ dealer_id: String(dealerId), "emails.value": email })
-      : null,
-    phone
-      ? Customer.findOne({ dealer_id: String(dealerId), "phones.value": phone })
-      : null,
-  ]);
-  const [emailCustomer, phoneCustomer] = await Promise.all([
-    keptCustomer(emailFound, dealerId), keptCustomer(phoneFound, dealerId)]);
-  return { emailCustomer, phoneCustomer };
+// Every customer (after merges) holding this contact: the ones a lead may join first, oldest first.
+async function contactCandidates(dealerId, field, value) {
+  if (!value) return { usable: null, heldBack: [] };
+  const found = await Customer.find({ dealer_id: String(dealerId), [field]: value }).sort({ createdAt: 1 }).limit(20);
+  const seen = new Set();
+  const kept = [];
+  for (const c of found || []) {
+    const k = await keptCustomer(c, dealerId);
+    if (k && !seen.has(String(k._id))) { seen.add(String(k._id)); kept.push(k); }
+  }
+  return { usable: kept.find(autoLinkAllowed) || null, heldBack: kept.filter((c) => !autoLinkAllowed(c)) };
 }
 
-function selectInboundCustomer(emailCustomer, phoneCustomer, email, phone) {
+async function findContactMatches(dealerId, email, phone) {
+  const [byEmail, byPhone] = await Promise.all([
+    contactCandidates(dealerId, "emails.value", email),
+    contactCandidates(dealerId, "phones.value", phone),
+  ]);
+  return { emailCustomer: byEmail.usable, phoneCustomer: byPhone.usable,
+    heldBack: [...byEmail.heldBack, ...byPhone.heldBack] };
+}
+
+function selectInboundCustomer(emailCustomer, phoneCustomer) {
   if (emailCustomer && phoneCustomer && !sameCustomer(emailCustomer, phoneCustomer)) {
     return { customer: null, conflict: true };
   }
-
-  const customer = emailCustomer || phoneCustomer;
-  if (!customer) return { customer: null, conflict: false };
-
-  // Joining DealerVault and inbound identities requires both normalized
-  // contacts to identify the same Customer. Inbound-to-inbound matching
-  // retains the established email-or-phone behavior.
-  if (isDealerVaultOnly(customer)
-      && (!email || !phone || !sameCustomer(emailCustomer, phoneCustomer))) {
-    return { customer: null, conflict: false };
-  }
-
-  return { customer, conflict: false };
+  return { customer: emailCustomer || phoneCustomer || null, conflict: false };
 }
 
 function unresolvedResult() {
@@ -255,17 +261,12 @@ export async function resolveCustomerForLead({
     };
   }
 
-  const { emailCustomer, phoneCustomer } = await findContactMatches(
+  const { emailCustomer, phoneCustomer, heldBack } = await findContactMatches(
     dealerId,
     normalizedEmail,
     normalizedPhone
   );
-  const initialMatch = selectInboundCustomer(
-    emailCustomer,
-    phoneCustomer,
-    normalizedEmail,
-    normalizedPhone
-  );
+  const initialMatch = selectInboundCustomer(emailCustomer, phoneCustomer);
 
   if (initialMatch.conflict) {
     console.warn("Customer identity conflict; leaving Lead unlinked", {
@@ -300,12 +301,7 @@ export async function resolveCustomerForLead({
   // and enrichCustomer() the winner instead } } around the create below, so Mongo's
   // uniqueness constraint — not an app-level read — is what closes the race.
   const recheckedMatches = await findContactMatches(dealerId, normalizedEmail, normalizedPhone);
-  const rechecked = selectInboundCustomer(
-    recheckedMatches.emailCustomer,
-    recheckedMatches.phoneCustomer,
-    normalizedEmail,
-    normalizedPhone
-  );
+  const rechecked = selectInboundCustomer(recheckedMatches.emailCustomer, recheckedMatches.phoneCustomer);
   if (rechecked.conflict) return unresolvedResult();
   const recheckedCustomer = rechecked.customer;
   if (recheckedCustomer) {
@@ -344,7 +340,14 @@ export async function resolveCustomerForLead({
   });
 
   const savedCustomer = await customer.save();
+  if (heldBack.length) {
+    console.info("Lead not joined to a DealerVault customer until a manager confirms the match", {
+      dealer_id: String(dealerId), lead_id: String(leadId), new_customer_id: String(savedCustomer._id),
+      possible_match_ids: [...new Set(heldBack.map((c) => String(c._id)))],
+    });
+  }
   return {
+    ...(heldBack.length ? { possibleMatchIds: [...new Set(heldBack.map((c) => String(c._id)))] } : {}),
     customerId: savedCustomer._id,
     // Always null here - a brand-new Customer has no assignment yet.
     assignedTo: null,

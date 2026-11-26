@@ -154,8 +154,10 @@ export function validateClosedStatusPayload(body) {
 }
 
 // Why the AI's closing is not applied to a lead now showing `current` (changed at `changedAt`), or null.
-export function closedStatusConflict({ status, current, changedAt, closedAt, bookingAhead = true }) {
+export function closedStatusConflict({ status, current, changedAt, closedAt, bookingAhead = true, currentSource = null }) {
   if (current === status) return 'already';
+  // Staff set "Opted Out" by hand: it is theirs, like DND - the AI never moves the lead off it (the user, 27 Nov 2026).
+  if (current === 'Opted Out' && currentSource === 'staff') return 'staff_status_kept';
   if (changedAt && closedAt && new Date(changedAt) > new Date(closedAt)) return 'staff_changed_it_after';
   if (AI_OPT_OUT_STATUSES.includes(status)) return OPT_OUT_FROM.includes(current ?? null) ? null : 'staff_status_kept';
   if (AI_NO_SHOW_STATUSES.includes(status)) return NO_SHOW_FROM.includes(current ?? null) ? null : 'staff_status_kept';
@@ -182,13 +184,13 @@ export async function markLeadClosedFromAi(body, {
   logActivity = async () => {},
 }) {
   const lead = await Lead.findOne({ _id: body.lead_id, dealer_id: body.dealer_id })
-    .select('_id fe_lead_status lead_status status statusChangedAt').lean();
+    .select('_id fe_lead_status lead_status status statusChangedAt status_source').lean();
   if (!lead) return { found: false, updated: false };
   const current = lead.fe_lead_status || lead.lead_status || lead.status || null;
   const bookingAhead = AFTER_APPOINTMENT.includes(current) && AI_WORKING_STATUSES.includes(body.status)
     ? await hasBookingAhead(String(lead._id), Booking, now()) : true;
   const conflict = closedStatusConflict({ status: body.status, current, changedAt: lead.statusChangedAt,
-    closedAt: body.closed_at, bookingAhead });
+    closedAt: body.closed_at, bookingAhead, currentSource: lead.status_source || null });
   if (conflict) return { found: true, updated: false, reason: conflict, current };
   const at = now();
   // Only if nobody changed it in the meantime: a staff save between the read and this write wins.

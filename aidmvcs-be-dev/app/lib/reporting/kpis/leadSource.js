@@ -7,6 +7,7 @@ import {
   leadRowsForIds, leadsReceived, localDateTime, localDay, notYet, replies, windowFor,
 } from './common.js';
 import { matchedDealGross } from '../dealGross.js';
+import Vehicle from '../../../models/Vehicle.js';
 import { NO_SHOW_TEXT, SHOWN_BASIS, SHOWN_TEXT, shared } from './executive.js';
 
 const D = 'lead_source';
@@ -27,6 +28,33 @@ const clickKpi = (id, label, coll, numerator) => ({
       _day: localDay(d.clickedAt, w.tz), _g: {} })) };
   },
 });
+
+// Inventory report (Betsy, 25 Nov 2026: "I have an aged unit, I want to see how many leads I got on this aged unit").
+// The cars in stock now (the latest feed still has them), each with its days in stock: the feed's Age when it sends
+// one, else the days since the car first came in the feed.
+export async function carsInStock(dealerId, now = new Date()) {
+  const cars = await Vehicle.collection.find({ dealerId: String(dealerId), removedAt: null },
+    { projection: { vin: 1, stockNumber: 1, stocknumber: 1, stock_number: 1, year: 1, make: 1, model: 1, age: 1,
+      createdAt: 1 } }).toArray();
+  const byVin = new Map();
+  for (const c of cars) {
+    const vin = String(c.vin || '').trim().toUpperCase();
+    if (!vin) continue;
+    const stock = String(c.stockNumber || c.stocknumber || c.stock_number || '').trim();
+    // The import stores the feed's Age as the in-stock date when it reads as a date (lib/import.js), else a number
+    // of days; with neither, the day the car first came in the feed.
+    const daysSince = (d) => Math.max(0, Math.floor((now - d) / 86400000));
+    const ageDate = c.age instanceof Date ? c.age : null;
+    const feedAge = typeof c.age === 'number' ? c.age : Number.NaN;
+    const days = ageDate && !Number.isNaN(ageDate.getTime()) ? daysSince(ageDate)
+      : Number.isFinite(feedAge) && feedAge >= 0 && feedAge < 5000 ? Math.round(feedAge)
+        : c.createdAt ? daysSince(new Date(c.createdAt)) : null;
+    const car = [c.year, c.make, c.model].filter(Boolean).join(' ');
+    byVin.set(vin, { vin, stock, car, days,
+      label: [stock ? `#${stock}` : vin, car, days == null ? null : `${days} days in stock`].filter(Boolean).join(' · ') });
+  }
+  return byVin;
+}
 
 const spend = (id, label, numerator, denominator) => notYet(STATE.NEEDS_DATA, {
   id, label, dashboard: D, grain: 'source', dateBasis: 'month of spend', numerator, denominator,
@@ -121,6 +149,31 @@ export const LEAD_SOURCE_KPIS = [
         .map((l) => [String(l._id), String(l.lead_source).replace(/^campaign_/i, '') || '(no name)']));
       return { rows: leads.filter((r) => campaign.has(r.id))
         .map((r) => ({ ...r, _g: { ...r._g, campaign: campaign.get(r.id) } })) };
+    },
+  },
+  {
+    id: 'source.leads_by_car', label: 'Leads by car in stock', dashboard: D, grain: 'lead', kind: KIND.COUNT,
+    dateBasis: 'Lead.createdAt', numerator: 'Leads received in the range about a car the dealer has in stock now '
+      + '(the lead\'s VIN, or a vehicle of interest added to it), by car: stock #, year make model, days in stock.',
+    denominator: null, inclusions: 'Cars the latest inventory feed still has.',
+    exclusions: 'Leads with no VIN, or about a car no longer in stock.', source: ['leads', 'vehicles'],
+    filters: LEAD_FILTERS, breakdowns: ['car'], columns: [...LEAD_COLUMNS, ['stock', 'Stock #'], ['car', 'Car'],
+      ['days_in_stock', 'Days in stock']],
+    evaluate: async (args, ctx) => {
+      const leads = await leadsReceived(args, ctx);
+      const stock = await carsInStock(args.dealerId);
+      const carOf = new Map();
+      for (const l of leads) {
+        const vins = [l.vin, ...(l.vehicles_of_interest || []).map((v) => v?.vin)]
+          .map((v) => String(v || '').trim().toUpperCase()).filter(Boolean);
+        const hit = vins.map((v) => stock.get(v)).find(Boolean);
+        if (hit) carOf.set(String(l._id), hit);
+      }
+      const rows = await shared.leadsReceivedRows(args, ctx);
+      return { rows: rows.filter((r) => carOf.has(r.id)).map((r) => {
+        const c = carOf.get(r.id);
+        return { ...r, stock: c.stock, car: c.car, days_in_stock: c.days ?? '', _g: { ...r._g, car: c.label } };
+      }) };
     },
   },
   clickKpi('source.vdp_clicks', 'Vehicle page clicks', 'vehicleclicks', 'Clicks on vehicle (VDP) short links in the '

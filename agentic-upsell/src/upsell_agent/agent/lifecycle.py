@@ -185,6 +185,8 @@ STAFF_STATUS_EVENTS: dict[str, str] = {
     "Visited": "sales_visit",
     "Sold": "sales_visit",
     "DND": "opted_out",
+    # Staff picked "Opted Out" by hand: the same as DND, every channel stops (the user, 27 Nov 2026).
+    "Opted Out": "opted_out",
     "Appointment Booked": "appointment_set",
     # The manager outcomes (MASTER_PLAN_3 C5): Sold Pending / Sold Delivered stop the lead workflow, Unsold
     # puts the lead back into follow-up for 90 days (client, 1 Oct 2026, scope Q2).

@@ -73,6 +73,10 @@ function AllNumbers({ section, kpis, k, linkFor }) {
               kpis={["source.leads", "source.replied_leads", "source.appointments", "source.shown",
                 "source.missed", "source.upcoming", "source.crm_sold"].map(k)} />
           )}
+          {section === "sources" && (
+            <GroupTable title="Leads by car in stock (every car with a lead)" firstColumn="Car" by="car" linkFor={linkFor}
+              kpis={["source.leads_by_car"].map(k)} />
+          )}
           {section === "work" && (
             <GroupTable title="By staff member (current lead owner)" firstColumn="Staff" by="staff" linkFor={linkFor}
               kpis={["bdc.assigned_leads", "bdc.speed_to_lead", "bdc.staff_texts", "bdc.staff_emails",

@@ -87,7 +87,8 @@ export default function DuplicateCustomersPage() {
         <div className="w_card">
           <p className="small text-muted">
             Customers that share a phone number or an email address. Open them to check; if they are the same person, merge them;
-            if not, mark them so they aren&apos;t shown again. Nothing is merged automatically.
+            if not, mark them so they aren&apos;t shown again. Nothing is merged automatically: a new lead that matches a
+            sales / service customer gets its own customer here until you confirm it is the same person (check their ID).
           </p>
           {!canReview && <Alert variant="warning" className="small">Only managers can review duplicates.</Alert>}
           {error && <Alert variant="danger" className="small">{error}</Alert>}
@@ -103,7 +104,10 @@ export default function DuplicateCustomersPage() {
                 <tbody>
                   {g.customers.map((c) => (
                     <tr key={c._id}>
-                      <td><Link href={`/dealer/customers/${c._id}`}>{c.name || "(no name)"}</Link></td>
+                      <td>
+                        <Link href={`/dealer/customers/${c._id}`}>{c.name || "(no name)"}</Link>
+                        {c.dealership_history && <Badge bg="warning" text="dark" className="ms-1">Sales / service customer</Badge>}
+                      </td>
                       <td>{c.phones.join(", ") || "-"}</td>
                       <td>{c.emails.join(", ") || "-"}</td>
                       <td>{c.leads}</td>
@@ -143,12 +147,13 @@ export default function DuplicateCustomersPage() {
           <div className="w_card mt-3">
             <h3 className="w_card_title">Recent merges</h3>
             <Table size="sm" className="small mb-0">
-              <thead><tr><th>Merged</th><th>Into</th><th>When</th><th>Why</th><th /></tr></thead>
+              <thead><tr><th>Merged</th><th>Into</th><th>By</th><th>When</th><th>Why</th><th /></tr></thead>
               <tbody>
                 {data.recent_merges.map((m) => (
                   <tr key={m.merged_id}>
                     <td>{m.merged_name || m.merged_id}</td>
                     <td><Link href={`/dealer/customers/${m.kept_id}`}>{m.kept_name || m.kept_id}</Link></td>
+                    <td>{m.merged_by_name || "-"}</td>
                     <td>{m.merged_at ? formatTimestamp(m.merged_at) : "-"}</td>
                     <td>{m.reason || "-"}</td>
                     <td className="text-end">

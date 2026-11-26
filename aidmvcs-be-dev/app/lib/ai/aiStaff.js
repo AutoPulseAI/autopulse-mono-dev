@@ -32,6 +32,8 @@ export const STAFF_OWNED_STATUSES = Object.freeze([
   // The SOW's working stages (client, 8 Oct 2026): staff setting one puts the lead back on the follow-up cadence
   // (the same workflow Unsold restarts) at that stage, and the AI takes it back.
   'Lead Not Contacted', 'Contacted - No Next Action',
+  // Staff picked "Opted Out" by hand: the AI stops on every channel, like DND (the user, 27 Nov 2026).
+  'Opted Out',
 ]);
 
 // The outcome a manager must pick when a lead is set to "Visited" (MASTER_PLAN_3 C5).
