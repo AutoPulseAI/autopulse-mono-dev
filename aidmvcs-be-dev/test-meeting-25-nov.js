@@ -1,4 +1,6 @@
 // Client meeting 25 Nov 2026 (planning/MEETING-25-NOV-ACTIONS.md): the items built from it.
+//   #8 inventory report: leads by car in stock (stock #, days in stock).
+//   #13 lead type: Internet / Phone / Walk-in / Campaign, else 'Not set' (no 'Other').
 //   #7 one search box on the Leads page: name, phone, email or stock number.
 //   #2 a lead is "tethered, not merged" to a customer with DealerVault (sale / service) history: own customer, shown as
 //      a possible match, joined only after a manager's merge; #6 who merged.
@@ -39,6 +41,8 @@ const { linkCustomerToLead } = await import('./app/lib/customerResolver.js');
 const { possibleMatchesFor, duplicateGroups } = await import('./app/lib/duplicateCustomers.js');
 const { oneBoxConditions } = await import('./app/lib/leadSearch.js');
 const { default: Vehicle } = await import('./app/models/Vehicle.js');
+const { evaluateKpi } = await import('./app/lib/reporting/registry.js');
+const { upType } = await import('./app/lib/reporting/normalize.js');
 
 const DEALER = new mongoose.Types.ObjectId().toString();
 let dbUp = false;
@@ -105,7 +109,7 @@ db('#2 customers without dealership history still link on phone or email as befo
 });
 
 db('#7 one search box finds a lead by name, email, phone digits (any format) and inventory stock number', async () => {
-  await Vehicle.create({ dealerId: DEALER, vin: '1HGCM82633A004352', stocknumber: 'P1234' });
+  await Vehicle.create({ dealerId: DEALER, vin: '1HGCM82633A004352', stockNumber: 'P1234' }); // as lib/import.js stores it
   const byCar = await newLead({ name: 'Ann Stock', vin: '1HGCM82633A004352' });
   const byPhone = await newLead({ name: 'Ben Phone', phone: '+1 (718) 555-0199' });
   const byEmail = await newLead({ name: 'Cy Mail', email: 'cy@dealer.com' });
@@ -118,4 +122,27 @@ db('#7 one search box finds a lead by name, email, phone digits (any format) and
   assert.deepEqual(await find('cy@dealer'), [String(byEmail._id)]);
   assert.deepEqual(await find('ben'), [String(byPhone._id)]);
   assert.deepEqual(await find('(718'), [String(byPhone._id)], 'a typed bracket is not a broken regex');
+});
+
+db('#8 leads by car in stock: one group per car with stock #, car and days in stock; sold cars and no-VIN leads left out', async () => {
+  const now = new Date();
+  await Vehicle.create({ dealerId: DEALER, vin: 'AGED0000000000001', stockNumber: 'A1', year: 2019, make: 'Honda',
+    model: 'Civic', age: 95 });
+  await Vehicle.create({ dealerId: DEALER, vin: 'SOLD0000000000001', stockNumber: 'S1', removedAt: now });
+  await newLead({ name: 'One', vin: 'aged0000000000001' });
+  await newLead({ name: 'Two', vehicles_of_interest: [{ vin: 'AGED0000000000001' }] });
+  await newLead({ name: 'Sold car', vin: 'SOLD0000000000001' });
+  await newLead({ name: 'No car' });
+  const day = now.toISOString().slice(0, 10);
+  const r = await evaluateKpi('source.leads_by_car', { dealerId: DEALER, from: day, to: day, tz: 'UTC' }, {});
+  assert.equal(r.state, 'live');
+  assert.equal(r.count, 2);
+  assert.deepEqual(r.breakdowns.car.map((g) => [g.key, g.count]), [['#A1 · 2019 Honda Civic · 95 days in stock', 2]]);
+  assert.equal(r.rows[0].stock, 'A1');
+});
+
+test('#13 lead type has no "Other": unknown is "Not set"; campaign stays', () => {
+  assert.equal(upType({ source: 'manual' }), 'Not set');
+  assert.equal(upType({ lead_source: 'campaign_Spring' }), 'Campaign');
+  assert.equal(upType({ contact_type: 'walk_in' }), 'Walk-in');
 });

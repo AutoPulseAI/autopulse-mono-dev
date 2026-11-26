@@ -10,8 +10,10 @@ export async function oneBoxConditions(q, dealerId) {
   if (digits.length > 10 && digits.startsWith('1')) digits = digits.slice(1);
   if (digits.length >= 3 && /^[\d\s()+.-]+$/.test(q)) conds.push({ phone: { $regex: digits.split('').join('[^0-9]*') } });
   if (/^[a-z0-9-]{2,}$/i.test(q)) {
-    const cars = await Vehicle.find({ dealerId, stocknumber: { $regex: `^${text}`, $options: 'i' } })
-      .select('vin stocknumber').limit(50).lean();
+    // The inventory import stores stockNumber (app/lib/import.js); older / seeded records have stocknumber / stock_number.
+    const starts = { $regex: `^${text}`, $options: 'i' };
+    const cars = await Vehicle.find({ dealerId: String(dealerId), $or: [{ stockNumber: starts }, { stocknumber: starts },
+      { stock_number: starts }] }).select('vin').limit(50).lean();
     const vins = [...new Set(cars.map((v) => v.vin).filter(Boolean))];
     if (vins.length) conds.push({ vin: { $in: vins } }, { 'vehicles_of_interest.vin': { $in: vins } });
     conds.push({ 'vehicles_of_interest.stock': { $regex: `^${text}$`, $options: 'i' } });

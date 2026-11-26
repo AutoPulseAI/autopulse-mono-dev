@@ -210,6 +210,8 @@ export function SectionCharts({ section, k, kpisOf, range, linkFor }) {
         <BreakdownChart title="Leads by source" kpi={k("source.leads")} by="lead_source" type="donut"
           linkFor={linkFor} />
         <BreakdownChart title="Campaign leads" kpi={k("source.campaign_leads")} by="campaign" linkFor={linkFor} />
+        <BreakdownChart title="Leads by car in stock (stock #, days in stock)" kpi={k("source.leads_by_car")} by="car"
+          linkFor={linkFor} />
       </>
     );
   } else if (section === "outcomes") {
