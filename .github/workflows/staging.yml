@@ -68,12 +68,31 @@ jobs:
       # --- CRM (aidmvcs-be-dev): ship source, write .env from the secret, build on the box, (re)start PM2 ---
       # The env secret goes over its OWN ssh call (stdin = the secret). It must not share stdin with the
       # deploy script heredoc, or `cat > .env` would swallow the script instead of the secret.
+      # `next build` needs ~2.5 GB RAM: too much for the shared Contabo box (OOM-killed in run #2, no swap).
+      # So build on the GitHub runner and ship the finished .next; the box only installs deps + starts.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.21.1'
+          cache: npm
+          cache-dependency-path: aidmvcs-be-dev/package-lock.json
+
+      - name: Build CRM on the runner
+        working-directory: aidmvcs-be-dev
+        env:
+          CRM_ENV: ${{ secrets.STAGING_CRM_ENV }}
+        run: |
+          # NEXT_PUBLIC_* values are baked in at build time, so the build needs the staging env.
+          printf '%s\n' "$CRM_ENV" > .env
+          npm ci --no-audit --no-fund
+          npm run build
+          rm -f .env
+
       - name: Deploy CRM
         env:
           CRM_ENV: ${{ secrets.STAGING_CRM_ENV }}
         run: |
           rsync -az --delete -e "$SSH" \
-            --exclude='.env*' --exclude='node_modules' --exclude='.next' --exclude='logs' \
+            --exclude='.env*' --exclude='node_modules' --exclude='.next/cache' --exclude='logs' \
             aidmvcs-be-dev/ "$TARGET:$APP_ROOT/aidmvcs-be-dev/"
           printf '%s\n' "$CRM_ENV" | \
             $SSH "$TARGET" "install -m 600 /dev/null '$APP_ROOT/aidmvcs-be-dev/.env' && cat > '$APP_ROOT/aidmvcs-be-dev/.env'"
@@ -95,8 +114,8 @@ jobs:
           node -v
           APP="$APP_ROOT/aidmvcs-be-dev"
           cd "$APP"
-          npm ci --no-audit --no-fund
-          rm -rf .next && npm run build
+          npm ci --no-audit --no-fund      # runtime deps only; .next was built on the runner and synced above
+          [ -f .next/BUILD_ID ] || { echo ".next build missing on the box"; exit 1; }
           # start (first time) or restart with the staging name + port
           if pm2 describe aidmvcs-be-staging >/dev/null 2>&1; then
             pm2 restart aidmvcs-be-staging --update-env
