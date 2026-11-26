@@ -2,8 +2,10 @@
 // How each number is counted, generated from the registry (app/lib/reporting/registry.js listKpis): the field
 // dictionary the client signs off (SOW 3 Deliverable A). One line per number (name + what it counts); a click opens
 // the details. Filter by report, search, 15 per page (user, 13 Nov 2026: the 10-column table was unreadable).
+// "Fields" (23 Nov 2026) switches to the field dictionary: where each field those numbers read comes from.
 import { useMemo, useState } from "react";
-import { Badge, Form, Pagination } from "react-bootstrap";
+import { Badge, Button, ButtonGroup, Form, Pagination } from "react-bootstrap";
+import FieldDictionary from "./FieldDictionary";
 
 const STATE_BADGE = { live: ["success", "Live"], blocked: ["secondary", "Not available yet"], needs_data: ["warning", "Needs data"] };
 const PAGE = 15;
@@ -18,6 +20,22 @@ function Detail({ label, children }) {
 }
 
 export default function Definitions({ data }) {
+  const [view, setView] = useState("numbers");
+  return (
+    <div className="w_card">
+      <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <h3 className="w_card_title mb-0 me-auto">{view === "numbers" ? "How each number is counted" : "Where each field comes from"}</h3>
+        <ButtonGroup size="sm" aria-label="Numbers or fields">
+          <Button variant={view === "numbers" ? "custom" : "outline-custom"} onClick={() => setView("numbers")}>Numbers</Button>
+          <Button variant={view === "fields" ? "custom" : "outline-custom"} onClick={() => setView("fields")}>Fields</Button>
+        </ButtonGroup>
+      </div>
+      {view === "numbers" ? <NumberDefinitions data={data} /> : <FieldDictionary />}
+    </div>
+  );
+}
+
+function NumberDefinitions({ data }) {
   const [q, setQ] = useState("");
   const [report, setReport] = useState("");
   const [page, setPage] = useState(1);
@@ -34,9 +52,8 @@ export default function Definitions({ data }) {
   const go = (p) => { setPage(p); setOpen(null); };
 
   return (
-    <div className="w_card">
+    <>
       <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
-        <h3 className="w_card_title mb-0 me-auto">How each number is counted</h3>
         <Form.Select size="sm" className="w-auto" value={report} aria-label="Report"
           onChange={(e) => { setReport(e.target.value); go(1); }}>
           <option value="">All reports ({data.kpis.length})</option>
@@ -96,6 +113,6 @@ export default function Definitions({ data }) {
         </div>
       )}
       <small className="text-muted d-block mt-2">{data.kpis[0]?.timezone}</small>
-    </div>
+    </>
   );
 }

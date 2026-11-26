@@ -36,7 +36,7 @@ export async function GET(req) {
     // The Department filter is the lead's department, as on the Dashboard and the cards.
     const dept = departmentMatch(params.get('department'));
     const leads = new Map((ids.length ? await Lead.find({ _id: { $in: ids }, dealer_id: { $in: dealerForms(dealerId) },
-      ...(dept || {}) }).select('name phone email fe_lead_status appointment_showed_at department manager_outcome').lean() : [])
+      ...(dept || {}) }).select('name phone email fe_lead_status appointment_showed_at department manager_outcome customer_id').lean() : [])
       .map((l) => [String(l._id), l]));
     const visits = new Map((ids.length ? await DeskLogEntry.find({ lead_id: { $in: ids },
       checked_in_at: { $gte: start.clone().utc().toDate(), $lt: start.clone().add(1, 'day').utc().toDate() } })
@@ -46,7 +46,7 @@ export async function GET(req) {
       const visit = visits.get(String(b.lead_id));
       const status = visit ? 'checked_in' : b.showed === true || b.booking_status === 'completed' ? 'showed'
         : b.showed === false || lead.fe_lead_status === 'No Show' ? 'no_show' : 'waiting';
-      return { booking_id: String(b._id), lead_id: String(b.lead_id), name: lead.name || '', phone: lead.phone || '',
+      return { booking_id: String(b._id), lead_id: String(b.lead_id), customer_id: lead.customer_id ? String(lead.customer_id) : null, name: lead.name || '', phone: lead.phone || '',
         email: lead.email || '', time: b.bookingTime, type: b.appointment_type === 'service' ? 'Service' : 'Sales',
         booked_by: b.created_by_name || BOOKED_BY[b.created_by] || null, status, lead_status: lead.fe_lead_status || null,
         lead_status_label: leadStatusLabel(lead) || null, checked_in_at: visit?.checked_in_at || null,

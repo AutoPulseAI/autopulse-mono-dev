@@ -30,6 +30,10 @@ export default function ViewAdfModal({ show, onHide, leadId }) {
           headers: { Authorization: `Bearer ${localStorage.getItem("dealertoken")}` },
         });
         const data = await response.json();
+        if (response.status === 404) {
+          // Not every lead has one: a provider that emails a plain message (some chat leads) sends no ADF file.
+          throw new Error("No ADF file for this lead. It came in as a plain email, not an ADF file, so there is nothing to show here; its details are on the lead.");
+        }
         if (!response.ok) throw new Error(data.message || "Failed to load ADF");
         if (!cancelled) setAdfText(data.data.raw_xml);
       } catch (fetchError) {
@@ -56,7 +60,7 @@ export default function ViewAdfModal({ show, onHide, leadId }) {
             Loading ADF...
           </div>
         ) : adfError ? (
-          <div className="text-danger small">{adfError}</div>
+          <div className="text-muted small"><i className="fa-regular fa-circle-info me-1" />{adfError}</div>
         ) : adfText ? (
           <pre
             className="small bg-light border rounded p-2 mb-0"

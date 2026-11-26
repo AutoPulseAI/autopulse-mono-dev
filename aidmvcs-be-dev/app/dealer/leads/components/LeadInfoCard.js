@@ -2,7 +2,8 @@
 // The lead's details on the lead page (and on the customer profile's Leads tab), editable in one click (13 Nov 2026
 // meeting: edit the customer's name and phone from the lead page; lead type and lead source viewable and editable;
 // the lead date is never editable. BB, 17 Nov 2026: "too many duplication").
-//   - Lead Type is shown (Internet / Phone Up / Walk-In, or Campaign / Other as the lead came in) next to its source;
+//   - Up type, department, source, sub-source and campaign each show as a labelled field with an icon (23 Nov 2026,
+//     as the source / sub-source report names them: Up Type > Source > Sub-Source); sub-source is editable too;
 //   - Edit turns the card into a form that saves by itself (SOW G-082): a typed field when it loses focus or on Enter,
 //     a menu at once; only what changed is sent (PATCH /api/leads/[id]/details) and the customer record follows (name,
 //     phone, email); a field someone else changed meanwhile is refused, not overwritten. "Saving / All changes saved /
@@ -13,7 +14,7 @@
 //   - VIN: typing a VIN or stock # searches the dealer's inventory (api/inventory/lookup); picking a car fills the VIN,
 //     year, make and model. Any VIN can still be typed by hand.
 import { useEffect, useRef, useState } from "react";
-import { Button, Form } from "react-bootstrap";
+import { Alert, Button, Form, Modal, Spinner } from "react-bootstrap";
 import useAutosave, { SaveStatus } from "../../../hooks/useAutosave";
 import { formatTimestamp } from "../../../utils/dateUtils";
 import { leadStatusLabel } from "@lib/statusLabels";
@@ -37,7 +38,7 @@ function statusColor(label) {
   return "#1d6fe0";
 }
 
-const FIELDS = ["name", "phone", "email", "contact_type", "lead_source", "campaign", "vin", "vehicle_year", "vehicle_make", "vehicle_model", "department"];
+const FIELDS = ["name", "phone", "email", "contact_type", "lead_source", "sub_source", "campaign", "vin", "vehicle_year", "vehicle_make", "vehicle_model", "department"];
 const DEPT_COLOR = { sales: "#1f5ea8", service: "#0ea5a5", parts: "#7c5a2e" };
 
 export function leadTypeName(lead) {
@@ -48,6 +49,67 @@ export function leadTypeName(lead) {
 
 const str = (v) => (v == null ? "" : String(v));
 const auth = () => ({ "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("dealertoken")}` });
+
+// One labelled field of where the lead came from: icon, small label, value (a colour dot when the value has one).
+export function LeadFact({ icon, label, color, muted, children }) {
+  const text = typeof children === "string" ? children : undefined;
+  return (
+    <div className="lead_fact">
+      <dt><i className={`${icon} me-1`} aria-hidden="true" />{label}</dt>
+      <dd className={muted ? "text-muted" : undefined} title={text}>
+        {color && <span className="lead_fact_dot" style={{ background: color }} />}<span className="text-truncate">{children}</span>
+      </dd>
+    </div>
+  );
+}
+
+// Where the lead came from, each in its own labelled field; the lead card and the customer profile show the same block.
+export function LeadFacts({ lead, extra = null }) {
+  const type = leadTypeName(lead);
+  return (
+    <dl className="lead_facts">
+      <LeadFact icon="fa-solid fa-tag" label="Up type" color={TYPE_COLOR[type]}>{type}</LeadFact>
+      <LeadFact icon="fa-solid fa-building" label="Department" color={DEPT_COLOR[leadDepartment(lead)]}>
+        {DEPARTMENT_NAMES[leadDepartment(lead)]}</LeadFact>
+      <LeadFact icon="fa-solid fa-signs-post" label="Source">{lead?.lead_source || lead?.source || "Unknown source"}</LeadFact>
+      <LeadFact icon="fa-solid fa-sitemap" label="Sub-source" muted={!lead?.sub_source}>{lead?.sub_source || "No sub-source"}</LeadFact>
+      {lead?.campaign && <LeadFact icon="fa-solid fa-bullhorn" label="Campaign">{lead.campaign}</LeadFact>}
+      {extra}
+    </dl>
+  );
+}
+
+// SOW B2, read only: the sales type and new / used the AI works from, and what happens next on this lead.
+function LeadPlan({ lead, timezone }) {
+  const [plan, setPlan] = useState(null);
+  const id = lead?._id;
+  const dealerId = lead?.dealer_id;
+  useEffect(() => {
+    if (!id) return undefined;
+    let live = true;
+    setPlan(null);
+    fetch(`/api/dealer-ai/actions?tab=lead&lead_id=${id}${dealerId ? `&dealer_id=${encodeURIComponent(dealerId)}` : ""}`, { headers: auth() })
+      .then((r) => (r.ok ? r.json() : null)).then((d) => { if (live) setPlan(d); }).catch(() => {});
+    return () => { live = false; };
+  }, [id, dealerId, lead?.fe_lead_status]);
+  const next = plan?.next_step;
+  return (
+    <>
+      <LeadFacts lead={lead} extra={plan && (
+        <>
+          <LeadFact icon="fa-solid fa-robot" label="AI type" color="#4f46e5">{plan.sales_type}</LeadFact>
+          <LeadFact icon="fa-solid fa-car-side" label="Vehicle wanted" muted={!plan.vehicle_wanted}>{plan.vehicle_wanted || "Not known yet"}</LeadFact>
+        </>
+      )} />
+      {plan && (
+        <div className={`lead_next${next ? "" : " none"}`}>
+          <i className={`fa-solid ${next?.who === "AI" ? "fa-robot" : next ? "fa-list-check" : "fa-road-barrier"}`} aria-hidden="true" />
+          <span><strong>Next step:</strong> {next ? `${next.text}${next.at ? `, ${formatTimestamp(next.at, timezone)}` : ""}${next.who && next.who !== "AI" ? ` (${next.who})` : ""}` : "None planned"}</span>
+        </div>
+      )}
+    </>
+  );
+}
 
 // The lead's status as a pill next to its type and source: tinted in its colour, click to change it.
 function StatusPill({ lead, onStatusClick }) {
@@ -117,6 +179,79 @@ function VinLookup({ dealerId, value, onChange, onPick, onCommit }) {
         </div>
       )}
     </div>
+  );
+}
+
+// Who owns the lead, and - for managers - Manager override (SOW Deliverable B b3; the user, 24 Nov 2026): take the lead
+// off its owner now, with a reason the owner sees in the bell; an internal note goes into the conversation.
+function OwnerLine({ lead, onSaved }) {
+  const [info, setInfo] = useState(null); // { owner, can_override, staff }
+  const [open, setOpen] = useState(false);
+  const [to, setTo] = useState("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  useEffect(() => {
+    let live = true;
+    if (!lead?._id) return undefined;
+    fetch(`/api/leads/${lead._id}/override`, { headers: auth(), cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null)).then((d) => { if (live) setInfo(d); }).catch(() => null);
+    return () => { live = false; };
+  }, [lead?._id, lead?.assigned_to]);
+  if (!info) return null;
+  const others = info.staff.filter((s) => s.id !== info.owner?.id);
+  const start = () => { setTo(others[0]?.id || ""); setReason(""); setError(null); setOpen(true); };
+  const save = async () => {
+    setBusy(true); setError(null);
+    try {
+      const res = await fetch(`/api/leads/${lead._id}/override`, { method: "POST", headers: { ...auth(), "Content-Type": "application/json" },
+        body: JSON.stringify({ to, reason, expected_owner: info.owner?.id || null }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not override");
+      setOpen(false);
+      onSaved?.({ ...lead, assigned_to: data.assigned_to });
+    } catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
+  return (
+    <>
+      <div className="lead_owner mt-2 small">
+        <div className="d-flex align-items-center gap-2" style={{ minWidth: 0 }}>
+          <i className="fa-solid fa-user-tie text-muted" />
+          <span className="text-muted">Owner</span>
+          <strong className="text-truncate" title={info.owner?.name || "Unassigned"}>{info.owner?.name || "Unassigned"}</strong>
+        </div>
+        {info.can_override && others.length > 0 && (
+          <Button size="sm" variant="outline-danger" className="w-100 mt-1 py-0 text-nowrap" onClick={start} title="Take this lead off its owner now">
+            <i className="fa-solid fa-user-shield me-1" />Manager override
+          </Button>
+        )}
+      </div>
+      <Modal show={open} onHide={busy ? undefined : () => setOpen(false)} centered>
+        <Modal.Header closeButton={!busy}><Modal.Title as="h6"><i className="fa-solid fa-user-shield text-danger me-2" />Manager override</Modal.Title></Modal.Header>
+        <Modal.Body className="small">
+          {error && <Alert variant="danger" className="py-2">{error}</Alert>}
+          <p className="mb-2">Owned by <strong>{info.owner?.name || "nobody"}</strong>. The lead moves now, even mid-conversation.</p>
+          <Form.Label className="fw-semibold mb-1">Give the lead to</Form.Label>
+          <Form.Select size="sm" className="mb-2" value={to} onChange={(e) => setTo(e.target.value)} disabled={busy}>
+            {others.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </Form.Select>
+          <Form.Label className="fw-semibold mb-1">Why ({info.owner ? `${info.owner.name} sees it` : "kept on the lead"})</Form.Label>
+          <Form.Control as="textarea" rows={2} maxLength={300} value={reason} onChange={(e) => setReason(e.target.value)} disabled={busy}
+            placeholder="e.g. Customer asked for the manager" />
+          <ul className="text-muted mt-2 mb-0 ps-3">
+            {info.owner && <li>{info.owner.name} sees it in the bell, with your reason.</li>}
+            <li>An internal note goes into the conversation. The customer never sees it.</li>
+            <li>Only a manager can undo it. The AI is not changed.</li>
+          </ul>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button size="sm" variant="secondary" disabled={busy} onClick={() => setOpen(false)}>Cancel</Button>
+          <Button size="sm" variant="danger" disabled={busy || !to || !reason.trim()} onClick={save}>
+            {busy ? <Spinner size="sm" /> : "Override"}
+          </Button>
+        </Modal.Footer>
+      </Modal>
+    </>
   );
 }
 
@@ -230,6 +365,9 @@ export default function LeadInfoCard({ lead: given, dealerTimezone, onSaved, onS
           <Form.Group className="col-12"><Form.Label className="mb-0">Lead source</Form.Label>
             <LeadSourcePicker dealerId={lead?.dealer_id} value={form.lead_source}
               onChange={(v) => put({ lead_source: v }, true)} /></Form.Group>
+          <Form.Group className="col-12"><Form.Label className="mb-0">Sub-source</Form.Label>
+            <Form.Control size="sm" value={form.sub_source} maxLength={80} placeholder="e.g. Chat, Text Lead"
+              onChange={set("sub_source")} {...typed} /></Form.Group>
           <CampaignPicker dealerId={lead?.dealer_id} value={form.campaign} onChange={(v) => put({ campaign: v }, true)} />
           <Form.Group className="col-12"><Form.Label className="mb-0">Vehicle (year / make / model)</Form.Label>
             <div className="d-flex gap-1">
@@ -254,30 +392,27 @@ export default function LeadInfoCard({ lead: given, dealerTimezone, onSaved, onS
 
   return (
     <div className="lead_view mb-1">
-      <div className="d-flex align-items-start gap-2 mb-2">
-        <div className="me-auto min-w-0">
-          <div className="fw-semibold fs-6 text-truncate">{lead?.name || "No name"}</div>
-          <div className="d-flex flex-wrap align-items-center gap-1 mt-1">
-            <span className="badge" style={{ background: TYPE_COLOR[type] || "#6c757d" }}>{type}</span>
-            <span className="badge" title="Department" style={{ background: DEPT_COLOR[leadDepartment(lead)] }}>
-              {DEPARTMENT_NAMES[leadDepartment(lead)]}</span>
-            {/* Source and the provider's sub-source (e.g. Cars.com · Chat), as the source / sub-source report groups them. */}
-            <span className="small text-muted me-1" title="Source · sub-source">
-              {[lead?.lead_source || lead?.source || "Unknown source", lead?.sub_source].filter(Boolean).join(" · ")}</span>
-            {lead?.campaign && <span className="badge bg-light text-dark" title="Campaign">{lead.campaign}</span>}
-            <StatusPill lead={lead} onStatusClick={onStatusClick} />
-            {lead?.hot && <span className="cp_hot on" title="Marked hot on the customer's profile"><i className="fa-solid fa-fire me-1" />HOT</span>}
-          </div>
+      <div className="lead_head mb-2">
+        <div className="lead_head_name fw-semibold fs-6 text-truncate" title={lead?.name || ""}>{lead?.name || "No name"}</div>
+        <div className="lead_head_tools">
+          <Button size="sm" variant="outline-custom" className="text-nowrap" onClick={startEdit} title="Edit the lead's details">
+            <i className="fa-solid fa-pen me-1" />Edit</Button>
+          <OpportunityMenu lead={lead} timezone={dealerTimezone} onDepartment={changeDepartment} />
         </div>
-        <Button size="sm" variant="outline-custom" className="text-nowrap" onClick={startEdit} title="Edit the lead's details">
-          <i className="fa-solid fa-pen me-1" />Edit</Button>
-        <OpportunityMenu lead={lead} timezone={dealerTimezone} onDepartment={changeDepartment} />
       </div>
+      <div className="d-flex flex-wrap align-items-center gap-1 mb-2">
+        <StatusPill lead={lead} onStatusClick={onStatusClick} />
+        {lead?.hot && <span className="cp_hot on" title="Marked hot on the customer's profile"><i className="fa-solid fa-fire me-1" />HOT</span>}
+      </div>
+      {/* Where the lead came from, each in its own labelled field (23 Nov 2026), named as the source / sub-source
+          report names them: Up Type > Source > Sub-Source, plus department and campaign. */}
+      <LeadPlan lead={lead} timezone={dealerTimezone} />
       {lead?._id && <LeadJourney key={`${lead._id}-${lead.fe_lead_status || ""}`} leadId={lead._id} timezone={dealerTimezone} />}
       <p className="mb-1 small text-break"><i className="fa-solid fa-phone me-2 text-muted" />{lead?.phone || "No phone"}</p>
       <p className="mb-1 small text-break"><i className="fa-solid fa-envelope me-2 text-muted" />{lead?.email || "No email"}</p>
       <p className="mb-1 small"><strong>Vehicle:</strong> {vehicle || "Not given"}{lead?.vin ? <span className="text-muted"> · VIN {lead.vin}</span> : null}</p>
       <p className="mb-0 small text-muted"><i className="fa-solid fa-lock me-1" />Lead date {formatTimestamp(lead.createdAt, dealerTimezone)}</p>
+      <OwnerLine lead={lead} onSaved={onSaved} />
       <UndoReassign lead={lead} onSaved={onSaved} />
     </div>
   );

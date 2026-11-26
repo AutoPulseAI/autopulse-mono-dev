@@ -10,6 +10,7 @@ import { normalizeVin, resolveVehicles } from './common/vehicleResolver.js';
 import { requireUniqueIndex } from './common/indexProtection.js';
 import { preserveAbsentCustomerVehicleRelationships } from './common/partialRelationships.js';
 import { SERVICE_QUEUE } from './queues.js';
+import { reconcileDmsProfile } from '../../lib/reconcile/ledger.js';
 
 // Delimiters plus outer padding can expand a small transport payload enormously.
 // Bound the derived structure before allocating it; the raw row remains staged.
@@ -75,6 +76,8 @@ export function createServiceProcessor({ CustomerModel, VehicleModel, Model = Re
       await resolveCustomers(entries, context, CustomerModel);
       await resolveVehicles(entries, context, VehicleModel);
       preserveAbsentCustomerVehicleRelationships(entries);
+      // Field-by-field history: contacts and the RO's mileage at the RO date (SOW Appendix B; never stops the import).
+      await reconcileDmsProfile(entries, context, { CustomerModel });
     },
     ...dependencies,
   });

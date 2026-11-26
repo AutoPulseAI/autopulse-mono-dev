@@ -12,6 +12,13 @@ export const STAGE_STYLE = {
   "T.O.": { backgroundColor: "#f7931e", color: "#fff" },
   "VERBAL AGREEMENT": { backgroundColor: "#7c3aed", color: "#fff" },
 };
+// One icon per stage and outcome (24 Nov 2026), on its menu and its button.
+export const STAGE_ICON = { QUALIFY: "fa-clipboard-question", "TEST DRIVE": "fa-car-side", APPRAISAL: "fa-scale-balanced",
+  PROPOSAL: "fa-file-invoice-dollar", "T.O.": "fa-user-tie", "VERBAL AGREEMENT": "fa-handshake" };
+export const OUTCOME_ICON = { "SOLD PENDING": "fa-hourglass-half", "SOLD DELIVERED": "fa-key",
+  "UNSOLD|Negative Equity": "fa-arrow-trend-down", "UNSOLD|DND": "fa-ban", "UNSOLD|Price/Payment": "fa-dollar-sign",
+  "UNSOLD|Credit": "fa-credit-card", "UNSOLD|Hot": "fa-fire", "UNSOLD|Future Follow-Up": "fa-calendar-plus",
+  "UNSOLD|Car Finder": "fa-magnifying-glass" };
 export const NO_STAGE_STYLE = { backgroundColor: "#fff", color: "#6c757d", border: "1px dashed #ced4da" };
 
 // One menu for the outcome, as the design shows it: SOLD PENDING, SOLD DELIVERED, UNSOLD <reason>.

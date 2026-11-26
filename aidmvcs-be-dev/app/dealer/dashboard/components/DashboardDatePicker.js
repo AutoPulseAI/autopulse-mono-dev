@@ -92,7 +92,8 @@ export default function DashboardDatePicker({ value, onChange, timezone, allowFu
     if (!value?.startDate || !value?.endDate) return "All time";
     const start = moment.utc(value.startDate).tz(tz);
     const end = moment.utc(value.endDate).tz(tz);
-    const named = value.preset && value.preset !== "custom" ? `${PRESET_LABELS[value.preset]}: ` : "";
+    if (!start.isValid() || !end.isValid()) return "All time";
+    const named = PRESET_LABELS[value.preset] ? `${PRESET_LABELS[value.preset]}: ` : "";
     const dates = start.isSame(end, "day") ? start.format("MMM D, YYYY") : `${start.format("MMM D")} – ${end.format("MMM D, YYYY")}`;
     return `${named}${dates}${value.compare ? " · compared" : ""}`;
   };

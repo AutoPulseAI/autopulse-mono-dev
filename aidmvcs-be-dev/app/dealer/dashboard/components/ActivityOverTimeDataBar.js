@@ -1,11 +1,11 @@
 // https://recharts.org/en-US/examples/StackedBarChart
 "use client";
 
+import useIsMobile from "../../components/useIsMobile";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 export default function ActivityOverTimeDataBar({ data, onBarClick }) {
-    console.log(data);
-    
+    const isMobile = useIsMobile();
     const handleClick = (data) => {
         if (onBarClick && data) {
             onBarClick(data);
@@ -13,8 +13,8 @@ export default function ActivityOverTimeDataBar({ data, onBarClick }) {
     };
     
     return (
-        <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={data}>
+        <ResponsiveContainer width="100%" height={isMobile ? 240 : 300}>
+            <BarChart data={data} margin={isMobile ? { left: -24, right: 4 } : undefined}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis
                   dataKey="date"
@@ -46,7 +46,7 @@ export default function ActivityOverTimeDataBar({ data, onBarClick }) {
                     }
                   }}
                 />
-                <YAxis label={{ value: 'Total Number of Leads Received', angle: -90, position: 'insideLeft' }} />
+                <YAxis allowDecimals={false} label={isMobile ? undefined : { value: 'Total Number of Leads Received', angle: -90, position: 'insideLeft' }} />
                 <Tooltip cursor={{ fill: 'rgba(0, 0, 0, 0.1)' }} />
                 <Legend />
                 <Bar dataKey="count" fill="var(--secondary)" name="Total Number of Leads Received" onClick={handleClick} style={{ cursor: 'pointer' }} />

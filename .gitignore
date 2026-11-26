@@ -42,3 +42,8 @@ backups/
 .DS_Store
 .vscode/
 .idea/
+
+# Local-only DMS feed test data, planning notes and plan workspaces (24 Nov 2026)
+aidmvcs-be-dev/scripts/dealervault-local/
+docs/superpowers/
+.superpowers/

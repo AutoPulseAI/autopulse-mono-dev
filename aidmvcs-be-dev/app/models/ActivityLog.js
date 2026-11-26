@@ -24,5 +24,7 @@ const activityLogSchema = new mongoose.Schema({
 
 activityLogSchema.index({ dealer_id: 1, customer_id: 1, at: -1 });
 activityLogSchema.index({ lead_id: 1, at: -1 });
+// The bell's "reassigned to me / taken from me" lookups (every minute per signed-in user).
+activityLogSchema.index({ dealer_id: 1, action: 1, at: -1 });
 
 export default mongoose.models.ActivityLog || mongoose.model('ActivityLog', activityLogSchema);

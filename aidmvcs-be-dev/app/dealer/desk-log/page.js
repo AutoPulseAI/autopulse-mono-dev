@@ -5,7 +5,7 @@
 // with stage, people and outcome changed in place. While the 'desk_log' feature is at level 'admin', only a super
 // admin (also through "login as") can open it.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Button, Dropdown, Form, Spinner } from "react-bootstrap";
+import { Alert, Badge, Button, Dropdown, Form, Offcanvas, Spinner } from "react-bootstrap";
 import moment from "moment-timezone";
 import { useUser } from "../context/UserContext";
 import DashboardDatePicker, { presetRange } from "../dashboard/components/DashboardDatePicker";
@@ -44,6 +44,17 @@ export default function DeskLogPage() {
   const [q, setQ] = useState("");
   const [data, setData] = useState(null);
   const [staff, setStaff] = useState([]);
+  // Lead Sources filter (26 Nov 2026): the dealer's whole lead source list, as on the Leads page - not only the
+  // sources of visits already in the picked dates (empty on a day with no check-ins).
+  const [sourceList, setSourceList] = useState([]);
+  useEffect(() => {
+    if (!dealerId) return;
+    fetch(`/api/lead-sources?dealer_id=${encodeURIComponent(dealerId)}`,
+      { headers: { Authorization: `Bearer ${localStorage.getItem("dealertoken")}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setSourceList([...(d?.sources || []), ...(d?.used || [])].map((x) => x?.name).filter(Boolean)))
+      .catch(() => {});
+  }, [dealerId]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [checkIn, setCheckIn] = useState(false);
@@ -51,6 +62,9 @@ export default function DeskLogPage() {
   const [rulesOpen, setRulesOpen] = useState(false);
   // The picked day's appointments, and a lead whose status is being changed from here ({ leadId, name, status }).
   const [appts, setAppts] = useState(null);
+  // 24 Nov 2026: the day's appointments are no longer a block on the page (not in the design); they open from the
+  // Customer Check-in menu, with the same one-click check-in and Status.
+  const [apptsOpen, setApptsOpen] = useState(false);
   const [statusFor, setStatusFor] = useState(null);
   // Paging (18 Nov 2026): the table shows one page of visits, newest first; any filter, search or date change goes
   // back to page 1.
@@ -167,9 +181,13 @@ export default function DeskLogPage() {
             <Button size="sm" variant="custom" onClick={() => setCheckIn(true)}>
               <i className="fa-solid fa-right-to-bracket me-1"></i>Customer Check-in
             </Button>
-            <Dropdown.Toggle split size="sm" variant="custom" aria-label="More" />
+            <Dropdown.Toggle split size="sm" variant="custom" aria-label="More: check in, today's appointments, settings">
+              {appts?.appointments?.length > 0 && <Badge bg="light" text="dark" pill className="me-1">{appts.appointments.length}</Badge>}
+            </Dropdown.Toggle>
             <Dropdown.Menu align="end">
               <Dropdown.Item onClick={() => setCheckIn(true)}>Check in a customer</Dropdown.Item>
+              <Dropdown.Item onClick={() => setApptsOpen(true)}>
+                Today&apos;s appointments{appts ? ` (${appts.appointments.length})` : ""}</Dropdown.Item>
               <Dropdown.Item onClick={() => setRulesOpen(true)}>Desk Log settings</Dropdown.Item>
             </Dropdown.Menu>
           </Dropdown>
@@ -186,13 +204,13 @@ export default function DeskLogPage() {
           </div>
         )}
 
-        <div className="w_card my-3">
+        <div className="dl_filter_bar my-2">
           {/* Betsy's filter row: "All ..." menus, then Stage, Outcome and DND (13 Nov 2026 meeting). */}
           <div className="dl_filters">
             {[
               ["department", "All Departments", [["sales", "Sales"], ["service", "Service"]]],
               ["lead_type", "All Lead Types", LEAD_TYPES],
-              ["source", "All Lead Sources", [...new Set([...(data?.sources || []), filters.source].filter(Boolean))].map((x) => [x, x])],
+              ["source", "All Lead Sources", [...new Set([...sourceList, ...(data?.sources || []), filters.source].filter(Boolean))].sort((a, b) => a.localeCompare(b)).map((x) => [x, x])],
               ["salesperson_id", "All Salespeople", staffPairs],
               ["sales_manager_id", "All Sales Managers", staffPairs],
               ["bdc_agent_id", "All BDC Agents", staffPairs],
@@ -208,24 +226,28 @@ export default function DeskLogPage() {
                 </Form.Select>
               </div>
             ))}
-            <div className="text-end">
+            <div>
+              <Form.Select size="sm" value={view} onChange={(e) => setView(e.target.value)} aria-label="View"
+                className={view !== "all" ? "active_filter" : ""}>
+                {Object.entries(data?.views || { all: "All visits" }).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+              </Form.Select>
+            </div>
+            <div className="dl_clear">
+              {loading && <Spinner animation="border" size="sm" className="me-2" />}
               <Button size="sm" variant="link" className="p-0 fw-semibold" disabled={!filtered}
                 onClick={() => { setFilters(EMPTY_FILTERS); setSearch(""); setView("all"); }}>Clear Filters</Button>
             </div>
           </div>
-          <div className="dl_views mt-3">
-            {Object.entries(data?.views || { all: "All visits" }).map(([key, label]) => (
-              <Button key={key} size="sm" variant={view === key ? "custom" : "outline-custom"}
-                onClick={() => setView(key)}>{label}</Button>
-            ))}
-            {loading && <Spinner animation="border" size="sm" className="ms-2" />}
-          </div>
         </div>
 
-        {appts && (dates?.start_date === dates?.end_date || appts.appointments.length > 0) && (
-          <AppointmentsToday day={appts.day} items={appts.appointments} tz={tz} loading={loading}
-            onCheckIn={(a) => setCheckIn({ leadId: a.lead_id })} onStatus={setStatusFor} />
-        )}
+        <Offcanvas show={apptsOpen} onHide={() => setApptsOpen(false)} placement="end" style={{ width: "min(560px, 100vw)" }}>
+          <Offcanvas.Header closeButton><Offcanvas.Title as="h6">Appointments</Offcanvas.Title></Offcanvas.Header>
+          <Offcanvas.Body className="p-2">
+            {appts ? <AppointmentsToday day={appts.day} items={appts.appointments} tz={tz} loading={loading}
+              onCheckIn={(a) => { setApptsOpen(false); setCheckIn({ leadId: a.lead_id }); }}
+              onStatus={(x) => { setApptsOpen(false); setStatusFor(x); }} /> : <div className="text-muted p-3">Loading...</div>}
+          </Offcanvas.Body>
+        </Offcanvas>
 
         {error && <Alert variant="danger">{error}</Alert>}
         {notice && <Alert variant="success" dismissible onClose={() => setNotice(null)} className="py-2">{notice}</Alert>}

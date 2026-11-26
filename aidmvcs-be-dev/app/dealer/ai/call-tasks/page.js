@@ -17,9 +17,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Alert, Badge, Button, Form, Nav, Pagination, Spinner, Table } from "react-bootstrap";
 import { useUser } from "../../context/UserContext";
 import CallOutcomeModal from "../components/CallOutcomeModal";
+import { useCan } from "../../../hooks/PermissionsContext";
+import { DISMISS_TASKS } from "../../components/DismissTaskModal";
 import DashboardDatePicker from "../../dashboard/components/DashboardDatePicker";
 import LeadAiDrawer from "../components/LeadAiDrawer";
-import { aiFetch, callOutcomeLabel, formatDateTime, fromNow, leadHref, stageVariant, telHref } from "../components/aiShared";
+import { aiFetch, callOutcomeLabel, formatDateTime, fromNow, leadHref, personHref, stageVariant, telHref } from "../components/aiShared";
+import { rememberBack } from "../../components/backLink";
 
 const VIEWS = [
   { key: "open", label: "To call now", icon: "fa-phone" },
@@ -113,7 +116,10 @@ function CustomerCell({ task }) {
   return (
     <>
       {/* Betsy, 2 Nov 2026 meeting: "this customer's details were not provided" - the phone when there's no name. */}
-      <strong>{task.customer_name || task.lead?.name || task.phone || "Unknown customer"}</strong>
+      {/* The name opens the customer's profile (Bibi, 26 Nov 2026); "Open lead" stays beside the row. */}
+      <Link href={personHref(task.customer_id, task.lead_id)} className="fw-semibold text-dark"
+        onClick={() => rememberBack(personHref(task.customer_id, task.lead_id), window.location.pathname + window.location.search, "Call Tasks")}>
+        {task.customer_name || task.lead?.name || task.phone || "Unknown customer"}</Link>
       {task.vehicle && <small className="d-block text-secondary-light">{task.vehicle}</small>}
     </>
   );
@@ -125,6 +131,7 @@ function StageCell({ task }) {
 }
 
 function CallTasksContent() {
+  const canDismiss = useCan(DISMISS_TASKS); // Undo dismiss needs "Dismiss Tasks" (app/lib/taskPermission.js)
   const router = useRouter();
   const searchParams = useSearchParams();
   const view = VIEWS.some((v) => v.key === searchParams.get("view")) ? searchParams.get("view") : "open";
@@ -399,7 +406,7 @@ function CallTasksContent() {
                             Record late call
                           </Button>
                         )}
-                        {task.status === "dismissed" && (
+                        {canDismiss && task.status === "dismissed" && (
                           <Button size="sm" variant="outline-custom" className="me-1" onClick={() => bringBack(task)}
                             title="Undo the dismiss: the task goes back to the open list">
                             <i className="fa-solid fa-rotate-left me-1" />Undo dismiss

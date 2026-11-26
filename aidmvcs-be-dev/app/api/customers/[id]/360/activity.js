@@ -84,13 +84,14 @@ export function staffEntry(a) {
     : a.action === "showroom_check_in" ? `checked the customer in on the Desk Log${a.detail?.includes("appointment") ? " - appointment showed" : ""}`
     : a.action === "reminder_set" ? `set a reminder for ${a.to ? new Date(a.to).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "later"}`
     : a.action === "reminder_done" ? "marked a reminder done"
+    : a.action === "reminder_dismissed" ? "dismissed a task" : a.action === "reminder_undismissed" ? "brought a dismissed task back"
     : a.action === "campaign_added" ? `added the customer to the campaign "${a.to}"`
     : a.action === "in_market_changed" ? `marked the opportunity ${a.to}`
     : a.action === "vehicle_of_interest_added" ? `added ${a.to} to the vehicles of interest`
     : a.action === "vehicle_of_interest_removed" ? `removed ${a.to} from the vehicles of interest`
     : a.action === "name_updated_by_ai" ? `updated the name${a.from ? ` from ${a.from}` : ""} to ${a.to}${a.detail ? ` (${a.detail})` : ""}`
     : a.action.replace(/_/g, " ");
-  return { type: "activity", kind: a.action, actor: a.actor_type, at: a.at, lead_id: a.lead_id,
+  return { type: "activity", kind: a.action, actor: a.actor_type, who: a.actor_name || null, detail: a.detail || null, at: a.at, lead_id: a.lead_id,
     text: `${who} ${what}${a.detail ? ` (${short(a.detail, 100)})` : ""}` };
 }
 

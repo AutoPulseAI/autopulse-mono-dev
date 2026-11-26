@@ -89,13 +89,21 @@ function Section({ title, icon, count, more, children, empty }) {
   );
 }
 
-function Row({ href, title, text, at }) {
+// One notification: click opens the lead and clears it; x clears it without leaving the page.
+function Row({ href, title, text, at, whose, onClear }) {
   return (
-    <Dropdown.Item as={Link} href={href} className="tb_row">
-      <span className="tb_row_title">{title || "Unknown customer"}</span>
-      {text && <span className="tb_row_text">{text}</span>}
-      {at && <span className="tb_row_at">{fromNow(at)}</span>}
-    </Dropdown.Item>
+    <div className="tb_row_wrap">
+      <Dropdown.Item as={Link} href={href} className="tb_row" onClick={onClear}>
+        <span className="tb_row_title">{title || "Unknown customer"}</span>
+        {text && <span className="tb_row_text">{text}</span>}
+        {whose && <span className="tb_row_whose"><i className="fa-regular fa-user me-1" />{whose}</span>}
+        {at && <span className="tb_row_at">{fromNow(at)}</span>}
+      </Dropdown.Item>
+      <button type="button" className="tb_row_clear" title="Clear" aria-label={`Clear ${title || "notification"}`}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClear(); }}>
+        <i className="fa-solid fa-xmark" />
+      </button>
+    </div>
   );
 }
 
@@ -125,11 +133,35 @@ export default function TopbarTools({ storeName }) {
   }, [load]);
   useLiveRefresh(load, { everyMs: REFRESH_MS });
 
+  // Clearing only hides it from this user's bell; the alert or task stays on its page until the work is done.
+  const sendClear = useCallback(async (body) => {
+    const res = await fetch("/api/topbar/clear", { method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("dealertoken")}` },
+      body: JSON.stringify(body) });
+    if (!res.ok) throw new Error("not cleared");
+  }, []);
+  const clearOne = useCallback((key) => {
+    const drop = (part) => {
+      if (!part?.items?.some((i) => i.key === key)) return part;
+      return { ...part, items: part.items.filter((i) => i.key !== key), count: Math.max(0, (part.count || 0) - 1) };
+    };
+    setData((d) => d && { ...d, alerts: drop(d.alerts), calls: drop(d.calls), taken: drop(d.taken), escalated: drop(d.escalated), new_leads: drop(d.new_leads) });
+    sendClear({ keys: [key] }).catch(() => null).finally(load);
+  }, [load, sendClear]);
+  const clearAll = useCallback(() => {
+    const keys = data?.clear_keys || [];
+    const empty = (part) => part && { ...part, items: [], count: 0 };
+    setData((d) => d && { ...d, alerts: empty(d.alerts), calls: empty(d.calls), taken: empty(d.taken), escalated: empty(d.escalated), new_leads: empty(d.new_leads) });
+    sendClear({ all: true, keys }).catch(() => null).finally(load);
+  }, [data, load, sendClear]);
+
 
   const alerts = data?.alerts;
   const calls = data?.calls;
   const fresh = data?.new_leads;
-  const bellCount = (alerts?.count || 0) + (calls?.count || 0) + (fresh?.mine ? fresh.count || 0 : 0);
+  const taken = data?.taken;
+  const escalated = data?.escalated;
+  const bellCount = (alerts?.count || 0) + (calls?.count || 0) + (fresh?.count || 0) + (taken?.count || 0) + (escalated?.count || 0);
 
   return (
     <div className="tb_tools">
@@ -143,30 +175,53 @@ export default function TopbarTools({ storeName }) {
             </Dropdown.Toggle>
             <Dropdown.Menu className="tb_menu tb_bell">
               {loading && !data && <div className="text-center py-2"><Spinner size="sm" /></div>}
+              {data && (alerts?.count > 0 || calls?.count > 0 || taken?.count > 0 || escalated?.count > 0 || fresh?.count > 0) && (
+                <div className="tb_bell_head">
+                  <strong>Notifications</strong>
+                  <button type="button" className="btn btn-link btn-sm p-0 ms-auto" onClick={clearAll}>Clear all</button>
+                </div>
+              )}
               {data?.ai_unavailable && (
                 <div className="tb_empty text-warning">AI alerts and call tasks can&apos;t be loaded right now.</div>
               )}
               {alerts && (
                 <Section title="Needs a person" icon="fa-regular fa-triangle-exclamation" count={alerts.count}
-                  more="/dealer/ai/alerts" empty="Nothing waiting">
+                  more="/dealer/ai/actions?tab=dar" empty="Nothing waiting">
                   {alerts.items.map((a) => (
-                    <Row key={a.id} href={leadHref(a.lead_id)} title={a.name} text={a.text || alertKind(a.kind).label} at={a.at} />
+                    <Row key={a.key} href={leadHref(a.lead_id)} title={a.name} text={a.text || alertKind(a.kind).label} at={a.at} whose={a.whose} onClear={() => clearOne(a.key)} />
                   ))}
                 </Section>
               )}
               {calls && (
                 <Section title="Calls to make" icon="fa-regular fa-phone-volume" count={calls.count}
-                  more="/dealer/ai/call-tasks" empty="No calls due">
+                  more="/dealer/ai/actions?tab=tasks" empty="No calls due">
                   {calls.items.map((t) => (
-                    <Row key={t.id} href={leadHref(t.lead_id)} title={t.name} text={t.reason} at={t.due_at} />
+                    <Row key={t.key} href={leadHref(t.lead_id)} title={t.name} text={t.reason} at={t.due_at} whose={t.whose} onClear={() => clearOne(t.key)} />
+                  ))}
+                </Section>
+              )}
+              {escalated?.count > 0 && (
+                <Section title="Escalated to you" icon="fa-regular fa-arrow-up" count={escalated.count}
+                  more="/dealer/ai/actions?tab=tasks" empty="">
+                  {escalated.items.map((t) => (
+                    <Row key={t.key} href={leadHref(t.lead_id)} title={t.name} onClear={() => clearOne(t.key)}
+                      text={`${t.by || "Staff"} escalated: ${t.text}`} at={t.at} />
+                  ))}
+                </Section>
+              )}
+              {taken?.count > 0 && (
+                <Section title="Taken over from you" icon="fa-regular fa-user-shield" count={taken.count} empty="">
+                  {taken.items.map((t) => (
+                    <Row key={t.key} href={leadHref(t.lead_id)} title={t.name} onClear={() => clearOne(t.key)}
+                      text={`${t.by || "A manager"} took it over${t.why ? `: ${t.why}` : ""}`} at={t.at} />
                   ))}
                 </Section>
               )}
               {fresh && (
-                <Section title={fresh.mine ? "New leads for you (24 h)" : "New leads (24 h)"} icon="fa-regular fa-user-plus"
-                  count={fresh.count} more={`/dealer/leads${canManageLeads ? "" : "?assignment=my"}`} empty="No new leads">
+                <Section title={fresh.mine ? "New leads for you (24 h)" : "New leads to assign (24 h)"} icon="fa-regular fa-user-plus"
+                  count={fresh.count} more={`/dealer/leads?assignment=${fresh.mine ? "my" : "unassigned"}`} empty="No new leads">
                   {fresh.items.map((l) => (
-                    <Row key={`${l.lead_id}-${l.why}`} href={leadHref(l.lead_id)} title={l.name}
+                    <Row key={l.key} href={leadHref(l.lead_id)} title={l.name} onClear={() => clearOne(l.key)}
                       text={l.why === "reassigned" ? `Reassigned to you${l.by ? ` by ${l.by}` : ""}` : "New lead"} at={l.at} />
                   ))}
                 </Section>

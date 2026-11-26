@@ -3,6 +3,7 @@
 // list with that number's leads (/dealer/leads?report_kpi=..., linkFor), as the Dashboard's cards do: the whole card is
 // the link (same <a className="d-block"> as dashboard/components/CountCard.js), and a rate card links its count and its
 // "out of" number. Numbers not tied to leads, and blocked / needs-data KPIs, are plain.
+import { useRouter } from "next/navigation";
 import { Badge, Table } from "react-bootstrap";
 import { rememberBack } from "../../components/backLink";
 
@@ -20,6 +21,7 @@ export function formatValue(k) {
 const back = (link) => ({ onClick: () => rememberBack(link) });
 
 export function KpiCard({ kpi, linkFor }) {
+  const router = useRouter();
   const live = kpi.state === "live";
   const link = live && linkFor ? linkFor(kpi) : null;
   const rate = kpi.kind === "rate" && kpi.denominator;
@@ -28,7 +30,7 @@ export function KpiCard({ kpi, linkFor }) {
   const sub = rate ? (
     <>
       {kpi.numerator?.count ?? 0} of{" "}
-      {denLink ? <a href={denLink} {...back(denLink)}>{kpi.denominator.count}</a> : kpi.denominator.count}
+      {denLink ? <a href={denLink} onClick={(e) => { e.stopPropagation(); rememberBack(denLink); }}>{kpi.denominator.count}</a> : kpi.denominator.count}
       {kpi.denominator_label ? ` ${kpi.denominator_label}` : ""}
     </>
   ) : kpi.kind === "median" ? `over ${kpi.count ?? 0}` : null;
@@ -36,7 +38,7 @@ export function KpiCard({ kpi, linkFor }) {
     <div className="w_card d_counts_card h-100" style={live ? undefined : { opacity: 0.75 }}>
       <div className="d_counts_icon"><i className={`fa-regular ${ICONS[kpi.grain] || "fa-chart-column"}`}></i></div>
       <div className="d_counts_info">
-        <h3>{rate && link ? <a href={link} {...back(link)}>{value}</a> : value}</h3>
+        <h3>{value}</h3>
         <p>
           {kpi.label}
           {kpi.proxy && <Badge bg="secondary" className="ms-1">proxy</Badge>}
@@ -56,7 +58,12 @@ export function KpiCard({ kpi, linkFor }) {
   );
   return (
     <div className="col col-lg-3 col-md-6 col-12 mb-3">
-      {link && !rate ? <a href={link} className="d-block h-100" {...back(link)}>{content}</a> : content}
+      {/* The whole box opens its leads (24 Nov 2026); a rate card's "out of" number still opens its own list. */}
+      {link && !rate ? <a href={link} className="d-block h-100" {...back(link)}>{content}</a>
+        : link ? <div role="link" tabIndex={0} className="h-100 kpi_click" aria-label={`${kpi.label}: open the leads`}
+          onClick={() => { rememberBack(link); router.push(link); }}
+          onKeyDown={(e) => { if (e.key === "Enter") { rememberBack(link); router.push(link); } }}>{content}</div>
+          : content}
     </div>
   );
 }

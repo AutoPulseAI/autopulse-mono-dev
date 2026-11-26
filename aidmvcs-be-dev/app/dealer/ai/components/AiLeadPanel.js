@@ -317,7 +317,7 @@ export default function AiLeadPanel({ leadId, leadStatus = null, className = "w_
                     <p className="mb-1 small">
                       <Badge bg="primary" className="me-1">Open</Badge>
                       Call {callTask.phone} (opened {fromNow(callTask.opened_at)}).{" "}
-                      <Link href="/dealer/ai/call-tasks">Go to Call Tasks</Link>
+                      <Link href="/dealer/ai/actions?tab=tasks">Go to Tasks</Link>
                     </p>
                   ) : (
                     <p className="mb-1 small text-secondary-light">

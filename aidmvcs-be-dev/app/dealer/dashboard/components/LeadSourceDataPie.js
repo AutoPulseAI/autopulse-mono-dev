@@ -1,5 +1,6 @@
 // https://recharts.org/en-US/examples/StackedBarChart
 "use client";
+import useIsMobile from '../../components/useIsMobile';
 import { useMemo } from 'react';
 import { ResponsiveContainer, PieChart, Pie, Legend, Tooltip, Cell } from 'recharts';
 
@@ -48,6 +49,7 @@ function preparePieData(data) {
 }
 
 export default function LeadSourceDataPie({ data, onSegmentClick }) {
+    const isMobile = useIsMobile();
     const chartData = useMemo(() => preparePieData(data), [data]);
     const total = useMemo(
       () => chartData.reduce((sum, item) => sum + (item.value || 0), 0),
@@ -85,6 +87,8 @@ export default function LeadSourceDataPie({ data, onSegmentClick }) {
         
         if (displayPercent < MIN_LABEL_PERCENT) return null;
         
+        const fullName = payload?.name || '';
+        const shortName = fullName.length > 14 ? `${fullName.slice(0, 12)}…` : fullName;
         const RADIAN = Math.PI / 180;
         const radius = outerRadius + 20;
         const x = cx + radius * Math.cos(-midAngle * RADIAN);
@@ -100,7 +104,7 @@ export default function LeadSourceDataPie({ data, onSegmentClick }) {
                 fontSize={11}
                 fontWeight="500"
             >
-                {`${payload?.name || ''}: ${displayPercent.toFixed(0)}%`}
+                {`${shortName}: ${displayPercent.toFixed(0)}%`}
             </text>
         );
     };
@@ -108,13 +112,13 @@ export default function LeadSourceDataPie({ data, onSegmentClick }) {
     if (!chartData.length) return null;
 
     return (
-        <ResponsiveContainer width="100%" height={300}>
+        <ResponsiveContainer width="100%" height={isMobile ? 340 : 300}>
             <PieChart>
                 <Pie
                     data={chartData}
                     dataKey="value"
                     nameKey="name"
-                    label={<CustomLabel />}
+                    label={isMobile ? false : <CustomLabel />}
                     labelLine={false}
                     outerRadius={90}
                     innerRadius={30}
@@ -131,10 +135,10 @@ export default function LeadSourceDataPie({ data, onSegmentClick }) {
                 <Tooltip content={<CustomTooltip />} />
                 <Legend 
                     verticalAlign="bottom" 
-                    height={36}
+                    height={isMobile ? undefined : 36}
                     formatter={(value, entry) => (
                         <span style={{ color: entry.color }}>
-                            {value}
+                            {value}{isMobile && total > 0 ? ` ${Math.round(((entry.payload?.value || 0) / total) * 100)}%` : ''}
                         </span>
                     )}
                 />

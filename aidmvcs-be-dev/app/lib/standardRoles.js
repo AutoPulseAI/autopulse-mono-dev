@@ -11,13 +11,14 @@ export const READ_ONLY = 'View All Leads (Read Only)';
 // Permissions that let a staff member change something. A role with any of them is not read-only.
 export const WRITE_PERMISSIONS = Object.freeze(['Manage Employee', "Manage Employee's  Role", 'Manage Email Accounts',
   'Manage Account Information', 'Manage Leads', 'View Assigned Leads', 'Assign Leads', 'Manage Appoinment',
-  'Manage Follow-up setting', 'Manage Subscription', 'Manage Support Ticket', 'Manage Customer Conversation']);
+  'Manage Follow-up setting', 'Manage Subscription', 'Manage Support Ticket', 'Manage Customer Conversation',
+  'Dismiss Tasks']);
 
 export const STANDARD_ROLES = Object.freeze([
   { name: 'Rooftop Admin', permissions: [...WRITE_PERMISSIONS] },
   { name: 'Executive', permissions: [READ_ONLY] },
   { name: 'Sales Manager', permissions: ['Manage Leads', 'Assign Leads', 'Manage Appoinment', 'Manage Customer Conversation',
-    'Manage Employee'] },
+    'Manage Employee', 'Dismiss Tasks'] },
   { name: 'BDC / Sales', permissions: ['View Assigned Leads', 'Manage Appoinment', 'Manage Customer Conversation'] },
   { name: 'Service', permissions: ['View Assigned Leads', 'Manage Appoinment', 'Manage Customer Conversation'] },
   { name: 'Read-only', permissions: [READ_ONLY] },

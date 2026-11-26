@@ -1,12 +1,14 @@
 "use client";
 
 import { leadStatusLabel } from "@lib/statusLabels";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Accordion, Alert, Button, Col, Pagination, Row, Spinner } from "react-bootstrap";
+import moment from "moment-timezone";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { Alert, Button, Pagination, Spinner, Table } from "react-bootstrap";
+import AppIcon, { IconLabel, statusIconName } from "../../../components/AppIcon";
 import { useUser } from "../../../context/UserContext";
 import { formatTimestamp } from "../../../../utils/dateUtils";
 import ViewConversations from "../../../leads/components/viewConversations";
-import { leadTypeName } from "../../../leads/components/LeadInfoCard";
+import { LeadFacts, leadTypeName } from "../../../leads/components/LeadInfoCard";
 import { DEPARTMENT_NAMES, leadDepartment } from "@lib/departmentNames";
 import ViewAdfModal, { isAdfLead } from "../../../leads/components/ViewAdfModal";
 import { Modal } from "react-bootstrap";
@@ -21,11 +23,6 @@ const defaultLeadsPagination = {
   hasNextPage: false,
   hasPreviousPage: false,
 };
-
-// The lead's type and source, as on the lead card (LeadInfoCard): "Internet · CarGurus".
-function getLeadSource(lead) {
-  return `${leadTypeName(lead)} · ${lead.lead_source || lead.source || "Unknown"}`;
-}
 
 // Unchanged from the pre-360 CustomerDetail.js, per
 // docs/dealer-360-customer-view-spec.md §4: "existing lead + conversation
@@ -64,8 +61,6 @@ function OpportunityHeader({ lead, owner, onHot }) {
   return (
     <div className="cp_opp mb-2">
       <span className="fw-semibold">Opportunity #{String(lead._id).slice(-6).toUpperCase()}</span>
-      <span className="badge text-bg-light">{DEPARTMENT_NAMES[leadDepartment(lead)]}</span>
-      <span className="small text-muted">{getLeadSource(lead)}</span>
       {owner && <span className="small"><i className="fa-solid fa-user-tie me-1" />{owner}</span>}
       <button type="button" className={`cp_hot${lead.hot ? " on" : ""}`} onClick={() => onHot(!lead.hot)}
         title={lead.hot ? "Marked hot - click to unmark" : "Mark this lead hot"}>
@@ -76,7 +71,7 @@ function OpportunityHeader({ lead, owner, onHot }) {
   );
 }
 
-export default function LeadsTab({ customerId, onChanged }) {
+export default function LeadsTab({ customerId, onChanged, initialLeadId = null }) {
   const { dealerParent, user, loadingParent } = useUser();
   const activeEntity = dealerParent || (user?.parent_id ? null : user);
 
@@ -85,11 +80,14 @@ export default function LeadsTab({ customerId, onChanged }) {
   const [leadsLoading, setLeadsLoading] = useState(true);
   const [leadsError, setLeadsError] = useState(null);
   const [activeLeadId, setActiveLeadId] = useState(null);
+  // The opportunity row's slot for the lead's SMS Reply / Call / Note / Status / Check in (OpportunityActions).
+  const [actionsEl, setActionsEl] = useState(null);
   const [adfModalLeadId, setAdfModalLeadId] = useState(null);
   const [milestones, setMilestones] = useState({});
   const [details, setDetails] = useState({});
   const [newLead, setNewLead] = useState(null); // prefilled LeadForm for a new opportunity (G-005)
   const hasAutoOpenedRef = useRef(false);
+  const toggle = (id) => setActiveLeadId((cur) => (cur === id ? null : id));
 
   const fetchLeads = useCallback(async (page = 1) => {
     if (loadingParent || !activeEntity?.id || !customerId) return;
@@ -134,7 +132,7 @@ export default function LeadsTab({ customerId, onChanged }) {
   useEffect(() => {
     if (!hasAutoOpenedRef.current && leads.length > 0) {
       hasAutoOpenedRef.current = true;
-      setActiveLeadId(leads[0]._id);
+      setActiveLeadId(leads.some((l) => String(l._id) === String(initialLeadId)) ? initialLeadId : leads[0]._id);
     }
   }, [leads]);
 
@@ -153,53 +151,28 @@ export default function LeadsTab({ customerId, onChanged }) {
     if (page >= 1 && page <= leadsPagination.totalPages) fetchLeads(page);
   };
 
-  return (
-    <div className="w_card">
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <h3 className="w_card_title mb-0">Leads</h3>
-        {leads.length > 0 && (
-          <Button size="sm" variant="outline-custom" onClick={() => setNewLead({ name: leads[0].name || "",
-            email: leads[0].email || "", phone: leads[0].phone || "" })}>
-            <i className="fa-solid fa-plus me-1" />New lead for this customer
-          </Button>
-        )}
-      </div>
-
-      {leadsError && (
-        <Alert variant="danger" dismissible onClose={() => setLeadsError(null)}>{leadsError}</Alert>
-      )}
-
-      {leadsLoading && leads.length === 0 ? (
-        <div className="text-center py-4"><Spinner animation="border" size="sm" /></div>
-      ) : leads.length === 0 ? (
-        <div className="text-center py-4 text-muted">No leads found for this customer.</div>
-      ) : (
-        <>
-        {/* 13 Nov 2026 meeting (10.10, DealerSocket's Sales tab): the customer's leads as a table - status, department,
-            created, source, vehicle, owner; click a row to open that lead. */}
-        <Row className="cp_leads_head d-none d-md-flex small text-muted mx-0 me-2 px-3">
-          <Col md={2}>Status</Col><Col md={1}>Dept</Col><Col md={2}>Created</Col><Col md={2}>Type · Source</Col>
-          <Col md={3}>Vehicle</Col><Col md={2}>Owner</Col>
-        </Row>
-        <Accordion activeKey={activeLeadId} onSelect={(key) => setActiveLeadId(key)}>
-          {leads.map((lead) => {
-            const vehicle = [lead.vehicle_year, lead.vehicle_make, lead.vehicle_model].filter(Boolean).join(" ");
-            return (
-              <Accordion.Item eventKey={lead._id} key={lead._id}>
-                <Accordion.Header>
-                  <Row className="align-items-center w-100 me-2 small">
-                    <Col md={2} className="p_bold">{leadStatusLabel(lead) || "N/A"}
-                      {lead.hot && <span className="cp_hot on ms-1 py-0"><i className="fa-solid fa-fire" /></span>}</Col>
-                    <Col md={1}>{DEPARTMENT_NAMES[leadDepartment(lead)]}</Col>
-                    <Col md={2} className="text-muted">{lead.createdAt ? formatTimestamp(lead.createdAt) : "N/A"}</Col>
-                    <Col md={2}>{getLeadSource(lead)}</Col>
-                    <Col md={3}>{vehicle || <span className="text-muted">No vehicle</span>}</Col>
-                    <Col md={2}>{details[lead._id]?.owner || <span className="text-muted">Unassigned</span>}</Col>
-                  </Row>
-                </Accordion.Header>
-                <Accordion.Body>
+  // The open lead, right under its row (25 Nov 2026: the arrow opens / closes a lead, as the accordion did; with 3-5
+  // leads, Previous / Next step through them). Everything in it is for that one lead.
+  const renderLead = (lead, at) => (
+          <div key={lead._id} className="cp_selected_lead">
+            <div className="cp_selected_head">
+              <i className="fa-solid fa-arrow-turn-down-right" aria-hidden="true" />
+              <span><strong>Selected lead</strong> - everything below is for this lead only
+                <span className="text-muted"> · {lead.fe_lead_status || "New Lead"} · {DEPARTMENT_NAMES[leadDepartment(lead)]}
+                  {lead.createdAt ? ` · ${new Date(lead.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : ""}</span></span>
+              <span className="ms-auto d-flex align-items-center gap-1">
+                <Button size="sm" variant="outline-custom" disabled={at <= 0} onClick={() => setActiveLeadId(leads[at - 1]._id)}
+                  title="Previous lead"><i className="fa-solid fa-chevron-left" /></Button>
+                <span className="small text-muted px-1">Lead {at + 1} of {leads.length}</span>
+                <Button size="sm" variant="outline-custom" disabled={at >= leads.length - 1} onClick={() => setActiveLeadId(leads[at + 1]._id)}
+                  title="Next lead"><i className="fa-solid fa-chevron-right" /></Button>
+                <Button size="sm" variant="outline-secondary" onClick={() => setActiveLeadId(null)} title="Close this lead">
+                  <i className="fa-solid fa-chevron-up" /></Button>
+              </span>
+            </div>
                   <OpportunityHeader lead={lead} owner={details[lead._id]?.owner} onHot={(hot) => setHot(lead, hot)} />
-                  {activeLeadId === lead._id && <OpportunityActions lead={lead} onChanged={onChanged} />}
+                  <LeadFacts lead={lead} />
+                  {activeLeadId === lead._id && <OpportunityActions lead={lead} onChanged={onChanged} actionsRef={setActionsEl} />}
                   <Milestones times={milestones[lead._id]} />
                   {/* The lead's showroom visits (Desk Log), and checking the customer in from here. */}
                   <div className="small mb-2 d-flex flex-wrap align-items-center gap-2">
@@ -230,7 +203,7 @@ export default function LeadsTab({ customerId, onChanged }) {
                   )}
                   {/* Only mount the (self-fetching, self-polling) conversation panel while
                       this accordion item is actually open. */}
-                  {activeLeadId === lead._id && <ViewConversations lead={lead} embedded onLeadSaved={onChanged} />}
+                  {activeLeadId === lead._id && <ViewConversations lead={lead} embedded onLeadSaved={onChanged} actionsTarget={actionsEl} />}
                   {isAdfLead(lead) && (
                     <div className="d-flex justify-content-end mt-3">
                       <Button
@@ -242,11 +215,64 @@ export default function LeadsTab({ customerId, onChanged }) {
                       </Button>
                     </div>
                   )}
-                </Accordion.Body>
-              </Accordion.Item>
-            );
-          })}
-        </Accordion>
+          </div>
+  );
+
+  return (
+    <div className="w_card">
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <h3 className="w_card_title mb-0">Leads</h3>
+        {leads.length > 0 && (
+          <Button size="sm" variant="outline-custom" onClick={() => setNewLead({ name: leads[0].name || "",
+            email: leads[0].email || "", phone: leads[0].phone || "" })}>
+            <i className="fa-solid fa-plus me-1" />New lead for this customer
+          </Button>
+        )}
+      </div>
+
+      {leadsError && (
+        <Alert variant="danger" dismissible onClose={() => setLeadsError(null)}>{leadsError}</Alert>
+      )}
+
+      {leadsLoading && leads.length === 0 ? (
+        <div className="text-center py-4"><Spinner animation="border" size="sm" /></div>
+      ) : leads.length === 0 ? (
+        <div className="text-center py-4 text-muted">No leads found for this customer.</div>
+      ) : (
+        <>
+        {/* 13 Nov 2026 meeting (10.10, DealerSocket's Sales tab): the customer's leads as a table - status, department,
+            created, source, vehicle, owner; click a row to open that lead. */}
+        <div className="table-responsive act_table mb-2">
+          <Table hover size="sm" className="mb-0 align-middle">
+            <thead><tr><th style={{ width: 34 }} aria-label="Open" /><th><IconLabel name="status">Status</IconLabel></th><th><IconLabel name="department">Department</IconLabel></th><th><IconLabel name="date">Created</IconLabel></th><th><IconLabel name="type">Up type</IconLabel></th><th><IconLabel name="source">Source</IconLabel></th><th><IconLabel name="source">Sub-source</IconLabel></th><th><IconLabel name="vehicle">Vehicle</IconLabel></th><th><IconLabel name="owner">Owner</IconLabel></th></tr></thead>
+            <tbody>
+              {leads.map((lead, at) => {
+                const vehicle = [lead.vehicle_year, lead.vehicle_make, lead.vehicle_model].filter(Boolean).join(" ");
+                return (
+                  <Fragment key={lead._id}>
+                  <tr className={activeLeadId === lead._id ? "table-primary" : undefined} style={{ cursor: "pointer" }}
+                    tabIndex={0} aria-expanded={activeLeadId === lead._id} onClick={() => toggle(lead._id)}
+                    onKeyDown={(e) => { if (e.key === "Enter") toggle(lead._id); }}>
+                    <td className="text-center"><i className={`fa-solid fa-chevron-${activeLeadId === lead._id ? "down" : "right"} text-primary`}
+                      title={activeLeadId === lead._id ? "Close this lead" : "Open this lead"} /></td>
+                    <td className="fw-semibold"><span className="ap_label"><AppIcon name={statusIconName(lead.fe_lead_status)} />{leadStatusLabel(lead) || "N/A"}</span>
+                      {lead.hot && <span className="cp_hot on ms-1 py-0"><i className="fa-solid fa-fire" /></span>}</td>
+                    <td>{DEPARTMENT_NAMES[leadDepartment(lead)]}</td>
+                    <td className="text-nowrap">{lead.createdAt ? moment(lead.createdAt).format("MMM D, YYYY") : "N/A"}</td>
+                    <td>{leadTypeName(lead)}</td><td>{lead.lead_source || lead.source || "Unknown"}</td>
+                    <td>{lead.sub_source || <span className="text-muted">None</span>}</td>
+                    <td>{vehicle || <span className="text-muted">No vehicle</span>}</td>
+                    <td>{details[lead._id]?.owner || <span className="text-muted">Unassigned</span>}</td>
+                  </tr>
+                  {activeLeadId === lead._id && (
+                    <tr className="cp_lead_open"><td colSpan={9} className="p-2">{renderLead(lead, at)}</td></tr>
+                  )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </Table>
+        </div>
         </>
       )}
 

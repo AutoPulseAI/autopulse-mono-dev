@@ -1,5 +1,6 @@
 // BDC productivity report (SOW 8 Deliverable F, gap G-035; KPI dictionary A-F 3.2). Staff are credited by the
-// lead's CURRENT owner (Lead.assigned_to): lead assignment history is not recorded yet.
+// lead's current owner in the rows' "Assigned to" column; the Staff filter selects leads by their owner AT THE TIME
+// (owned in the picked days, ../ownerAtTime.js - reassignments are logged since 13 Nov 2026).
 // Call attempts / meaningful contacts = the call-task records (decision 9 Nov 2026: "Meaningful contact / call attempt
 // = the call-task definitions we already have"); ai_call_tasks is written by the AI service (agentic-upsell
 // agent/call_tasks.py: status open / completed / dismissed / cancelled / missed, outcome connected / no_answer /

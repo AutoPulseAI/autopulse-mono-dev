@@ -28,7 +28,9 @@ const fail = (error, status) => Response.json({ error }, { status });
 async function summary(c, dealerId) {
   const family = await customerFamily(c._id, dealerId);
   const where = { dealer_id: dealerId, customer_id: { $in: family } };
-  const [leads, openLeads, deals, serviceVisits, tradeIns, owner] = await Promise.all([
+  const [list, leads, openLeads, deals, serviceVisits, tradeIns, owner] = await Promise.all([
+    Lead.find(where).select('vehicle_year vehicle_make vehicle_model lead_source source fe_lead_status assigned_to createdAt')
+      .populate({ path: 'assigned_to', select: 'name', strictPopulate: false }).sort({ createdAt: -1 }).limit(25).lean(),
     Lead.countDocuments(where),
     Lead.countDocuments({ ...where, fe_lead_status: { $not: /sold|closed|lost|opted out|dnd/i } }),
     Deal.countDocuments(where), RepairOrder.countDocuments(where), TradeIn.countDocuments(where),
@@ -36,7 +38,9 @@ async function summary(c, dealerId) {
   ]);
   return { _id: String(c._id), name: c.name || null, emails: (c.emails || []).map((e) => e.value),
     phones: (c.phones || []).map((p) => p.value), owner: owner?.name || null, leads, open_leads: openLeads, deals,
-    service_visits: serviceVisits, trade_ins: tradeIns };
+    service_visits: serviceVisits, trade_ins: tradeIns,
+    opportunities: list.map((l) => ({ id: String(l._id), vehicle: [l.vehicle_year, l.vehicle_make, l.vehicle_model].filter(Boolean).join(' ') || null,
+      source: l.lead_source || l.source || null, status: l.fe_lead_status || null, owner: l.assigned_to?.name || null })) };
 }
 
 export async function POST(req) {
@@ -57,6 +61,16 @@ export async function POST(req) {
     if (!merged.merged_into) return fail('This customer is not merged', 409);
     const res = await Customer.updateOne({ _id: mergeId, merged_into: merged.merged_into }, { $unset: { merged_into: 1 } });
     if (!res.modifiedCount) return fail('Changed by someone else meanwhile', 409);
+    const kept = await Customer.findById(merged.merged_into).select('merge_history').lean();
+    const entry = [...(kept?.merge_history || [])].reverse().find((h) => String(h.merged_customer_id) === mergeId && !h.reversed_at);
+    if (entry?.replaced) {
+      const r = entry.replaced;
+      const back = {};
+      if (r.fields.includes('name')) Object.assign(back, { name: r.name, first_name: r.first_name, last_name: r.last_name });
+      if (r.fields.includes('email')) back.emails = r.emails;
+      if (r.fields.includes('address')) back.addresses = r.addresses;
+      await Customer.updateOne({ _id: merged.merged_into }, { $set: back });
+    }
     await Customer.updateOne({ _id: merged.merged_into },
       { $set: { 'merge_history.$[h].reversed_at': new Date(), 'merge_history.$[h].reversed_by': user._id } },
       { arrayFilters: [{ 'h.merged_customer_id': new mongoose.Types.ObjectId(mergeId), 'h.reversed_at': null }] });
@@ -89,11 +103,37 @@ export async function POST(req) {
   const res = await Customer.updateOne({ _id: mergeId, dealer_id: dealerId, merged_into: { $in: [null] } },
     { $set: { merged_into: keep._id } });
   if (!res.modifiedCount) return fail('That customer was merged by someone else meanwhile', 409);
+  // Merge review: a field the manager took from the other customer. Only the customer record changes (never a lead, so
+  // nothing about who the AI messages); what it replaced is kept on the merge so Undo puts it back.
+  const picks = body.picks || {};
+  const set = {};
+  const taken = [];
+  if (picks.name === 'merge' && merge.name) {
+    Object.assign(set, { name: merge.name, first_name: merge.first_name ?? null, last_name: merge.last_name ?? null });
+    taken.push('name');
+  }
+  const primaryOf = (list) => (list || []).find((x) => x.is_primary) || (list || [])[0];
+  const email = picks.email === 'merge' ? primaryOf(merge.emails) : null;
+  if (email) {
+    const others = (keep.emails || []).filter((e) => e.value !== email.value).map((e) => ({ ...e, is_primary: false }));
+    set.emails = [{ ...email, is_primary: true }, ...others];
+    taken.push('email');
+  }
+  const address = picks.address === 'merge' ? primaryOf(merge.addresses) : null;
+  if (address) {
+    const { _id, ...copy } = address;
+    set.addresses = [{ ...copy, is_primary: true }, ...(keep.addresses || []).map((a) => ({ ...a, is_primary: false }))];
+    taken.push('address');
+  }
+  const replaced = taken.length ? { name: keep.name ?? null, first_name: keep.first_name ?? null, last_name: keep.last_name ?? null,
+    emails: keep.emails || [], addresses: keep.addresses || [], fields: taken } : null;
+  if (taken.length) await Customer.updateOne({ _id: keep._id }, { $set: set });
   const reason = String(body.reason || '').slice(0, 300) || null;
   await Customer.updateOne({ _id: keep._id }, { $push: { merge_history: {
-    merged_customer_id: merge._id, merged_by: user._id, merged_at: new Date(), reason } } });
+    merged_customer_id: merge._id, merged_by: user._id, merged_at: new Date(), reason, ...(replaced ? { replaced } : {}) } } });
   await logActivity({ dealer_id: dealerId, customer_id: keep._id, actor_type: 'staff', actor_id: user._id,
-    actor_name: user.name || null, action: 'customer_merged', from: merge.name || mergeId, detail: reason });
+    actor_name: user.name || null, action: 'customer_merged', from: merge.name || mergeId,
+    detail: [reason, taken.length ? `kept from the other customer: ${taken.join(', ')}` : null].filter(Boolean).join(' · ') || null });
   await logActivity({ dealer_id: dealerId, customer_id: merge._id, actor_type: 'staff', actor_id: user._id,
     actor_name: user.name || null, action: 'customer_merged_away', to: keep.name || keepId });
   return Response.json({ ok: true, keep_id: keepId, merge_id: mergeId });

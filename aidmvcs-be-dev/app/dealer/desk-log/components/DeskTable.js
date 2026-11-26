@@ -9,7 +9,7 @@
 // and shows in full on hover (notes: two lines, click opens the visit); people as avatar + "Jessica S."; the four
 // actions (call, message, appointment, more) always in the same place (greyed when they can't be used); stage and
 // outcome as coloured menus with their arrow, as in the design.
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Form } from "react-bootstrap";
 import moment from "moment-timezone";
@@ -17,15 +17,20 @@ import { STAGES, STALLED_MINUTES } from "../../../lib/deskLog/constants";
 import { rememberBack } from "../../components/backLink";
 import { deskLogUpdate } from "../deskLogApi";
 import OutcomeModal from "./OutcomeModal";
+import ColorPick from "./ColorPick";
 import CallButton from "../../components/CallButton";
 import Customer360Panel from "../../components/Customer360Panel";
 import { NO_OUTCOME_STYLE, NO_STAGE_STYLE, OUTCOME_CHOICES, STAGE_STYLE, TYPE_LABEL, TYPE_STYLE, ageText,
-  avatarColor, choiceOf, darkPill, initials, rowStripColor, shortName, sourceLogo, vehicleText } from "./deskLogUi";
+  avatarColor, choiceOf, darkPill, initials, rowStripColor, shortName, sourceLogo, vehicleText, STAGE_ICON, OUTCOME_ICON } from "./deskLogUi";
 
 // Column widths (px), in the order of the columns. The table is laid out fixed, so a long value never pushes the
 // next column over: it is cut and shows in full on hover.
-const COLS = [5, 34, 72, 160, 80, 135, 135, 92, 130, 150, 116, 116, 116, 180, 132, 200];
+// 24 Nov 2026: tightened to the design so the whole row fits a laptop screen; Actions and Outcome stay pinned right.
+const COLS = [4, 30, 60, 124, 68, 112, 108, 86, 116, 112, 114, 114, 114, 140, 112, 156];
 const TABLE_WIDTH = COLS.reduce((a, b) => a + b, 0);
+// 24 Nov 2026 (responsive): each column is its share of the table, so the table fills a big screen and shrinks with
+// zoom; below TABLE_WIDTH it scrolls sideways instead of crushing, with Actions and Outcome pinned.
+const SHARE = COLS.map((w) => `${((w / TABLE_WIDTH) * 100).toFixed(3)}%`);
 
 // One line, cut with "...", the whole text on hover.
 const Clip = ({ text, className = "", children }) => (
@@ -33,6 +38,8 @@ const Clip = ({ text, className = "", children }) => (
 );
 
 const leadLink = (id) => `/dealer/leads?selectedLead=true&leadId=${id}`;
+// The customer's name opens their profile (Bibi, 26 Nov 2026); a visit with no customer yet opens the lead.
+const personLink = (row) => (row.customer_id ? `/dealer/customers/${row.customer_id}` : leadLink(row.lead_id));
 
 // What a saved outcome's rule did, in one line for the screen.
 function appliedText(a) {
@@ -51,7 +58,19 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
   const [pending, setPending] = useState(null); // { row, choice }
   const [selected, setSelected] = useState(() => new Set());
   const [bulk, setBulk] = useState({ field: "salesperson_id", value: "" });
-  const [sort, setSort] = useState({ key: null, dir: 1 }); // the sortable columns of the design (click again = reverse)
+  const [sort, setSort] = useState({ key: null, dir: 1 });
+  // Pinned Actions sit right next to Outcome, whose width now follows the screen.
+  const wrapRef = useRef(null);
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    const out = wrap?.querySelector("thead th.dl_pin_out");
+    if (!wrap || !out || typeof ResizeObserver === "undefined") return undefined;
+    const set = () => wrap.style.setProperty("--dl-out-w", `${out.getBoundingClientRect().width}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(out);
+    return () => ro.disconnect();
+  }, []); // the sortable columns of the design (click again = reverse)
 
   // Every change carries the visit as this screen read it: someone else's newer change is never overwritten (409 ->
   // reloaded, made again).
@@ -144,9 +163,9 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
           <button type="button" className="btn btn-link btn-sm" onClick={() => setSelected(new Set())}>Clear selection</button>
         </div>
       )}
-      <div className="dl_table_wrap">
-        <table className="dl_table" style={{ width: TABLE_WIDTH, minWidth: "100%" }}>
-          <colgroup>{COLS.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
+      <div className="dl_table_wrap" ref={wrapRef}>
+        <table className="dl_table" style={{ width: "100%", minWidth: TABLE_WIDTH }}>
+          <colgroup>{SHARE.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
           <thead>
             <tr>
               <th className="dl_strip" aria-hidden="true" />
@@ -155,7 +174,7 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
               {th("at", "Date / Time")}{th("customer", "Customer")}{th("stock", "Stock #")}{th("vehicle", "Year / Make / Model")}
               <th>Trade<br />Year / Make / Model</th>
               <th>Lead Type</th><th>Lead Source</th>{th("stage", "Current Stage")}{th("salesperson", "Salesperson")}
-              <th>Sales Manager</th>{th("bdc", "BDC Agent")}<th>Notes (Latest)</th><th>Actions</th><th>Outcome</th>
+              <th>Sales Manager</th>{th("bdc", "BDC Agent")}<th>Notes (Latest)</th><th className="dl_pin dl_pin_act">Actions</th><th className="dl_pin dl_pin_out">Outcome</th>
             </tr>
           </thead>
           <tbody>
@@ -177,26 +196,25 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                     onChange={() => toggle(row.id)} /></td>
                   <td className="text-nowrap">{at.format("MM/DD")}<small className="d-block text-muted">{at.format("h:mm A")}</small></td>
                   <td className="dl_customer">
-                    <Clip text={row.customer || "No name"}>
-                      <Link href={leadLink(row.lead_id)} onClick={() => rememberBack(leadLink(row.lead_id), "/dealer/desk-log",
-                        "Desk Log")} className="fw-semibold">{row.customer || "No name"}</Link>
-                    </Clip>
-                    <button type="button" className="dl_360" title="360 View: history, tasks, call / text without leaving the Desk Log"
-                      onClick={() => setPanel360({ customerId: row.customer_id, leadId: row.lead_id, name: row.customer, dnd })}>
-                      <i className="fa-regular fa-id-card me-1" />360 View</button>
-                    {row.phone && <Clip className="text-muted small" text={row.phone} />}
-                    {/* The lead's own status, as everywhere else in the CRM (changes made on the Leads page show here too). */}
-                    {row.lead_status_label && <Clip className={`small ${row.lead_status_label === "Appointment Showed" ? "text-success" : "text-muted"}`}
-                      text={`Lead: ${row.lead_status_label}`} />}
-                    {dnd && <Clip className="small fw-semibold text-danger" text="Do not contact (DND)" />}
-                    {row.handoff && <Clip className="small fw-semibold text-warning" text={`Handed to a manager${row.handoff.reason ? `: ${row.handoff.reason}` : ""}`}>
-                      <i className="fa-solid fa-hand me-1" />Handed to a manager</Clip>}
-                    {row.car_finder_matches > 0 && <Clip className="small fw-semibold text-success" text={`Car found (${row.car_finder_matches}) - see details`}>
-                      <i className="fa-solid fa-car me-1" />Car found ({row.car_finder_matches})</Clip>}
-                    {row.lead_status === "Opted Out" && <Clip className="small text-muted" text="Opted out (see the lead for which channel)" />}
-                    {row.department === "service" && <span className="dl_type mt-1">Service</span>}
-                    {row.created_via === "leads_page" && <Clip className="small text-muted" text="Recorded on the Leads page" />}
-                    {row.created_via === "appointments" && <Clip className="small text-muted" text="Marked showed on Appointments" />}
+                    {/* The design: the customer's name, blue and clickable. Everything else is one small icon with its
+                        meaning on hover (24 Nov 2026), so every row stays one height. */}
+                    <div className="dl_cust_line">
+                      <Link href={personLink(row)} onClick={() => rememberBack(personLink(row), "/dealer/desk-log", "Desk Log")}
+                        className="dl_cust_name" title={[row.customer || "No name", row.phone, row.lead_status_label && `Lead: ${row.lead_status_label}`].filter(Boolean).join(" · ")}>
+                        {row.customer || "No name"}</Link>
+                      <button type="button" className="dl_360" title="360 View: history, tasks, call / text without leaving the Desk Log" aria-label="360 View"
+                        onClick={() => setPanel360({ customerId: row.customer_id, leadId: row.lead_id, name: row.customer, dnd })}>
+                        <i className="fa-regular fa-id-card" /></button>
+                    </div>
+                    <div className="dl_flags">
+                      {dnd && <i className="fa-solid fa-ban text-danger" title="Do not contact (DND)" aria-label="Do not contact (DND)" />}
+                      {row.lead_status === "Opted Out" && <i className="fa-solid fa-comment-slash text-muted" title="Opted out (see the lead for which channel)" aria-label="Opted out" />}
+                      {row.handoff && <i className="fa-solid fa-hand text-warning" title={`Handed to a manager${row.handoff.reason ? `: ${row.handoff.reason}` : ""}`} aria-label="Handed to a manager" />}
+                      {row.car_finder_matches > 0 && <i className="fa-solid fa-car text-success" title={`Car found (${row.car_finder_matches}) - see details`} aria-label="Car found" />}
+                      {row.department === "service" && <i className="fa-solid fa-screwdriver-wrench" style={{ color: "#0ea5a5" }} title="Service" aria-label="Service" />}
+                      {row.created_via === "leads_page" && <i className="fa-solid fa-list text-muted" title="Recorded on the Leads page" aria-label="Recorded on the Leads page" />}
+                      {row.created_via === "appointments" && <i className="fa-regular fa-calendar-check text-muted" title="Marked showed on Appointments" aria-label="Marked showed on Appointments" />}
+                    </div>
                   </td>
                   <td><Clip text={row.stock_number}>{row.stock_number || <span className="text-muted">-</span>}</Clip></td>
                   <td><span className="dl_clamp2" title={vehicle || undefined}>{vehicle || <span className="text-muted">-</span>}</span></td>
@@ -214,13 +232,10 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                     ) : <span className="text-muted">-</span>}
                   </td>
                   <td>
-                    <Form.Select size="sm" className={`dl_pill${row.stage && darkPill(STAGE_STYLE[row.stage]) ? " dl_pill_dark" : ""}`}
-                      value={row.stage || ""} disabled={busy === row.id} title={row.stage || "No stage"}
-                      style={row.stage ? STAGE_STYLE[row.stage] : NO_STAGE_STYLE} aria-label="Current stage"
-                      onChange={(e) => save(row, { stage: e.target.value || null })}>
-                      <option value="">No stage</option>
-                      {STAGES.map((st) => <option key={st} value={st} style={STAGE_STYLE[st]}>{st}</option>)}
-                    </Form.Select>
+                    <ColorPick value={row.stage || ""} disabled={busy === row.id} label="Current stage" empty="No stage"
+                      style={row.stage ? STAGE_STYLE[row.stage] : NO_STAGE_STYLE} dark={row.stage && darkPill(STAGE_STYLE[row.stage])}
+                      options={[{ value: "", label: "No stage" }, ...STAGES.map((st) => ({ value: st, label: st, dot: STAGE_STYLE[st]?.backgroundColor, icon: STAGE_ICON[st], ink: st === "PROPOSAL" ? "#9a7b00" : undefined }))]}
+                      onPick={(v) => save(row, { stage: v || null })} />
                     {row.minutes_in_stage != null && (
                       <span className={`dl_age${stalled ? " stalled" : ""}`}>{ageText(row.minutes_in_stage)}</span>
                     )}
@@ -240,7 +255,7 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                       <Clip className="small text-muted" text={`Next step: ${moment(row.next_step_at).tz(tz).format("MMM D, h:mm A")}`} />
                     )}
                   </td>
-                  <td>
+                  <td className="dl_pin dl_pin_act">
                     {/* Always the same four, in the same place; greyed with the reason when one can't be used. */}
                     <div className="dl_actions">
                       {!dnd && row.phone ? <CallButton phone={row.phone} leadId={row.lead_id} dealerId={dealerId}
@@ -261,17 +276,11 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                         onClick={() => onOpen({ id: row.id, name: row.customer })}><i className="fa-solid fa-ellipsis-vertical"></i></button>
                     </div>
                   </td>
-                  <td>
-                    <Form.Select size="sm" className={`dl_pill dl_outcome${darkPill(choice?.style) ? " dl_pill_dark" : ""}`}
-                      value={choice?.value || ""} disabled={busy === row.id} title={choice?.label || "Pick outcome"}
-                      style={choice ? choice.style : NO_OUTCOME_STYLE} aria-label="Outcome"
-                      onChange={(e) => {
-                        const next = OUTCOME_CHOICES.find((c) => c.value === e.target.value);
-                        if (next) setPending({ row, choice: next });
-                      }}>
-                      {!choice && <option value="">Pick outcome</option>}
-                      {OUTCOME_CHOICES.map((c) => <option key={c.value} value={c.value} style={c.style}>{c.label}</option>)}
-                    </Form.Select>
+                  <td className="dl_pin dl_pin_out">
+                    <ColorPick value={choice?.value || ""} disabled={busy === row.id} label="Outcome" empty="Pick outcome"
+                      style={choice ? choice.style : NO_OUTCOME_STYLE} dark={darkPill(choice?.style)}
+                      options={OUTCOME_CHOICES.map((c) => ({ value: c.value, label: c.label, dot: c.style.backgroundColor, icon: OUTCOME_ICON[c.value], ink: c.style.color === "#fff" ? undefined : c.style.color }))}
+                      onPick={(v) => { const next = OUTCOME_CHOICES.find((c) => c.value === v); if (next) setPending({ row, choice: next }); }} />
                     {row.outcome_from_lead && <Clip className="small text-muted" text="Set on the Leads page" />}
                     {/* G-016: the sale checked against the dealer's DMS (DealerVault). */}
                     {row.dms?.flag === "not_in_dms" && <Clip className="small text-danger" text="Not in the DMS yet" />}

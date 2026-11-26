@@ -13,6 +13,7 @@ import User from '@models/User';
 import { requireDealerAccess } from '@lib/apiGuard';
 import { hasPermission } from '@lib/staffPermission';
 import { logActivity } from '@lib/activityLog';
+import { recordBulkCall, validBatchId } from '@lib/bulkChanges';
 
 export const runtime = 'nodejs';
 const MAX = 200;
@@ -61,25 +62,36 @@ export async function POST(req) {
 
   const results = { updated: [], unchanged: [], failed: [] };
   const actor = access.user;
+  const history = []; // Bulk history (app/models/BulkChange.js), when the browser sends a batch_id
+  const item = (r, result, reason = null) => {
+    const l = byId.get(r.lead_id);
+    history.push({ lead_id: r.lead_id, name: r.name || null, result, reason,
+      from_id: l?.assigned_to || null, from_label: r.current ?? null });
+  };
   for (const r of rows) {
-    if (r.error) { results.failed.push({ lead_id: r.lead_id, reason: r.error }); continue; }
-    if (!r.change) { results.unchanged.push(r.lead_id); continue; }
+    if (r.error) { results.failed.push({ lead_id: r.lead_id, reason: r.error }); item(r, 'failed', r.error); continue; }
+    if (!r.change) { results.unchanged.push(r.lead_id); item(r, 'unchanged'); continue; }
     const l = byId.get(r.lead_id);
     try {
       // Only if nobody changed it since the preview (same owner as read): no silent overwrite.
       const res = await Lead.updateOne({ _id: l._id, assigned_to: l.assigned_to ?? null },
         { $set: { assigned_to: to, updatedAt: new Date() } });
-      if (!res.modifiedCount) { results.failed.push({ lead_id: r.lead_id, reason: 'Changed by someone else meanwhile - not touched' }); continue; }
+      if (!res.modifiedCount) {
+        const reason = 'Changed by someone else meanwhile - not touched';
+        results.failed.push({ lead_id: r.lead_id, name: r.name, reason }); item(r, 'failed', reason); continue;
+      }
       await logActivity({ dealer_id: dealerId, lead_id: l._id, customer_id: l.customer_id || null, actor_type: 'staff',
         actor_id: actor._id, actor_name: actor.name || null, action: 'lead_reassigned',
         from: l.assigned_to ? r.current : null, to: assignee ? newName : null, detail: 'bulk',
         ...(l.assigned_to ? { from_id: l.assigned_to } : {}), ...(to ? { to_id: to } : {}) });
-      results.updated.push(r.lead_id);
+      results.updated.push(r.lead_id); item(r, 'updated');
     } catch (error) {
-      results.failed.push({ lead_id: r.lead_id, reason: 'Could not be saved' });
+      results.failed.push({ lead_id: r.lead_id, name: r.name, reason: 'Could not be saved' }); item(r, 'failed', 'Could not be saved');
       console.error('[bulk-assign] lead failed', { lead_id: r.lead_id, error: error?.message });
     }
   }
+  await recordBulkCall({ dealerId, batchId: validBatchId(body.batch_id), action: 'reassign', toId: to, toLabel: newName,
+    user: actor, items: history });
   return Response.json({ preview: false, updated: results.updated.length, unchanged: results.unchanged.length,
     failed: results.failed });
 }

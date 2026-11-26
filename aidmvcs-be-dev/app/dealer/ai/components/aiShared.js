@@ -141,6 +141,8 @@ export const CHANNEL_LABELS = { sms: "Text", email: "Email", voice: "Phone calls
 // The lead in the Leads screen (opens its conversation when it's on the list's current page).
 export const leadHref = (leadId) => `/dealer/leads?selectedLead=true&leadId=${leadId}`;
 export const customerHref = (customerId) => `/dealer/customers/${customerId}`;
+// A name in a "Customer" column opens the customer's profile (Bibi, 26 Nov 2026); a lead with no customer yet opens the lead.
+export const personHref = (customerId, leadId) => (customerId ? customerHref(customerId) : leadHref(leadId));
 
 // tel: link for click-to-call ("+1 (555) 000-0001" -> "tel:+15550000001").
 export function telHref(phone) {

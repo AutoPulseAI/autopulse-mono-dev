@@ -16,6 +16,8 @@ import {
 } from "recharts";
 import DashboardDatePicker, { presetRange, previousPeriod } from "./components/DashboardDatePicker";
 import CountCard from "./components/CountCard";
+import useIsMobile from "../components/useIsMobile";
+import AppIcon from "../components/AppIcon";
 import { aiFetch } from "../ai/components/aiShared";
 import LeadStatusBar from "./components/LeadStatusBar";
 import ActivityOverTimeDataBar from "./components/ActivityOverTimeDataBar";
@@ -31,6 +33,7 @@ import { reportsVisible } from "../reports/reportsAccess";
 function Dashboard() {
   const { dealerParent, loadingParent } = useUser();
   const { fetchData } = useFetch();
+  const isMobile = useIsMobile();
   // Chart and source clicks open the Leads list in this tab (client, 11 Nov 2026), with a way back.
   const router = useRouter();
   // 13 Nov 2026 meeting (6.4, 9.2): the dashboard for one department - "Service Dashboard" is this page with Service
@@ -311,12 +314,12 @@ function Dashboard() {
     <div className="page_head">
       <div className="row align-items-center">
         <div className="col col-12">
-          <div className="d-flex align-items-center">
+          <div className="dash_head">
             <h3 className="page_title mb-0 me-auto">
               {department === "service" ? "Service Dashboard" : department === "parts" ? "Parts Dashboard"
                 : department === "sales" ? "Sales Dashboard" : "Leads Dashboard"}
               {dateRange.startDate && dateRange.endDate && (
-                <small className="text-muted ms-2">
+                <small className="text-muted ms-2 text-nowrap">
                   ({formatDateInDealerTimezone(dateRange.startDate)} - {formatDateInDealerTimezone(dateRange.endDate)})
                 </small>
               )}
@@ -827,7 +830,7 @@ function Dashboard() {
         <div className="dashboard_counts">
           <div className="row gx-2 gx-lg-4">
             <CountCard
-              iconClass="fa-regular fa-magnifying-glass"
+              icon="lead"
               count={leadStats?.total_leads || 0}
               label="Total Leads"
               link={deptLink(buildUrlWithDateRange("/dealer/leads"))}
@@ -852,7 +855,7 @@ function Dashboard() {
             {/* Hidden when the range is today: it would repeat Total Leads (Betsy, 21 Oct 2026). */}
             {!isTodayRange && (
               <CountCard
-                iconClass="fa-regular fa-calendar-day"
+                icon="date"
                 count={todayLeadsCount}
                 label="Today's Leads"
                 link={deptLink(`/dealer/leads?${getTodayDateParams()}`)}
@@ -861,7 +864,7 @@ function Dashboard() {
             )}
 
             <CountCard
-              iconClass="fa-light fa-hand"
+              icon="reply"
               count={contactedCount}
               label="Customer Replied"
               tone="orange"
@@ -872,7 +875,7 @@ function Dashboard() {
             />
 
             <CountCard
-              iconClass="fa-light fa-paper-plane"
+              icon="sent"
               // The user, 28 Oct 2026: SMS and email each with its own number, small, like the other cards' lines.
               count={activity ? activity.delivered.total : '–'}
               label="Messages Delivered"
@@ -884,11 +887,11 @@ function Dashboard() {
             />
 
             <CountCard
-              iconClass="fa-light fa-bell"
+              icon="action"
               count={aiAlertCount}
               label="Dealer Action Required"
               tone="red"
-              link="/dealer/ai/alerts"
+              link="/dealer/ai/actions?tab=dar"
               description={`Need attention now${managerialReviewCount ? ` · ${managerialReviewCount} in Managerial Review` : ""}`}
             />
             
@@ -909,7 +912,7 @@ function Dashboard() {
             {/* "Appointment Booked (all-time count)" removed (Betsy, 21 Oct 2026). */}
             <CountCard
               tone="green"
-              iconClass="fa-solid fa-calendar-days"
+              icon="appointments"
               count={step('made')?.total || 0}
               label={isTodayRange ? "Appointments Made Today" : "Appointments Made"}
               link={deptLink(getAppointmentsMadeLink())}
@@ -918,7 +921,7 @@ function Dashboard() {
 
             <CountCard
               tone="green"
-              iconClass="fa-regular fa-calendar-check"
+              icon="appointment"
               count={step('scheduled')?.total || 0}
               label={isTodayRange ? "Appointments for Today" : "Appointments for These Dates"}
               link={deptLink(getAppointmentsForLink())}
@@ -927,7 +930,7 @@ function Dashboard() {
 
             <CountCard
               tone="green"
-              iconClass="fa-solid fa-person-walking"
+              icon="showed"
               count={step('showed')?.total || 0}
               label="Appointments Showed"
               link={deptLink(getFunnelLink('showed'))}
@@ -936,7 +939,7 @@ function Dashboard() {
 
             <CountCard
               tone="green"
-              iconClass="fa-solid fa-handshake"
+              icon="sold"
               count={step('sold')?.total || 0}
               label="Appointments Sold"
               link={deptLink(getFunnelLink('sold'))}
@@ -952,15 +955,15 @@ function Dashboard() {
             exactly the leads it counted. */}
         {contactedSplit?.by_lead_day && (
           <div className="dashboard_counts reply_breakdown">
-            <h3 className="reply_breakdown_title">CUSTOMER REPLIES BY LEAD AGE
+            <h3 className="reply_breakdown_title"><AppIcon name="reply" className="me-2" />CUSTOMER REPLIES BY LEAD AGE
               <small className="ms-2">{contactedSplit.new_leads} + {contactedSplit.older_leads} = {contactedCount} customer replied</small>
             </h3>
             <div className="row gx-2 gx-lg-4">
-              <CountCard tone="light_orange" colClass="col col-md-6 col-12" iconClass="fa-light fa-calendar-day"
+              <CountCard tone="light_orange" colClass="col col-md-6 col-12" icon="date"
                 count={contactedSplit.new_leads} label={isTodayRange ? "Replied from Today's Leads" : "Replied from These Dates' Leads"}
                 link={deptLink(withRange('/dealer/leads?status=Contacted&reply_age=new'))}
                 description={`${contactedSplit.new_leads} of ${contactedSplit.in_range_leads ?? '–'} leads that came in ${isTodayRange ? 'today' : 'in these dates'}`} />
-              <CountCard tone="light_orange" colClass="col col-md-6 col-12" iconClass="fa-light fa-clock-rotate-left"
+              <CountCard tone="light_orange" colClass="col col-md-6 col-12" icon="history"
                 count={contactedSplit.older_leads} label="Replied from Past Leads"
                 link={deptLink(withRange('/dealer/leads?status=Contacted&reply_age=older'))}
                 description={`Leads that came in before ${isTodayRange ? 'today' : 'these dates'}`} />
@@ -971,7 +974,7 @@ function Dashboard() {
             <div className="row gx-2 gx-lg-4">
               {[['d1_7', '1-7 days old'], ['d8_15', '8-15 days old'], ['d16_30', '16-30 days old'], ['d31_60', '31-60 days old'],
                 ['d61_plus', 'Over 60 days old']].map(([key, age]) => (
-                <CountCard key={key} tone="light_orange" colClass="col col-lg col-md-4 col-6" iconClass="fa-light fa-hourglass-half"
+                <CountCard key={key} tone="light_orange" colClass="col col-lg col-md-4 col-6" icon="age"
                   count={contactedSplit.by_lead_day[key] ?? 0} label={`Lead ${age}`}
                   link={deptLink(withRange(`/dealer/leads?status=Contacted&reply_age=${key}`))} />
               ))}
@@ -996,7 +999,7 @@ function Dashboard() {
         <div className="row gx-2 gx-xl-3">
           <div className="col col-lg-12 col-12">
             <div className="w_card">
-              <h3 className="w_card_title">Calendar</h3>
+              <h3 className="w_card_title"><AppIcon name="appointments" className="me-2" />Calendar</h3>
               <LeadCalendar />
             </div>
           </div>
@@ -1008,7 +1011,7 @@ function Dashboard() {
             <div className="col col-lg-5 col-12">
               <div className="w_card">
                 <div className="d-flex justify-content-between align-items-center mb-3">
-                  <h3 className="w_card_title mb-0">Lead Sources</h3>
+                  <h3 className="w_card_title mb-0"><AppIcon name="source" className="me-2" />Lead Sources</h3>
                   <small className="text-muted">
                     {leadSourceData.length} sources • {leadSourceData.reduce((sum, source) => sum + source.value, 0)} total leads
                   </small>
@@ -1025,7 +1028,7 @@ function Dashboard() {
             </div>
             <div className="col col-lg-7 col-12">
               <div className="w_card">
-                <h3 className="w_card_title">Lead Status</h3>
+                <h3 className="w_card_title"><AppIcon name="status" className="me-2" />Lead Status</h3>
                 <LeadStatusBar data={leadStatusData} onBarClick={handleStatusBarClick} />
               </div>
             </div>
@@ -1036,6 +1039,7 @@ function Dashboard() {
             <div className="col col-lg-12 col-12">
               <div className="w_card">
                 <h3 className="w_card_title">
+                  <AppIcon name="lead" className="me-2" />
                   {dateRange.startDate && dateRange.endDate 
                     ? `Lead Received from ${formatDateInDealerTimezone(dateRange.startDate)} to ${formatDateInDealerTimezone(dateRange.endDate)}`
                     : leadMinDate && leadMaxDate && !isNaN(leadMinDate.getTime()) && !isNaN(leadMaxDate.getTime())
@@ -1054,6 +1058,7 @@ function Dashboard() {
             <div className="col col-lg-12 col-12">
               <div className="w_card">
                 <h3 className="w_card_title">
+                  <AppIcon name="sent" className="me-2" />
                   {dateRange.startDate && dateRange.endDate 
                     ? `Message Sent from ${formatDateInDealerTimezone(dateRange.startDate)} to ${formatDateInDealerTimezone(dateRange.endDate)}`
                     : messageMinDate && messageMaxDate && !isNaN(messageMinDate.getTime()) && !isNaN(messageMaxDate.getTime())
@@ -1084,8 +1089,8 @@ function Dashboard() {
                   </button>
                 </div>
 
-                <ResponsiveContainer width="100%" height={400}>
-                  <BarChart data={messageTrendChartData}>
+                <ResponsiveContainer width="100%" height={isMobile ? 260 : 400}>
+                  <BarChart data={messageTrendChartData} margin={isMobile ? { left: -24, right: 4 } : undefined}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis
                       dataKey="date"
@@ -1161,7 +1166,7 @@ function Dashboard() {
             <div className="col col-xxl-7 col-lg-8 col-12">
               <div className="w_card">
                 <div className="d-flex justify-content-between align-items-center mb-3">
-                  <h3 className="w_card_title mb-0">Lead Source Field</h3>
+                  <h3 className="w_card_title mb-0"><AppIcon name="source" className="me-2" />Lead Source Field</h3>
                   <small className="text-muted">
                     Breakdown by lead_source field
                   </small>
@@ -1179,7 +1184,7 @@ function Dashboard() {
             <div className="col col-xxl-5 col-lg-4 col-12">
               <div className="w_card">
                 <div className="d-flex justify-content-between align-items-center mb-3">
-                  <h3 className="w_card_title mb-0">Lead Source Performance</h3>
+                  <h3 className="w_card_title mb-0"><AppIcon name="trophy" className="me-2" />Lead Source Performance</h3>
                   <small className="text-muted">
                     Top 5 performing sources
                   </small>

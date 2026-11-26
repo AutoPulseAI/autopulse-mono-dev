@@ -1,9 +1,10 @@
 "use client";
 import { leadStatusLabel } from "@lib/statusLabels";
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { formatTimestamp } from "../../../utils/dateUtils";
 import useFetch from "../../../hooks/useFetch";
-import { Col, Row, Button, Spinner, Nav, Badge } from "react-bootstrap";
+import { Col, Row, Button, Spinner, Nav, Badge, Dropdown } from "react-bootstrap";
 import EmailReplyModal from "./EmailReplyModal";
 import { DEPARTMENT_NAMES, canReplyInDepartment, leadDepartment } from "@lib/departmentNames";
 import DateRangePickerComponent from "../../components/DateRangePicker";
@@ -72,12 +73,18 @@ export default function ViewConversations({
   embedded = false,
   // Called after the lead card saves an edit (the customer profile reloads, so its name / phone / email follow).
   onLeadSaved,
+  // A DOM element (the customer profile's opportunity row): the action buttons are shown there instead of here.
+  actionsTarget = null,
 }) {
   const AGENT_VIEW_LANGUAGE_STORAGE_KEY = "dealer_agent_view_language";
   const [emails, setEmails] = useState([]);
   const { fetchData } = useFetch();
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [showReplyModal, setShowReplyModal] = useState(false);
+  const [replyChannel, setReplyChannel] = useState(null); // the profile's SMS Reply / Email Reply (null = follow the tab)
+  // The newest real message (not a note) on a channel - what a reply on that channel answers.
+  const latestOn = (ch) => [...emails].filter((e) => e.communication_type === ch && !isNoteRecord(e) && e.message_id)
+    .sort((a, b) => new Date(b.timestamp || b.createdAt || 0) - new Date(a.timestamp || a.createdAt || 0))[0] || null;
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [editNote, setEditNote] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -866,30 +873,63 @@ export default function ViewConversations({
                     </div>
                   )}
 
-                  {/* Every action on the lead in one place (BB, 17 Nov 2026: "all call to action should be in one place"). */}
-                  <div className="lead_actions mt-2">
+                  {/* Every action on the lead in one place (BB, 17 Nov 2026: "all call to action should be in one place").
+                      On the customer profile they sit in the opportunity's own action row instead (Bibi, 25 Nov 2026:
+                      "this way all communication is in one place") - actionsTarget is that row. */}
+                  {(() => { const actions = (
+                  <div className={actionsTarget ? "lead_actions_row" : "lead_actions mt-2"}>
                     {selectedConversation && getReplyChannel(lead, activeChannelTab, stoppedChannels) && !replyAllowed && (
                       <span className="small text-muted align-self-center" title="Reply from the department's own staff">
                         <i className="fa-solid fa-lock me-1" />{DEPARTMENT_NAMES[leadDepartment(lead)]} lead - {DEPARTMENT_NAMES[leadDepartment(lead)]} staff reply
                       </span>
                     )}
-                    {selectedConversation && getReplyChannel(lead, activeChannelTab, stoppedChannels) && replyAllowed && (
-                      <Button variant="custom" size="sm" onClick={() => setShowReplyModal(true)}>
-                        <i className="fa-regular fa-reply me-1"></i>
-                        {getReplyChannel(lead, activeChannelTab, stoppedChannels) === 'sms' ? 'SMS Reply' : 'Email Reply'}
-                      </Button>
+                    {/* Customer profile (25 Nov 2026): a reply button per channel the lead has a conversation on - SMS Reply and
+                        Email Reply side by side, instead of one button that follows the open conversation tab. */}
+                    {actionsTarget && replyAllowed && ["sms", "email"].map((ch) => {
+                      const can = ch === "sms" ? lead?.phone && !stoppedChannels.sms : lead?.email && !stoppedChannels.email;
+                      if (!can || !latestOn(ch)) return null;
+                      return (
+                        <Button key={ch} variant="custom" size="sm" className={ch === "sms" ? "act_sms" : "act_email"}
+                          onClick={() => { setReplyChannel(ch); setShowReplyModal(true); }}>
+                          <i className={ch === "sms" ? "fa-duotone fa-comment-sms" : "fa-duotone fa-envelope-open-text"}></i>
+                          {ch === "sms" ? "SMS Reply" : "Email Reply"}
+                        </Button>
+                      );
+                    })}
+                    {/* Leads page (26 Nov 2026): one "Reply" button; it asks SMS or Email, instead of a button whose name
+                        changes with the open tab. A channel with no phone / email, or that the customer opted out of, is
+                        shown but cannot be picked. */}
+                    {!actionsTarget && selectedConversation && getReplyChannel(lead, activeChannelTab, stoppedChannels) && replyAllowed && (
+                      <Dropdown className="d-inline-block">
+                        <Dropdown.Toggle variant="custom" size="sm" className="act_sms" id={`reply-${lead?._id}`}>
+                          <i className="fa-regular fa-reply me-1"></i>Reply
+                        </Dropdown.Toggle>
+                        <Dropdown.Menu>
+                          {["sms", "email"].map((ch) => {
+                            const has = ch === "sms" ? lead?.phone : lead?.email;
+                            const why = !has ? (ch === "sms" ? "no phone" : "no email") : stoppedChannels[ch] ? "opted out" : "";
+                            return (
+                              <Dropdown.Item key={ch} disabled={!!why} onClick={() => { setReplyChannel(ch); setShowReplyModal(true); }}>
+                                <i className={`fa-solid ${ch === "sms" ? "fa-comment-sms" : "fa-envelope"} me-2`}></i>
+                                {ch === "sms" ? "SMS reply" : "Email reply"}{why && <small className="text-muted ms-1">({why})</small>}
+                              </Dropdown.Item>
+                            );
+                          })}
+                        </Dropdown.Menu>
+                      </Dropdown>
                     )}
-                    {lead?.phone && <CallButton phone={lead.phone} leadId={lead._id} dealerId={lead.dealer_id} size="sm" />}
-                    <Button variant="outline-warning" size="sm" className="text-nowrap" onClick={() => setShowNotesModal(true)}>
-                      <i className="fa-solid fa-sticky-note me-1"></i>Add Note
+                    {lead?.phone && <CallButton phone={lead.phone} leadId={lead._id} dealerId={lead.dealer_id} size="sm"
+                      className={actionsTarget ? "act_call" : ""} icon={actionsTarget ? "fa-duotone fa-phone-office" : null} />}
+                    <Button variant="outline-warning" size="sm" className="text-nowrap act_note" onClick={() => setShowNotesModal(true)}>
+                      <i className={actionsTarget ? "fa-duotone fa-note-sticky" : "fa-solid fa-sticky-note me-1"}></i>Add Note
                     </Button>
-                    <Button variant="outline-custom" size="sm" className="text-nowrap" onClick={() => setShowStatusModal(true)}>
-                      <i className="fa-solid fa-pen me-1"></i>Update Status
+                    <Button variant="outline-custom" size="sm" className="text-nowrap act_status" onClick={() => setShowStatusModal(true)}>
+                      <i className={actionsTarget ? "fa-duotone fa-right-left" : "fa-solid fa-pen me-1"}></i>Update Status
                     </Button>
                     {/* The Desk Log check-in, with this lead picked. */}
                     {showCheckIn && (
-                      <Button variant="outline-custom" size="sm" className="text-nowrap" href={`/dealer/desk-log?check_in=${lead._id}`}>
-                        <i className="fa-solid fa-right-to-bracket me-1"></i>Check in
+                      <Button variant="outline-custom" size="sm" className="text-nowrap act_visit" href={`/dealer/desk-log?check_in=${lead._id}`}>
+                        <i className={actionsTarget ? "fa-duotone fa-user-check" : "fa-solid fa-right-to-bracket me-1"}></i>Check in
                       </Button>
                     )}
                     {/* Client, 8 Oct 2026: from the lead, straight to the customer's 360 profile (not shown on the profile itself). */}
@@ -904,6 +944,7 @@ export default function ViewConversations({
                       </Button>
                     )}
                   </div>
+                  ); return actionsTarget ? createPortal(actions, actionsTarget) : actions; })()}
                 </div>
                 {/* What the AI is doing with this lead (stage, next touch, call task, consent; on/off) */}
                 {lead?._id && <AiLeadPanel key={`${lead._id}-${lead.fe_lead_status || lead.status || ""}`} leadId={lead._id} />}
@@ -1343,8 +1384,8 @@ export default function ViewConversations({
           lead={lead}
           dealer_id={lead.dealer_id}
           onClose={() => setShowReplyModal(false)}
-          selectedConversation={selectedConversation}
-          communicationType={getReplyChannel(lead, activeChannelTab, stoppedChannels) || selectedConversation.communication_type || 'email'}
+          selectedConversation={(replyChannel && latestOn(replyChannel)) || selectedConversation}
+          communicationType={replyChannel || getReplyChannel(lead, activeChannelTab, stoppedChannels) || selectedConversation.communication_type || 'email'}
           agentViewLanguage={agentViewLanguage}
           leadUserLanguage={latestConversationUserLanguageLabel}
           showTranslationEnabled={showTranslation}

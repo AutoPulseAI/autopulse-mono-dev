@@ -259,7 +259,17 @@ export async function GET(req) {
       }
     }
     if (department) Object.assign(query, department);
-    if (source) {
+    if (source && source.startsWith('up:')) {
+      // Source type = how the lead came in, the same rule as each row's badge (app/lib/leadContactType.js).
+      const untyped = { contact_type: { $nin: ['internet', 'phone', 'walk_in'] } };
+      const manualSource = { $or: [{ source: null }, { source: { $exists: false } }, { source: { $regex: '^\\s*(email|sms|manual)?\\s*$', $options: 'i' } }] };
+      const want = source.slice(3);
+      const cond = want === 'phone' || want === 'walk_in' ? { contact_type: want }
+        : want === 'internet' ? { $or: [{ contact_type: 'internet' }, { $and: [untyped, { $nor: manualSource.$or }] }] }
+          : want === 'not_set' ? { $and: [untyped, manualSource] } : null;
+      if (!cond) return NextResponse.json({ message: 'Unknown source type' }, { status: 400 });
+      query.$and = [...(query.$and || []), cond];
+    } else if (source) {
       // Special handling for "Unknown" - match null, undefined, empty string, or literal "Unknown"
       if (source.toLowerCase() === 'unknown') {
         orConditions.push([
@@ -547,6 +557,39 @@ export async function GET(req) {
         contacted = contacted.filter((id) => by.has(String(id)));
       }
       query._id = { $in: contacted };
+    }
+
+    const onlyIds = (url.searchParams.get('lead_ids') || '').split(',').filter((v) => mongoose.isValidObjectId(v));
+    if (onlyIds.length) query._id = query._id ? { $in: onlyIds.filter((v) => (query._id.$in || []).map(String).includes(v)) } : { $in: onlyIds };
+
+    if (format === 'ids') {
+      // Bulk actions, "All leads matching your filters" (SOW Deliverable B b5): the same leads as the list with the same
+      // filters and order, as light rows (id, name, owner, status) - one query, no populate beyond the owner's name.
+      // Capped at BULK_IDS_MAX; `capped` says when the list holds more.
+      const BULK_IDS_MAX = 2000;
+      const sort = url.searchParams.get("sort");
+      let ordered;
+      if (repliedOrder && sort !== 'created_desc' && sort !== 'created_asc') {
+        ordered = repliedOrder.slice(0, BULK_IDS_MAX).map((r) => r._id);
+      }
+      const rows = await Lead.find(ordered ? { ...query, _id: { $in: ordered } } : query)
+        .select('_id name assigned_to fe_lead_status department lead_source sub_source contact_type campaign createdAt')
+        .populate({ path: 'assigned_to', select: 'name', strictPopulate: false })
+        .sort({ createdAt: sort === 'created_asc' ? 1 : -1 })
+        .limit(BULK_IDS_MAX + 1)
+        .lean();
+      if (ordered) {
+        const byId = new Map(rows.map((l) => [String(l._id), l]));
+        rows.splice(0, rows.length, ...ordered.map((id) => byId.get(String(id))).filter(Boolean));
+      }
+      const total = ordered ? repliedOrder.length : await Lead.countDocuments(query);
+      return Response.json({
+        total,
+        capped: total > BULK_IDS_MAX,
+        leads: rows.slice(0, BULK_IDS_MAX).map((l) => ({ _id: String(l._id), name: l.name || null,
+          owner: l.assigned_to?.name || null, status: l.fe_lead_status || null, department: l.department || null,
+          lead_source: l.lead_source || null, campaign: l.campaign || null })),
+      });
     }
 
     if (format === 'csv') {

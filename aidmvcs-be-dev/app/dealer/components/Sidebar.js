@@ -1,8 +1,8 @@
 "use client";
 import Link from "next/link";
 import { useCan } from "../../hooks/PermissionsContext";
-import { usePathname } from "next/navigation"; // Use usePathname instead of useRouter
-import { useEffect, useRef, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation"; // Use usePathname instead of useRouter
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSidebarTitles } from "../../hooks/useSidebar";
 import { ALERTS_CHANGED_EVENT, aiFetch } from "../ai/components/aiShared";
 import { deskLogMenuVisible } from "../desk-log/deskLogAccess";
@@ -42,7 +42,7 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   // AI Assistant menu (app/dealer/ai/**), with the number of open AI alerts.
   const canSeeAi = hasManageLeads || hasViewAssigned;
-  const isAiActive = pathname?.startsWith("/dealer/ai/");
+  const isAiActive = pathname?.startsWith("/dealer/ai/") && !pathname.startsWith("/dealer/ai/actions");
   const [aiOpen, setAiOpen] = useState(isAiActive);
   const [aiAlertCount, setAiAlertCount] = useState(0);
   useEffect(() => {
@@ -96,17 +96,11 @@ const Sidebar = ({ isOpen, onClose }) => {
   return (
     <div ref={sidebarRef} className={`sidebar ${isOpen ? "open" : "narrow"}`}>
       <ul className="list-unstyled">
-        <li>
-          <Link href="/dealer/dashboard" className={getLinkClass("/dealer/dashboard")}>
-            <i className="fa-regular fa-chart-column"></i>Dashboard
-          </Link>
-        </li>
-        {/* 13 Nov 2026 meeting (6.4): the Service Dashboard - the Dashboard with Service picked. */}
-        <li>
-          <Link href="/dealer/dashboard?department=service" className="nav-link">
-            <i className="fa-regular fa-screwdriver-wrench"></i>Service Dashboard
-          </Link>
-        </li>
+        {/* Betsy, 25 Nov 2026: Service has its own dashboard, so the other one is named "Sales Dashboard" and shows
+            Sales leads only (?department=sales); "All departments" stays in the Dashboard's own department picker. */}
+        <Suspense fallback={<DashboardLinks department={null} onDashboard={false} />}>
+          <DashboardLinksFromUrl onDashboard={pathname === "/dealer/dashboard"} />
+        </Suspense>
 
         {showDeskLog && (
           <li>
@@ -114,6 +108,13 @@ const Sidebar = ({ isOpen, onClose }) => {
               <i className="fa-regular fa-clipboard-list"></i>Desk Log
             </Link>
           </li>
+        )}
+
+        {/* Bibi, 25 Nov 2026: "I'm not seeing anything on the side menu that says tasks" - the task list (AI calls
+            and the team's reminders) was only inside AI Assistant > Actions. Same page, opened on its Tasks tab; it is no longer
+            under AI Assistant (one place only, 25 Nov 2026). The red number: customers waiting on us. */}
+        {canSeeAi && (
+          <TasksLink active={pathname === "/dealer/ai/actions"} alerts={aiAlertCount} />
         )}
 
         {(hasManageLeads || hasViewAssigned) && (
@@ -167,9 +168,6 @@ const Sidebar = ({ isOpen, onClose }) => {
               onClick={() => setAiOpen(!aiOpen)}
             >
               <i className="fa-regular fa-message-bot"></i>AI Assistant
-              {aiAlertCount > 0 && !aiOpen && (
-                <span className="badge rounded-pill bg-danger ms-2">{aiAlertCount}</span>
-              )}
               <i className={`fa-solid fa-chevron-${aiOpen ? "up" : "down"} ms-auto`}></i>
             </button>
 
@@ -178,19 +176,6 @@ const Sidebar = ({ isOpen, onClose }) => {
                 <li>
                   <Link href="/dealer/ai/messages" className={getLinkClass("/dealer/ai/messages")}>
                     <i className="fa-regular fa-messages"></i>AI Messages
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/dealer/ai/call-tasks" className={getLinkClass("/dealer/ai/call-tasks")}>
-                    <i className="fa-regular fa-phone"></i>Call Tasks
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/dealer/ai/alerts" className={getLinkClass("/dealer/ai/alerts")}>
-                    <i className="fa-regular fa-bell"></i>Dealer Action Required
-                    {aiAlertCount > 0 && (
-                      <span className="badge rounded-pill bg-danger ms-auto">{aiAlertCount}</span>
-                    )}
                   </Link>
                 </li>
                 <li>
@@ -369,3 +354,40 @@ const Sidebar = ({ isOpen, onClose }) => {
 };
 
 export default Sidebar;
+
+// The two dashboard links; the one for the department on screen is highlighted.
+function DashboardLinksFromUrl({ onDashboard }) {
+  const department = useSearchParams().get("department") || "";
+  return <DashboardLinks department={department} onDashboard={onDashboard} />;
+}
+
+function DashboardLinks({ department, onDashboard }) {
+  const cls = (d) => (onDashboard && department === d ? "nav-link active" : "nav-link");
+  return (
+    <>
+      <li>
+        <Link href="/dealer/dashboard?department=sales" className={cls("sales")}>
+          <i className="fa-regular fa-chart-column"></i>Sales Dashboard
+        </Link>
+      </li>
+      <li>
+        <Link href="/dealer/dashboard?department=service" className={cls("service")}>
+          <i className="fa-regular fa-screwdriver-wrench"></i>Service Dashboard
+        </Link>
+      </li>
+    </>
+  );
+}
+
+function TasksLink({ active, alerts }) {
+  return (
+    <li>
+      <Link href="/dealer/ai/actions?tab=tasks" className={active ? "nav-link active" : "nav-link"}>
+        <i className="fa-regular fa-list-check"></i>Tasks
+        {alerts > 0 && (
+          <span className="badge rounded-pill bg-danger ms-auto" title="Customers waiting on us">{alerts}</span>
+        )}
+      </Link>
+    </li>
+  );
+}

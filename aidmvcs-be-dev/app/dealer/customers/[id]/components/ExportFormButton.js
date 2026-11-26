@@ -94,9 +94,9 @@ export default function ExportFormButton({ customerId, dealerId, asTool = false,
   return (
     <>
       <Dropdown onToggle={(open) => { if (open) loadLists(); }}>
-        <Dropdown.Toggle variant={asTool ? "link" : "outline-custom"} size="sm" disabled={busy} className={asTool ? "cp_tool" : ""}
+        <Dropdown.Toggle variant={asTool ? "link" : "outline-custom"} size="sm" disabled={busy} className={asTool ? "cp_tool act_forms" : ""}
           title="Export to form">
-          {busy ? <Spinner size="sm" /> : <><i className={`fa-regular fa-file-pdf${asTool ? "" : " me-2"}`} />{asTool ? "Forms" : "Export to form"}</>}
+          {busy ? <Spinner size="sm" /> : <><i className={`${asTool ? "fa-duotone" : "fa-regular"} fa-file-pdf${asTool ? "" : " me-2"}`} />{asTool ? "Forms" : "Export to form"}</>}
         </Dropdown.Toggle>
         <Dropdown.Menu className="cp_forms_menu" style={{ maxHeight: 320, overflowY: "auto" }}
           popperConfig={{ strategy: "fixed" }} renderOnMount>

@@ -10,6 +10,8 @@ import moment from "moment-timezone";
 import { rememberBack } from "../../components/backLink";
 
 const leadLink = (id) => `/dealer/leads?selectedLead=true&leadId=${id}`;
+// The customer's name opens their profile (Bibi, 26 Nov 2026); a lead with no customer yet opens the lead.
+const personLink = (a) => (a.customer_id ? `/dealer/customers/${a.customer_id}` : leadLink(a.lead_id));
 const STATE = {
   waiting: { label: "Expected", cls: "bg-secondary" },
   checked_in: { label: "Checked in", cls: "bg-success" },
@@ -50,8 +52,8 @@ export default function AppointmentsToday({ day, items, tz, onCheckIn, onStatus,
                   <tr key={a.booking_id}>
                     <td className="text-nowrap fw-semibold">{timeText(a.time)}</td>
                     <td>
-                      <Link href={leadLink(a.lead_id)} className="fw-semibold"
-                        onClick={() => rememberBack(leadLink(a.lead_id), "/dealer/desk-log", "Desk Log")}>{a.name || "No name"}</Link>
+                      <Link href={personLink(a)} className="fw-semibold"
+                        onClick={() => rememberBack(personLink(a), "/dealer/desk-log", "Desk Log")}>{a.name || "No name"}</Link>
                       {a.phone && <small className="d-block text-muted">{a.phone}</small>}
                     </td>
                     <td><span className="dl_type">{a.type}</span></td>

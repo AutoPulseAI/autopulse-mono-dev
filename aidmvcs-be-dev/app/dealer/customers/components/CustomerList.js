@@ -7,6 +7,8 @@ import { useUser } from "../../context/UserContext";
 import CustomerForm from "./CustomerForm";
 import { lastFirst } from "../../../lib/personName";
 import DateRangePickerComponent from "../../components/DateRangePicker";
+import AppIcon, { Avatar, IconLabel } from "../../components/AppIcon";
+import { rememberCustomerList } from "../[id]/components/CustomerSideList";
 
 const defaultPagination = {
   currentPage: 1,
@@ -99,7 +101,18 @@ export default function CustomerList() {
     return () => clearTimeout(searchDebounceRef.current);
   }, [inputValues]);
 
+  // The 360 profile shows this same list on its left (search, source, dates, page) - CustomerSideList.js.
   const openCustomer = (customerId) => {
+    const query = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => { if (key !== "dateRange" && value) query.set(key, value); });
+    if (filters.dateRange.startDate && filters.dateRange.endDate) {
+      query.set("startDate", filters.dateRange.startDate.toISOString());
+      query.set("endDate", filters.dateRange.endDate.toISOString());
+    }
+    const at = ((pagination.currentPage || 1) - 1) * pagination.itemsPerPage
+      + Math.max(0, customers.findIndex((c) => c._id === customerId));
+    const listedPage = Math.floor(at / 15) + 1; // the side list shows 15 a page
+    rememberCustomerList(query.toString(), listedPage);
     router.push(`/dealer/customers/${customerId}`);
   };
 
@@ -217,6 +230,9 @@ export default function CustomerList() {
           <Form.Select size="sm" value={filters.source} onChange={handleSourceChange}>
             <option value="">All Sources</option>
             <option value="inbound">Inbound Lead</option>
+            <option value="internet">Internet</option>
+            <option value="phone">Phone</option>
+            <option value="imports">Imports</option>
             <option value="dealervault">DealerVault</option>
             <option value="both">Inbound & DealerVault</option>
             <option value="manual">Manual</option>
@@ -247,11 +263,11 @@ export default function CustomerList() {
         <ListGroup variant="flush">
           <ListGroup.Item className="w_card_list_head border-bottom-0">
             <Row className="align-items-center">
-              <Col md={3}>Name</Col>
-              <Col md={3}>Primary Email</Col>
-              <Col md={3}>Primary Phone</Col>
-              <Col md={2}>Contact Methods</Col>
-              <Col md={1} className="text-end">Leads</Col>
+              <Col md={3}><IconLabel name="customer">Name</IconLabel></Col>
+              <Col md={3}><IconLabel name="email">Primary Email</IconLabel></Col>
+              <Col md={3}><IconLabel name="phone">Primary Phone</IconLabel></Col>
+              <Col md={2}><IconLabel name="contactMethods">Contact Methods</IconLabel></Col>
+              <Col md={1} className="text-end"><IconLabel name="lead">Leads</IconLabel></Col>
             </Row>
           </ListGroup.Item>
 
@@ -263,11 +279,11 @@ export default function CustomerList() {
               <ListGroup.Item key={customer._id} className="w_card_list_box p-0">
                 <button type="button" className="w-100 border-0 bg-transparent text-start px-3 py-3" onClick={() => openCustomer(customer._id)}>
                   <Row className="align-items-center">
-                    <Col md={3} className="p_bold"><i className="fa-solid fa-chevron-right me-2" />{lastFirst(customer) || "Unnamed customer"}</Col>
-                    <Col md={3}>{email || "No email"}</Col>
-                    <Col md={3}>{phone || "No phone"}</Col>
-                    <Col md={2}>{(customer.emails?.length || 0) + (customer.phones?.length || 0)}</Col>
-                    <Col md={1} className="text-end">{customer.lead_count ?? 0}</Col>
+                    <Col md={3} className="p_bold"><span className="ap_person"><i className="fa-solid fa-chevron-right" /><Avatar name={lastFirst(customer)} /><span>{lastFirst(customer) || "Unnamed customer"}</span></span></Col>
+                    <Col md={3}><span className="ap_field"><AppIcon name="email" /><span className="text-truncate">{email || "No email"}</span></span></Col>
+                    <Col md={3}><span className="ap_field"><AppIcon name="phone" /><span>{phone || "No phone"}</span></span></Col>
+                    <Col md={2}><span className="ap_field"><AppIcon name="contactMethods" /><span>{(customer.emails?.length || 0) + (customer.phones?.length || 0)}</span></span></Col>
+                    <Col md={1} className="text-end"><IconLabel name="lead">{customer.lead_count ?? 0}</IconLabel></Col>
                   </Row>
                 </button>
               </ListGroup.Item>
