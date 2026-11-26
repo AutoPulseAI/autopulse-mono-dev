@@ -1,5 +1,5 @@
 "use client";
-import { Button, ListGroup, Row, Col, Dropdown, Form } from "react-bootstrap";
+import { Alert, Badge, Button, ListGroup, Row, Col, Dropdown, Form, Modal } from "react-bootstrap";
 import DateRangePickerComponent from "../../components/DateRangePicker";
 import Pagination from "../../components/Pagination";
 import useFetch from "../../../hooks/useFetch";
@@ -73,6 +73,24 @@ export default function DealerList({
       throw error;
     }
   };
+
+  // Pause / deactivate / reactivate a dealership (Betsy, 25 Nov 2026; app/lib/dealerAccountStatus.js).
+  const [stateChange, setStateChange] = useState(null); // { dealer, state, reason, busy, error }
+  const saveState = async () => {
+    setStateChange((c) => ({ ...c, busy: true, error: null }));
+    try {
+      const res = await fetch("/api/admin/dealer-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
+        body: JSON.stringify({ dealer_id: stateChange.dealer._id, state: stateChange.state, reason: stateChange.reason }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Could not save");
+      setStateChange(null);
+      fetchDealers?.();
+    } catch (e) { setStateChange((c) => ({ ...c, busy: false, error: e.message })); }
+  };
+  const STATE_WORDS = { paused: ["Pause", "warning"], deactivated: ["Deactivate", "danger"], active: ["Reactivate", "success"] };
 
   const loginAsDealer = async (dealerId) => {
     try {
@@ -315,7 +333,13 @@ export default function DealerList({
                     <Col xl={11} lg={10} sm={10} xs={9} onClick={() => onEmailSelect(dealer)} className="a_link">
                       <Row className="align-items-center gx-2">
                         <Col xl={2} lg={2} sm={2} xs={12}>
-                          <p className="p_bold">{dealer.name || "No Name"}</p>
+                          <p className="p_bold">
+                            {dealer.name || "No Name"}
+                            {dealer.account_status && dealer.account_status !== "active" && (
+                              <Badge bg={dealer.account_status === "paused" ? "warning" : "danger"} text={dealer.account_status === "paused" ? "dark" : undefined}
+                                className="ms-1">{dealer.account_status === "paused" ? "Paused" : "Deactivated"}</Badge>
+                            )}
+                          </p>
                         </Col>
                         <Col xl={3} lg={3} sm={2} xs={12}>
                         <div className="w_card_list_box_label">
@@ -377,6 +401,13 @@ export default function DealerList({
                             }}>
                               <i className="fa-regular fa-key-skeleton me-2"></i>Change Password
                             </Dropdown.Item>
+                            <Dropdown.Divider />
+                            {["paused", "deactivated", "active"].filter((st) => st !== (dealer.account_status || "active")).map((st) => (
+                              <Dropdown.Item key={st} onClick={() => setStateChange({ dealer, state: st, reason: "" })}>
+                                <i className={`fa-regular ${st === "active" ? "fa-circle-play" : st === "paused" ? "fa-circle-pause" : "fa-circle-stop"} me-2`}></i>
+                                {STATE_WORDS[st][0]} dealership
+                              </Dropdown.Item>
+                            ))}
                           </Dropdown.Menu>
                         </Dropdown>
 
@@ -426,6 +457,35 @@ export default function DealerList({
         error={passwordError}
         onResetPassword={handleResetPassword}
       />
+      <Modal show={!!stateChange} onHide={() => setStateChange(null)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title as="h6">{stateChange ? `${STATE_WORDS[stateChange.state][0]} ${stateChange.dealer.name || "dealership"}` : ""}</Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="small">
+          {stateChange?.error && <Alert variant="danger" className="py-2">{stateChange.error}</Alert>}
+          {stateChange?.state === "active" ? (
+            <p>The dealership and its staff can sign in again.</p>
+          ) : (
+            <p>The dealership and all its staff will not be able to sign in until it is reactivated. Its leads, customers,
+              settings and AI setup stay as they are; &quot;Login as&quot; still works. To stop the AI messaging its customers,
+              use Admin &gt; AI mode.</p>
+          )}
+          <Form.Control size="sm" as="textarea" rows={2} maxLength={300} value={stateChange?.reason || ""}
+            placeholder={stateChange?.state === "active" ? "Note (optional)" : "Why (required, kept in the history)"}
+            onChange={(e) => setStateChange((c) => ({ ...c, reason: e.target.value }))} />
+          {stateChange?.dealer?.account_status_history?.length > 0 && (
+            <div className="mt-2 text-muted">
+              Last change: {stateChange.dealer.account_status_history.at(-1).to} by{" "}
+              {stateChange.dealer.account_status_history.at(-1).by_name || "-"} ({stateChange.dealer.account_status_history.at(-1).reason || "no reason"})
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button size="sm" variant="secondary" onClick={() => setStateChange(null)}>Cancel</Button>
+          <Button size="sm" variant={stateChange ? STATE_WORDS[stateChange.state][1] : "custom"} disabled={stateChange?.busy}
+            onClick={saveState}>{stateChange ? STATE_WORDS[stateChange.state][0] : ""}</Button>
+        </Modal.Footer>
+      </Modal>
     </>
   );
 }

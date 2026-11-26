@@ -48,8 +48,9 @@ export const UserProvider = ({ children }) => {
             setDealerParent(data);
            
           }
-        } else if (data?.code === "ip_blocked") {
-          // IP restriction (lib/ipRestriction.js): signed out, with the reason on the sign-in page.
+        } else if (data?.code === "ip_blocked" || data?.code === "dealership_paused") {
+          // IP restriction (lib/ipRestriction.js) or a paused dealership (lib/dealerAccountStatus.js): signed out, with
+          // the reason.
           localStorage.removeItem("dealertoken");
           window.alert(data.message);
           window.location.assign("/dealer");

@@ -1,6 +1,7 @@
 import dbConnect from "@lib/mongodb";
 import User from "@models/User";
 import { IP_BLOCKED_MESSAGE, ipBlocked } from "@lib/ipRestriction";
+import { dealershipBlockedMessage } from "@lib/dealerAccountStatus";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { cookies } from "next/headers";
@@ -43,6 +44,9 @@ export async function POST(req) {
     if (await ipBlocked(req, user, { impersonated: false, where: "sign-in" })) {
       return json({ message: IP_BLOCKED_MESSAGE, code: "ip_blocked" }, 403);
     }
+    // A paused / deactivated dealership (Admin > Dealers): nobody of it signs in.
+    const pausedMessage = await dealershipBlockedMessage(user);
+    if (pausedMessage) return json({ message: pausedMessage, code: "dealership_paused" }, 403);
 
     // === CASE 1: OTP verification ===
     if (otp) {

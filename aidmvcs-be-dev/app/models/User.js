@@ -95,6 +95,11 @@ const UserSchema = new mongoose.Schema(
     // n8n behaviour, 'shadow' = n8n replies and the AI drafts alongside,
     // 'live' = the AI replies instead of n8n. Changed via /api/admin/ai-mode.
     ai_mode: { type: String, enum: ["off", "shadow", "live"], default: "off" },
+    // Dealership on / off (Betsy, 25 Nov 2026: "I need to be able to either pause them or deactivate them"), set by a
+    // super admin (app/lib/dealerAccountStatus.js). Paused or deactivated: the dealership and its staff can't sign in.
+    account_status: { type: String, enum: ["active", "paused", "deactivated"], default: "active" },
+    account_status_history: { type: [new mongoose.Schema({ from: String, to: String, reason: String, by_name: String,
+      at: { type: Date, default: Date.now } }, { _id: false })], default: undefined },
     otp: { type: String, default: null },
     otpExpiresAt: { type: Date, default: null },
     otpAttempts: { type: Number, default: 0 },

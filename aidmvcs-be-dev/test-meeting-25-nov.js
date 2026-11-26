@@ -1,6 +1,7 @@
 // Client meeting 25 Nov 2026 (planning/MEETING-25-NOV-ACTIONS.md): the items built from it.
 //   #8 inventory report: leads by car in stock (stock #, days in stock).
 //   #12 reassigning several leads at once needs "Bulk Reassign Leads"; one lead needs only "Assign Leads".
+//   #23 a super admin pauses / deactivates a dealership: it and its staff can't sign in; history kept.
 //   #13 lead type: Internet / Phone / Walk-in / Campaign, else 'Not set' (no 'Other').
 //   #7 one search box on the Leads page: name, phone, email or stock number.
 //   #2 a lead is "tethered, not merged" to a customer with DealerVault (sale / service) history: own customer, shown as
@@ -47,6 +48,7 @@ const { upType } = await import('./app/lib/reporting/normalize.js');
 const { canReassign, ensureBulkReassignPermission, BULK_REASSIGN } = await import('./app/lib/bulkPermission.js');
 const { default: Permission } = await import('./app/models/Permission.js');
 const { default: Role } = await import('./app/models/Role.js');
+const { dealershipBlockedMessage, setDealershipState, PAUSED_MESSAGE } = await import('./app/lib/dealerAccountStatus.js');
 
 const DEALER = new mongoose.Types.ObjectId().toString();
 let dbUp = false;
@@ -168,4 +170,20 @@ db('#12 bulk reassign: staff with only "Assign Leads" reassign one lead, not sev
   assert.equal(await canReassign(repUser, 2), false);
   assert.equal(await canReassign(mgrUser, 25), true);
   assert.equal(await canReassign({ type: 'dealer', parent_id: null, _id: DEALER }, 50), true, 'the dealership account');
+});
+
+db('#23 pause a dealership: reason required, its staff are refused, history kept; reactivate lets them in again', async () => {
+  const shop = await User.create({ name: 'Victory', email: `v${Date.now()}@x.test`, password: 'x', type: 'dealer' });
+  const staff = await User.create({ name: 'Mercy', email: `s${Date.now()}@x.test`, password: 'x', type: 'dealer', parent_id: shop._id });
+  assert.equal(await dealershipBlockedMessage(staff), null);
+  assert.equal((await setDealershipState({ dealerId: shop._id, state: 'paused', reason: '' })).status, 400);
+  assert.equal((await setDealershipState({ dealerId: staff._id, state: 'paused', reason: 'x' })).status, 404, 'staff are not dealerships');
+  assert.equal((await setDealershipState({ dealerId: shop._id, state: 'paused', reason: 'Unpaid invoice', byName: 'Betsy' })).ok, true);
+  assert.equal(await dealershipBlockedMessage(staff), PAUSED_MESSAGE);
+  assert.equal(await dealershipBlockedMessage(await User.findById(shop._id).lean()), PAUSED_MESSAGE);
+  await setDealershipState({ dealerId: shop._id, state: 'active', byName: 'Betsy' });
+  assert.equal(await dealershipBlockedMessage(staff), null);
+  const h = (await User.findById(shop._id).lean()).account_status_history;
+  assert.deepEqual(h.map((x) => [x.from, x.to, x.by_name]), [['active', 'paused', 'Betsy'], ['paused', 'active', 'Betsy']]);
+  assert.equal(h[0].reason, 'Unpaid invoice');
 });
