@@ -21,7 +21,7 @@ export function vehicleFacts(v) {
   const price = money(Number(first(v, ['internetPrice', 'internetprice', 'internetReduced', 'internetreduced',
     'internetSpecial', 'internetspecial', 'customerPrice', 'customerprice', 'price', 'instoreprice', 'inStorePrice'])));
   const milesRaw = Number(first(v, ['mileage', 'miles']));
-  const miles = Number.isFinite(milesRaw) ? `${Math.round(milesRaw).toLocaleString('en-US')} miles` : null;
+  const miles = Number.isFinite(milesRaw) ? Math.round(milesRaw).toLocaleString("en-US") : null;
   const facts = [
     ['price', 'Price', price],
     ['miles', 'Miles', miles],

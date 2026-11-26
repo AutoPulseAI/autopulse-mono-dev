@@ -226,7 +226,7 @@ test('#16 vehicle facts read every feed spelling; only https photos; message lin
   assert.equal(f.title, '2021 Toyota RAV4');
   assert.deepEqual(f.photos, ['https://img/1.jpg']);
   const text = Object.fromEntries(f.facts.map((x) => [x.key, x.text]));
-  assert.equal(text.miles, 'Miles: 35,210 miles');
+  assert.equal(text.miles, 'Miles: 35,210');
   assert.equal(text.drivetrain, 'Drivetrain: AWD');
   assert.equal(text.fuel, 'Fuel: Hybrid');
   assert.equal(text.price, 'Price: $28,995');

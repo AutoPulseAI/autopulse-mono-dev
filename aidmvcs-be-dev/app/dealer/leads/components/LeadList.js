@@ -1751,7 +1751,7 @@ useImperativeHandle(ref, () => ({
               <i className="fa-solid fa-filter me-1" aria-hidden="true"></i>{filtersOpen ? "Hide filters" : "Search and filter"}
             </Button>
             <Row className={`search_filters gx-1 gy-xxl-0 gy-1${filtersOpen ? "" : " d-none d-md-flex"}`}>
-              <Col xxl={2} xl={3} lg={3} md={3} xs={12}>
+              <Col xxl={3} xl={3} lg={3} md={3} xs={12}>
                 <Form.Control
                   type="search"
                   placeholder="Search name, phone, email or stock #"
