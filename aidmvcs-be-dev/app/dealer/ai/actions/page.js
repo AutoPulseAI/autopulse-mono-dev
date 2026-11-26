@@ -21,7 +21,8 @@ import DismissTaskModal, { DISMISS_TASKS } from "../../components/DismissTaskMod
 import { useCan } from "../../../hooks/PermissionsContext";
 import LeadAiDrawer from "../components/LeadAiDrawer";
 import useIsMobile from "../../components/useIsMobile";
-import { ALERTS_CHANGED_EVENT, aiFetch, alertKind, callOutcomeLabel, formatDateTime, fromNow, leadHref, telHref } from "../components/aiShared";
+import { ALERTS_CHANGED_EVENT, aiFetch, alertKind, callOutcomeLabel, formatDateTime, fromNow, leadHref, personHref, telHref } from "../components/aiShared";
+import { rememberBack } from "../../components/backLink";
 
 const TABS = [
   { key: "dar", label: "Dealer Action Required", sub: "A customer is waiting on us", icon: "action" },
@@ -67,7 +68,8 @@ const Person = ({ name }) => (name
   ? <span className="ap_label text-nowrap"><Avatar name={name} small />{name}</span>
   : <span className="ap_label text-danger text-nowrap"><AppIcon name="noOwner" />No owner</span>);
 const Customer = ({ name, vehicle, href }) => (
-  <div className="ap_person"><Avatar name={name} /><span><Link href={href} className="fw-semibold text-dark">{name}</Link>
+  <div className="ap_person"><Avatar name={name} /><span><Link href={href} className="fw-semibold text-dark"
+    onClick={() => rememberBack(href, window.location.pathname + window.location.search, "Tasks")}>{name}</Link>
     {vehicle && <small className="d-block text-muted"><AppIcon name="vehicle" className="me-1" />{vehicle}</small>}</span></div>
 );
 const Phone = ({ value }) => (value ? <span className="ap_label text-nowrap"><AppIcon name="phone" />{value}</span> : <span className="text-muted">-</span>);
@@ -490,7 +492,7 @@ function ActionsContent() {
                   <tbody>{shown.map((a) => { const k = alertKind(a.kind); return (
                     <tr key={a.id}>
                       <td><Badge bg={k.variant} className="act_badge"><i className={`fa-solid ${k.icon}`} aria-hidden="true" />{k.label}</Badge>{a.escalated && <div className="mt-1"><Badge bg="danger" className="act_badge"><AppIcon name="escalated" plain />Escalated</Badge></div>}</td>
-                      <td><Customer name={a.name} vehicle={a.vehicle} href={leadHref(a.lead_id)} /></td>
+                      <td><Customer name={a.name} vehicle={a.vehicle} href={personHref(a.lead?.customer_id, a.lead_id)} /></td>
                       <td className="act_wide small">{a.text}</td><td><LeadStatus status={a.lead_status} /></td><td><Source value={a.source} /></td>
                       <td><Person name={a.owner} /></td><td><When at={a.at} /></td>
                       <td>{a.handled ? <><Badge bg="success" className="act_badge"><AppIcon name="done" plain />Handled</Badge><small className="d-block text-muted">{a.handled_by || "staff"} {fromNow(a.handled_at)}</small></> : <Badge bg="warning" text="dark" className="act_badge"><AppIcon name="open" plain />Open</Badge>}</td>
@@ -504,7 +506,7 @@ function ActionsContent() {
                   <tbody>{shown.map((t) => (
                     <tr key={t.key}>
                       <td><When at={status.tasks === "missed" ? t.due : t.done_at} name={status.tasks === "done" ? "done" : "overdue"} /></td>
-                      <td><Customer name={t.name} vehicle={t.vehicle} href={leadHref(t.lead_id)} /></td>
+                      <td><Customer name={t.name} vehicle={t.vehicle} href={personHref(t.customer_id, t.lead_id)} /></td>
                       <td className="act_wide"><span className="ap_label"><AppIcon name={t.kind === "call" ? "phone" : "note"} />{t.why}</span></td>
                       <td>{status.tasks === "done" ? <Badge bg="success" className="act_badge"><AppIcon name="done" plain />{t.outcome || "Completed"}</Badge> : <span className="ap_label"><AppIcon name="info" />{t.raw.closed_reason || (status.tasks === "missed" ? "Not called in time" : t.raw.status === "dismissed" || t.dismissed ? "Dismissed" : "No longer needed")}</span>}</td>
                       <td><Person name={t.done_by || (status.tasks === "cancelled" ? "AI" : null)} /></td><td><Person name={t.owner} /></td>
@@ -524,7 +526,7 @@ function ActionsContent() {
                     <tr key={t.key}>
                       <td><Badge bg={m.bg} className="act_badge"><AppIcon name={m.icon} plain />{m.label}</Badge>{t.escalated && <div className="mt-1"><Badge bg="danger" className="act_badge"><AppIcon name="escalated" plain />Escalated</Badge></div>}</td>
                       <td><Priority value={t.priority} /></td><td><When at={t.due} /></td>
-                      <td><Customer name={t.name} vehicle={t.vehicle} href={leadHref(t.lead_id)} /></td><td><Phone value={t.phone} /></td>
+                      <td><Customer name={t.name} vehicle={t.vehicle} href={personHref(t.customer_id, t.lead_id)} /></td><td><Phone value={t.phone} /></td>
                       <td className="act_wide"><span className="ap_label"><AppIcon name={t.kind === "call" ? "phone" : "note"} />{t.why}</span>{t.note && <small className="d-block text-muted">{t.note}</small>}</td>
                       <td><LeadStatus status={t.lead_status} /></td><td><Person name={t.owner} /></td>
                       <td><span className="ap_label"><AppIcon name={t.made === "AI" ? "ai" : "staff"} />{t.made}</span></td>
@@ -543,7 +545,7 @@ function ActionsContent() {
                   <tbody>{shown.map((x) => (
                     <tr key={x.id}>
                       <td><Badge bg={REASON_BG[x.reason]} text={["warning", "info"].includes(REASON_BG[x.reason]) ? "dark" : undefined} className="act_badge"><AppIcon name={REASON_ICON[x.reason]} plain />{x.reason}</Badge></td>
-                      <td><Customer name={x.name} vehicle={x.vehicle} href={leadHref(x.lead_id)} /></td><td className="act_wide small">{x.detail}</td>
+                      <td><Customer name={x.name} vehicle={x.vehicle} href={personHref(x.customer_id, x.lead_id)} /></td><td className="act_wide small">{x.detail}</td>
                       <td><LeadStatus status={x.lead_status} /></td><td><Source value={x.source} /></td>
                       <td><span className="ap_label"><AppIcon name="department" />{deptOf(x)}</span></td><td><Person name={x.owner} /></td><td><When at={x.since} name="age" /></td>
                       <td className="act_row_btns">

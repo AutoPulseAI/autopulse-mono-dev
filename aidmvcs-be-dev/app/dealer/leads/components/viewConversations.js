@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { formatTimestamp } from "../../../utils/dateUtils";
 import useFetch from "../../../hooks/useFetch";
-import { Col, Row, Button, Spinner, Nav, Badge } from "react-bootstrap";
+import { Col, Row, Button, Spinner, Nav, Badge, Dropdown } from "react-bootstrap";
 import EmailReplyModal from "./EmailReplyModal";
 import { DEPARTMENT_NAMES, canReplyInDepartment, leadDepartment } from "@lib/departmentNames";
 import DateRangePickerComponent from "../../components/DateRangePicker";
@@ -896,11 +896,27 @@ export default function ViewConversations({
                         </Button>
                       );
                     })}
+                    {/* Leads page (26 Nov 2026): one "Reply" button; it asks SMS or Email, instead of a button whose name
+                        changes with the open tab. A channel with no phone / email, or that the customer opted out of, is
+                        shown but cannot be picked. */}
                     {!actionsTarget && selectedConversation && getReplyChannel(lead, activeChannelTab, stoppedChannels) && replyAllowed && (
-                      <Button variant="custom" size="sm" className="act_sms" onClick={() => { setReplyChannel(null); setShowReplyModal(true); }}>
-                        <i className={actionsTarget ? "fa-duotone fa-comment-sms" : "fa-regular fa-reply me-1"}></i>
-                        {getReplyChannel(lead, activeChannelTab, stoppedChannels) === 'sms' ? 'SMS Reply' : 'Email Reply'}
-                      </Button>
+                      <Dropdown className="d-inline-block">
+                        <Dropdown.Toggle variant="custom" size="sm" className="act_sms" id={`reply-${lead?._id}`}>
+                          <i className="fa-regular fa-reply me-1"></i>Reply
+                        </Dropdown.Toggle>
+                        <Dropdown.Menu>
+                          {["sms", "email"].map((ch) => {
+                            const has = ch === "sms" ? lead?.phone : lead?.email;
+                            const why = !has ? (ch === "sms" ? "no phone" : "no email") : stoppedChannels[ch] ? "opted out" : "";
+                            return (
+                              <Dropdown.Item key={ch} disabled={!!why} onClick={() => { setReplyChannel(ch); setShowReplyModal(true); }}>
+                                <i className={`fa-solid ${ch === "sms" ? "fa-comment-sms" : "fa-envelope"} me-2`}></i>
+                                {ch === "sms" ? "SMS reply" : "Email reply"}{why && <small className="text-muted ms-1">({why})</small>}
+                              </Dropdown.Item>
+                            );
+                          })}
+                        </Dropdown.Menu>
+                      </Dropdown>
                     )}
                     {lead?.phone && <CallButton phone={lead.phone} leadId={lead._id} dealerId={lead.dealer_id} size="sm"
                       className={actionsTarget ? "act_call" : ""} icon={actionsTarget ? "fa-duotone fa-phone-office" : null} />}
