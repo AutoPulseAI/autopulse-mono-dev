@@ -2003,8 +2003,8 @@ a .d_counts_card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgb
 }
 /* Lead rows: Status and the four Action buttons each get the room they need, so they never sit on top of each other. */
 @media (min-width: 1200px) {
-  .lead_main_col { flex: 0 0 calc(100% - 340px); width: calc(100% - 340px); max-width: calc(100% - 340px); }
-  .lead_status_col { flex: 0 0 196px; width: 196px; max-width: 196px; padding-right: 8px; }
+  .lead_main_col { flex: 0 0 calc(100% - 352px); width: calc(100% - 352px); max-width: calc(100% - 352px); }
+  .lead_status_col { flex: 0 0 208px; width: 208px; max-width: 208px; padding-left: 16px; padding-right: 8px; }
   .lead_action_col { flex: 0 0 144px; width: 144px; max-width: 144px; }
 }
 .ap_field.ap_wrap { white-space: normal; align-items: flex-start; overflow: hidden; }
@@ -2173,37 +2173,12 @@ a .dash_card:hover .dash_card_title { color: var(--primary); }
   .lead-item .lead_main_col .w_card_list_box_label { flex-wrap: nowrap; }
   .w_card_list_box_label > p.ap_field, .w_card_list_box_label > .form-select { flex: 1 1 0; min-width: 0; }
 }
-@media (max-width: 575.98px) {
-  .appt_status_col, .appt_action_col { flex: 0 0 auto; width: 100%; }
-  .appt_status_col { padding: 4px 0; }
-  .appt_action_col .w_card_list_btns .btn { flex: 1 1 0; }
-}
-
-/* Appointments list on a desktop: the status badge and the four buttons each get the room they need (as on Leads) */
-@media (min-width: 1200px) {
-  .appt_main_col { flex: 0 0 calc(100% - 306px); width: calc(100% - 306px); max-width: calc(100% - 306px); }
-  .appt_status_col { flex: 0 0 160px; width: 160px; max-width: 160px; padding-right: 6px; }
-  .appt_action_col { flex: 0 0 146px; width: 146px; max-width: 146px; }
-}
 /* The side list beside a conversation: its Whose-leads buttons fit the narrow panel */
 .lead_fltr.w-100 .btn { padding-left: 4px; padding-right: 4px; font-size: 0.8rem; }
 .lead_fltr.w-100 .btn i { margin-right: 3px !important; }
-@media (min-width: 1200px) {
-  .appt_main_col > .row > :nth-child(1) { flex: 0 0 auto; width: 15%; }
-  .appt_main_col > .row > :nth-child(2) { flex: 0 0 auto; width: 17%; }
-  .appt_main_col > .row > :nth-child(3) { flex: 0 0 auto; width: 15%; }
-  .appt_main_col > .row > :nth-child(4) { flex: 0 0 auto; width: 15%; }
-  .appt_main_col > .row > :nth-child(5) { flex: 0 0 auto; width: 13%; }
-  .appt_main_col > .row > :nth-child(6) { flex: 0 0 auto; width: 25%; }
-}
 .lead_fltr.w-100 .btn { flex: 1 1 auto; }
-@media (min-width: 1200px) {
-  .appt_main_col .badge { white-space: normal; text-align: left; max-width: 100%; display: inline-block; }
-}
 /* The side list beside a conversation is narrow: one filter per line, so no dropdown text is cut */
 .dealer-sidebar .search_filters > [class*="col"] { flex: 0 0 100%; max-width: 100%; }
-@media (max-width: 1199.98px) { .w_card_list_box .appt_type { margin-left: 6px; } }
-
 /* Customer profile, opportunity row (Bibi, 25 Nov 2026, from her reference CRM's toolbar): one strip of actions, each a
    large two-tone icon in its own colour with a dark label under it - no boxes. The lead's own SMS Reply, Call, Note,
    Status and Check in are placed in .opp_slot so every action is in this one strip. */
@@ -2291,8 +2266,46 @@ a .dash_card:hover .dash_card_title { color: var(--primary); }
 .w_card_list_btns .lead_more.btn-sm { height: 34px; min-width: 34px; }
 /* On a desktop the Contact cell (an email) gets more room than the date under the name. */
 @media (min-width: 1200px) {
-  .lead-item .lead_main_col > .row > :nth-child(1), .lead_list_head .lead_main_col > .row > :nth-child(1) { flex: 0 0 auto; width: 23%; }
+  .lead-item .lead_main_col > .row > :nth-child(1), .lead_list_head .lead_main_col > .row > :nth-child(1) { flex: 0 0 auto; width: 26%; }
   .lead-item .lead_main_col > .row > :nth-child(2), .lead_list_head .lead_main_col > .row > :nth-child(2) { flex: 0 0 auto; width: 29%; }
-  .lead-item .lead_main_col > .row > :nth-child(3), .lead_list_head .lead_main_col > .row > :nth-child(3) { flex: 0 0 auto; width: 25%; }
-  .lead-item .lead_main_col > .row > :nth-child(4), .lead_list_head .lead_main_col > .row > :nth-child(4) { flex: 0 0 auto; width: 23%; }
+  .lead-item .lead_main_col > .row > :nth-child(3), .lead_list_head .lead_main_col > .row > :nth-child(3) { flex: 0 0 auto; width: 24%; }
+  .lead-item .lead_main_col > .row > :nth-child(4), .lead_list_head .lead_main_col > .row > :nth-child(4) { flex: 0 0 auto; width: 21%; }
 }
+@media (min-width: 1200px) { .lead-item .lead_when { white-space: nowrap; font-size: 11.5px; } }
+
+/* Appointments list (26 Nov 2026): the Leads pattern - when, customer, confirmation, owner, status pill, Open and a menu */
+.appt_when, .appt_conf { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.appt_date { font-size: 12.5px; color: #5a6779; font-weight: 600; }
+.appt_time { font-size: 17px; font-weight: 700; line-height: 1.2; color: var(--dark); }
+.appt_cust { display: flex; gap: 10px; align-items: flex-start; min-width: 0; }
+.appt_cust_text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.appt_line { display: flex; gap: 6px; align-items: flex-start; font-size: 13px; min-width: 0; overflow-wrap: anywhere; }
+.appt_line .ap_ic { margin-top: 3px; }
+.appt_by { font-size: 12px; color: #5a6779; margin-top: 2px; }
+.cf { display: inline-flex; align-items: center; gap: 6px; border-radius: 6px; padding: 3px 9px; font-size: 12.5px; font-weight: 600; }
+.cf_yes { background: #d9f2df; color: #14532d; } .cf_maybe { background: #ffe3bf; color: #7a3f00; }
+.cf_no { background: #fff; color: #7a5200; box-shadow: inset 0 0 0 1.5px #e3c26a; } /* waiting, not a failure: amber, apart from a red status */
+@media (min-width: 1200px) {
+  .appt_main_col { flex: 0 0 calc(100% - 352px); width: calc(100% - 352px); max-width: calc(100% - 352px); }
+  .appt_status_col { flex: 0 0 208px; width: 208px; max-width: 208px; padding-left: 16px; padding-right: 8px; }
+  .appt_action_col { flex: 0 0 144px; width: 144px; max-width: 144px; }
+  .appt_main_col > .row > :nth-child(1) { flex: 0 0 auto; width: 19%; }
+  .appt_main_col > .row > :nth-child(2) { flex: 0 0 auto; width: 34%; }
+  .appt_main_col > .row > :nth-child(3) { flex: 0 0 auto; width: 25%; }
+  .appt_main_col > .row > :nth-child(4) { flex: 0 0 auto; width: 22%; }
+}
+@media (max-width: 1199.98px) {
+  .appt_list_head { display: none !important; }
+  .lead-item .appt_main_col, .lead-item .appt_status_col, .lead-item .appt_action_col { flex: 0 0 auto; max-width: none; }
+  .lead-item .appt_main_col { width: 100%; }
+  .lead-item .appt_main_col > .row > [class*="col"] { flex: 0 0 auto; width: 50%; margin-bottom: 8px; }
+  .lead-item .appt_status_col, .lead-item .appt_action_col { width: 50%; padding-top: 4px; }
+}
+@media (max-width: 767.98px) {
+  .lead-item .appt_main_col > .row > [class*="col"] { width: 100%; }
+  .lead-item .appt_status_col, .lead-item .appt_action_col { width: 100%; }
+  .lead-item .appt_action_col .w_card_list_btns .btn { flex: 1 1 0; }
+  .lead-item .appt_action_col .w_card_list_btns .lead_more { flex: 0 0 44px; }
+  .lead-item .appt_action_col .w_card_list_btns .lead_open { min-height: 40px; }
+}
+@media (max-width: 1199.98px) { .lead-item .appt_main_col .w_card_list_box_label > .label { display: block; margin-bottom: 2px; } }

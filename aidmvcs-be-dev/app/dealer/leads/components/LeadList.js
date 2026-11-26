@@ -10,6 +10,8 @@ import DateRangePickerComponent from "../../components/DateRangePicker";
 import ImportLeadsModal from "./ImportLeadsModal";
 import StatusModal from "./StatusModal";
 import LeadDetailsSidebar from "./LeadDetailsSidebar";
+import MoreToggle from "../../components/MoreToggle";
+import { splitSearch } from "../../components/splitSearch";
 import StatusPill, { statusLook } from "../../components/StatusPill";
 import AppIcon, { Avatar, IconLabel } from "../../components/AppIcon";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -57,10 +59,6 @@ const drillRangeText = (range) => {
 };
 
 // Component that uses useSearchParams - needs to be wrapped in Suspense
-// The "more" button of a row's menu (a plain outline button, no caret).
-const MoreToggle = forwardRef(function MoreToggle({ children, onClick, className = "", ...rest }, ref) {
-  return <button type="button" ref={ref} {...rest} className={`btn btn-outline-secondary btn-sm lead_more ${className}`.trim()} onClick={(e) => { e.stopPropagation(); onClick?.(e); }}>{children}</button>;
-});
 // How the lead came in: an icon and the word, in the colours the Desk Log uses for lead types.
 const typeIcon = (label) => (/phone/i.test(label) ? ["fa-phone", "#7c3aed"] : /walk/i.test(label) ? ["fa-person-walking", "#2fb344"]
   : /campaign/i.test(label) ? ["fa-bullhorn", "#f7931e"] : ["fa-globe", "#1d6fe0"]);
@@ -724,12 +722,10 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     }));
   };
 
-  // One Search box: an @ means an email, mostly digits a phone, anything else a name.
+  // One Search box (components/splitSearch.js).
   const searchText = inputValues.name || inputValues.email || inputValues.phone;
   const setSearchText = (text) => {
-    const isEmail = text.includes('@');
-    const isPhone = !isEmail && /^[\d\s()+.-]+$/.test(text.trim()) && text.replace(/\D/g, '').length >= 3;
-    setInputValues((prev) => ({ ...prev, name: isEmail || isPhone ? '' : text, email: isEmail ? text : '', phone: isPhone ? text : '' }));
+    setInputValues((prev) => ({ ...prev, ...splitSearch(text) }));
   };
 
   const replaceUrl = (url) => {
@@ -2070,7 +2066,7 @@ useImperativeHandle(ref, () => ({
                           <Dropdown.Toggle as={MoreToggle} id={`lead-more-${lead._id}`} aria-label={`More actions for ${lead.name || "lead"}`} title="More actions">
                             <i className="fa-regular fa-ellipsis" aria-hidden="true"></i>
                           </Dropdown.Toggle>
-                          <Dropdown.Menu className="lead_more_menu" popperConfig={{ strategy: "fixed" }}>
+                          <Dropdown.Menu className="lead_more_menu">
                             <Dropdown.Item as="button" onClick={() => setPanel360({ customerId: lead.customer_id ? String(lead.customer_id?._id || lead.customer_id) : null,
                               leadId: lead._id, name: lead.name, dnd: lead.fe_lead_status === 'DND' })}><i className="fa-regular fa-id-card" aria-hidden="true"></i>360 view</Dropdown.Item>
                             <Dropdown.Item as="button" onClick={() => handleShowDetails(lead)}><i className="fa-regular fa-eye" aria-hidden="true"></i>Lead details</Dropdown.Item>

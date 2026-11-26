@@ -1,12 +1,17 @@
 "use client";
 import { forwardRef, useImperativeHandle, useState, useEffect, Suspense, useCallback, useRef } from "react";
 import { formatTimestamp } from "../../../utils/dateUtils";
-import { Button, ListGroup, Row, Col, Offcanvas, Form, Alert, Badge, Pagination, Spinner } from "react-bootstrap";
+import { Button, ListGroup, Row, Col, Offcanvas, Form, Alert, Pagination, Spinner, Dropdown } from "react-bootstrap";
 import { useUser } from "../../context/UserContext";
 import { useCan } from "../../../hooks/PermissionsContext";
 import DateRangePickerComponent from "../../components/DateRangePicker";
 import { useRouter, useSearchParams } from "next/navigation";
 import StatusModal from "./StatusModal";
+import StatusPill, { statusLook } from "../../components/StatusPill";
+import MoreToggle from "../../components/MoreToggle";
+import AppIcon, { Avatar, IconLabel } from "../../components/AppIcon";
+import { splitSearch } from "../../components/splitSearch";
+import { leadStatusLabel } from "../../../lib/statusLabels";
 import AppointmentHistoryModal from "./AppointmentHistoryModal";
 import LeadDetailsSidebar from "../../leads/components/LeadDetailsSidebar";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
@@ -19,6 +24,7 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
   const [leads, setLeads] = useState([]);
   // Betsy, 27 Oct 2026 meeting: label each appointment Confirmed / Tentative / Not confirmed, and filter by it.
   const [confirmFilter, setConfirmFilter] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false); // phones only
   const shownLeads = confirmFilter ? leads.filter((l) => (l.confirmation || 'not_confirmed') === confirmFilter) : leads;
   // SOW Deliverable E: sales / service appointments (server-side filter, kept in the URL) and each one's history.
   const [historyLead, setHistoryLead] = useState(null);
@@ -132,26 +138,6 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
   });
 
 
-  const getStatusVariant = (status) => {
-    switch (status?.toLowerCase()) {
-      case 'contacted':
-        return 'info';
-      case 'appointment booked':
-        return 'warning';
-      case 'visited':
-        return 'success';
-      case 'managerial review':
-        return 'info';
-      case 'sold':
-        return 'danger';
-      case 'new':
-        return 'custom';
-      case 'no show':
-        return 'secondary';
-      default:
-        return 'secondary';
-    }
-  };
 
   const fetchStaffList = useCallback(async () => {
     if (!activeEntity?.id) return;
@@ -325,6 +311,9 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
       [name]: value
     }));
   };
+
+  // One Search box (components/splitSearch.js); Enter searches.
+  const searchText = inputValues.name || inputValues.email || inputValues.phone;
 
   const handleSearch = () => {
     const newFilters = {
@@ -972,7 +961,7 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
               <span className="text-nowrap">Unassigned</span>
             </Button>
           )}
-          <div className="d-flex align-items-center gap-2 ms-auto">
+          {compact && <div className="d-flex align-items-center gap-2 ms-auto">
             <select className="form-select form-select-sm w-auto" value={typeFilter}
               onChange={(e) => setTypeAndSync(e.target.value)} aria-label="Sales or service appointments">
               <option value="all">Sales and service</option>
@@ -987,7 +976,7 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
               <option value="not_confirmed">Not confirmed</option>
             </select>
             {confirmFilter && <small className="text-muted text-nowrap">{shownLeads.length} of {leads.length} on this page</small>}
-          </div>
+          </div>}
         </div>
         
         {compact ? (
@@ -1059,119 +1048,74 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
             </Col>
           </Row>
         ) : (
-          <Row className="align-items-center g-0">
-            <Col md={2}>
-              <div className="d-flex flex-md-column mb-2">
-                <h3 className="w_card_title mb-0 me-2">
-                  Appointment List
-                </h3>
-                <p className="mb-0">
-                  {pagination.totalItems !== undefined && (
-                      <small className="text-muted fw-normal">
-                        ({pagination.totalItems.toLocaleString()} {pagination.totalItems === 1 ? 'appointment' : 'appointments'})
-                      </small>
-                    )}
-                </p>
-              </div>
-            </Col>
-            <Col md={10}>
-              <Row className="search_filters gx-1 gy-md-0 gy-1">
-                <Col xl={3} lg={3} md={3} xs={6}>
-                  <Form.Control
-                    type="text"
-                    placeholder="Name"
-                    name="name"
-                    value={inputValues.name}
-                    onChange={handleInputChange}
-                    size="sm"
-                  />
+          <>
+            <div className="d-flex align-items-baseline gap-2 mb-2">
+              <h3 className="w_card_title mb-0">Appointment List</h3>
+              {pagination.totalItems !== undefined && (
+                <small className="text-muted">({pagination.totalItems.toLocaleString()} {pagination.totalItems === 1 ? 'appointment' : 'appointments'})</small>
+              )}
+            </div>
+            <Button variant="outline-custom" size="sm" className="d-md-none w-100" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((v) => !v)}>
+              <i className="fa-regular fa-filter me-1" aria-hidden="true"></i>{filtersOpen ? "Hide filters" : "Search and filter"}
+            </Button>
+            <div className={`lf_panel${filtersOpen ? "" : " d-none d-md-block"}`}>
+              <div className="lf_head d-none d-md-flex"><i className="fa-regular fa-filter" aria-hidden="true"></i>Filter appointments</div>
+              <Row className="search_filters gx-2 gy-2">
+                <Col xl={3} lg={4} md={6} xs={12}>
+                  <Form.Label htmlFor="af_search" className="lf_label">Search</Form.Label>
+                  <Form.Control id="af_search" type="search" size="sm" placeholder="Name, email or phone" value={searchText}
+                    onChange={(e) => setInputValues((prev) => ({ ...prev, ...splitSearch(e.target.value) }))}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleSearch(); }} />
                 </Col>
-                <Col xl={3} lg={3} md={3} xs={6}>
-                  <Form.Control
-                    type="text"
-                    placeholder="Email"
-                    name="email"
-                    value={inputValues.email}
-                    onChange={handleInputChange}
-                    size="sm"
-                  />
+                <Col xl={2} lg={4} md={6} xs={6}>
+                  <Form.Label htmlFor="af_type" className="lf_label">Sales or service</Form.Label>
+                  <Form.Select id="af_type" size="sm" value={typeFilter} onChange={(e) => setTypeAndSync(e.target.value)}>
+                    <option value="all">Sales and service</option>
+                    <option value="sales">Sales</option>
+                    <option value="service">Service</option>
+                  </Form.Select>
                 </Col>
-                <Col xxl={2} xl={2} lg={2} md={2} xs={4}>
-                  <Form.Control
-                    type="text"
-                    placeholder="Phone"
-                    name="phone"
-                    value={inputValues.phone}
-                    onChange={handleInputChange}
-                    size="sm"
-                  />
+                <Col xl={2} lg={4} md={6} xs={6}>
+                  <Form.Label htmlFor="af_confirm" className="lf_label">Confirmation</Form.Label>
+                  <Form.Select id="af_confirm" size="sm" value={confirmFilter} onChange={(e) => setConfirmFilter(e.target.value)}>
+                    <option value="">Confirmed or not</option>
+                    <option value="confirmed">Confirmed</option>
+                    <option value="tentative">Tentative</option>
+                    <option value="not_confirmed">Not confirmed</option>
+                  </Form.Select>
                 </Col>
-                <Col xl={2} lg={2} md={2} xs={4}>
-                  <DateRangePickerComponent
-                    onDateRangeChange={handleDateRangeChange}
-                    dateRange={dateRange}
-                    timezone={dealerTimezone}
-                    size="sm"
-                  />
+                <Col xl={3} lg={6} md={6} xs={12}>
+                  <span className="lf_label">Appointment dates</span>
+                  <DateRangePickerComponent onDateRangeChange={handleDateRangeChange} dateRange={dateRange} timezone={dealerTimezone} size="sm" className="w-100" />
                 </Col>
-                <Col xxl={2} xl={2} lg={2} md={2} xs={4}>
-                  <div className="d-flex">
-                    <Button
-                      variant="custom"
-                      size="sm"
-                      onClick={handleSearch}
-                    >
-                      Search
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={clearFilters}
-                      disabled={!inputValues.name && !inputValues.email && !inputValues.phone && !filters.dateRange.startDate}
-                      className="text-nowrap ms-1"
-                    >
-                      Clear
-                    </Button>
+                <Col xl="auto" lg={6} md={6} xs={12} className="align-self-end">
+                  <div className="d-flex gap-2">
+                    <Button variant="custom" size="sm" onClick={handleSearch}><i className="fa-regular fa-magnifying-glass me-1" aria-hidden="true"></i>Search</Button>
+                    <Button variant="secondary" size="sm" onClick={clearFilters}
+                      disabled={!inputValues.name && !inputValues.email && !inputValues.phone && !filters.dateRange.startDate}>Clear</Button>
                   </div>
                 </Col>
               </Row>
-            </Col>
-          </Row>
+              {confirmFilter && <small className="text-muted d-block mt-2">Showing {shownLeads.length} of {leads.length} on this page for that confirmation.</small>}
+            </div>
+          </>
         )}
 
         <div className="w_card_list mt-3">
           <ListGroup as="ul" variant="flush">
             {!compact && (
-            <ListGroup.Item as="li" className="w_card_list_head border-bottom-0">
-              <Row className="align-items-center w-100 g-0 gx-1">
+            <ListGroup.Item as="li" className="w_card_list_head appt_list_head border-bottom-0">
+              <Row className="align-items-center w-100 g-0">
                 <Col xl={9} lg={9} sm={9} xs={12} className="appt_main_col">
                   <Row className="align-items-center gx-2">
-                    <Col xl={2} lg={2} sm={2} xs={12}>
-                      <p className="label"><small>Name</small></p>
-                    </Col>
-                    <Col xl={2} lg={2} sm={2} xs={12}>
-                      <p className="label"><small>Email</small></p>
-                    </Col>
-                    <Col xl={2} lg={2} sm={2} xs={12}>
-                      <p className="label"><small>Phone</small></p>
-                    </Col>
-                    <Col xl={2} lg={2} sm={2} xs={12}>
-                      <p className="label"><small>Appt. Date</small></p>
-                    </Col>
-                    <Col xl={2} lg={2} sm={2} xs={12}>
-                      <p className="label"><small>Appt. Time</small></p>
-                    </Col>
-                    <Col xl={2} lg={2} sm={2} xs={12}>
-                      <p className="label"><small>Assigned To</small></p>
-                    </Col>
+                    <Col xl={3}><p className="label"><small><IconLabel name="appointments">Appointment</IconLabel></small></p></Col>
+                    <Col xl={3}><p className="label"><small><IconLabel name="customer">Customer</IconLabel></small></p></Col>
+                    <Col xl={3}><p className="label"><small><IconLabel name="done">Confirmation</IconLabel></small></p></Col>
+                    <Col xl={3}><p className="label"><small><IconLabel name="owner">Assigned To</IconLabel></small></p></Col>
                   </Row>
                 </Col>
-                <Col xl={2} lg={1} sm={1} xs={12} className="appt_status_col">
-                  <p className="label"><small>Status</small></p>
-                </Col>
-                <Col xl={1} lg={2} sm={2} xs={12} className="appt_action_col">
-                  <p className="p_bold text-center"><small>Action</small></p>
-                </Col>
+                <Col xl={2} lg={1} sm={1} xs={12} className="appt_status_col"><p className="label"><small><IconLabel name="status">Status</IconLabel></small></p></Col>
+                <Col xl={1} lg={2} sm={2} xs={12} className="appt_action_col"><p className="p_bold text-end"><small>Actions</small></p></Col>
               </Row>
             </ListGroup.Item>
             )}
@@ -1179,7 +1123,8 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
 
             {shownLeads.length > 0 ? (
               shownLeads.map(lead => (
-                <ListGroup.Item as="li" key={lead._id} className={`lead-item ${activeLeadId === lead._id ? 'active-lead' : ''} w_card_list_box d-flex align-items-center`} onClick={(e) => {
+                <ListGroup.Item as="li" key={lead._id} className={`lead-item ${activeLeadId === lead._id ? 'active-lead' : ''} w_card_list_box d-flex align-items-center`}
+                  style={{ "--strip": statusLook(lead.fe_lead_status, leadStatusLabel(lead)).strip }} onClick={(e) => {
                   // Don't trigger if clicking on buttons or interactive elements
                   if (e.target.closest('button') || e.target.closest('select') || e.target.closest('input')) return;
                   handleLeadClick(lead);
@@ -1234,82 +1179,66 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
                       )}
                     </div>
                   ) : (
-                  <Row className="align-items-center w-100 g-0 gx-1">
-                    <Col xl={9} lg={9} sm={9} xs={12} className="mb-1 mb-md-0 appt_main_col">
+                  <Row className="align-items-center w-100 g-0">
+                    <Col xl={9} lg={9} sm={9} xs={12} className="appt_main_col">
                       <Row className="align-items-center gx-2">
-                        <Col xl={2} lg={2} sm={2} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
-                          <p className="p_bold">{lead.name || "N/A"}</p>
-                        </Col>
-                        <Col xl={2} lg={2} sm={2} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
-                          <div className="w_card_list_box_label">
-                            <p className="label"><small>Email:</small></p>
-                            <p className="text-truncate">{lead.email || "N/A"}</p>
-                          </div>
-                        </Col>
-                        <Col xl={2} lg={2} sm={2} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
-                          <div className="w_card_list_box_label">
-                            <p className="label"><small>Phone:</small></p>
-                            <p className="text-truncate">{lead.phone || "N/A"}</p>
-                          </div>
-                        </Col>
-                        <Col xl={2} lg={2} sm={2} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
-                          <div className="w_card_list_box_label">
-                            <p className="label"><small>Appointment Date:</small></p>
-                            <p className="text-truncate">
-                              {(() => {
-                                try {
-                                  const date = new Date(lead.booking?.booking_date);
-                                  return isNaN(date.getTime()) ? 'Date Flexible' : date.toLocaleDateString();
-                                } catch {
-                                  return 'Date Flexible';
-                                }
-                              })()}
-                            </p>
-                            {lead.booked_by && (
-                              <span className={`badge ${lead.booked_by === 'ai' ? 'bg-primary' : 'bg-secondary'}`}>
-                                {lead.booked_by === 'ai' ? 'Booked by AI'
-                                  : `Booked by staff${lead.booked_by_name ? `: ${lead.booked_by_name}` : ''}`}
+                        <Col xl={3} lg={3} sm={3} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
+                          <div className="appt_when">
+                            <span className="appt_date">{(() => {
+                              const date = new Date(lead.booking?.booking_date);
+                              return isNaN(date.getTime()) ? 'Date flexible' : date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+                            })()}</span>
+                            <b className="appt_time">{(() => {
+                              const timeStr = lead?.booking?.booking_time ?? '';
+                              if (!timeStr) return 'Time flexible';
+                              // "14:30" or "2:30 PM"
+                              const [time, period] = timeStr.split(' ');
+                              let [hours, minutes] = time.split(':').map(Number);
+                              if (period === 'PM' && hours < 12) hours += 12;
+                              if (period === 'AM' && hours === 12) hours = 0;
+                              return new Date(2000, 0, 1, hours, minutes).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                            })()}</b>
+                            {lead.appointment_type && (
+                              <span className="lead_type">
+                                <i className={`fa-regular ${lead.appointment_type === 'service' ? 'fa-screwdriver-wrench' : 'fa-car'}`}
+                                  style={{ background: lead.appointment_type === 'service' ? '#0f8f83' : '#0272b4' }} aria-hidden="true"></i>
+                                {lead.appointment_type === 'service' ? 'Service' : 'Sales'}
                               </span>
                             )}
+                          </div>
+                        </Col>
+                        <Col xl={3} lg={3} sm={3} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
+                          <div className="appt_cust">
+                            <Avatar name={lead.name} />
+                            <div className="appt_cust_text">
+                              <span className="lead_nm">{lead.name || "N/A"}</span>
+                              <span className="appt_line"><AppIcon name="phone" />{lead.phone || "N/A"}</span>
+                              <span className="appt_line"><AppIcon name="email" /><span className="lead_email">{lead.email || "No email"}</span></span>
+                            </div>
+                          </div>
+                        </Col>
+                        <Col xl={3} lg={3} sm={3} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
+                          <div className="appt_conf">
                             {lead.confirmation && (
-                              <span className={`badge ms-1 ${lead.confirmation === 'confirmed' ? 'bg-success'
-                                : lead.confirmation === 'tentative' ? 'bg-warning text-dark' : 'bg-danger'}`}
+                              <span className={`cf ${lead.confirmation === 'confirmed' ? 'cf_yes' : lead.confirmation === 'tentative' ? 'cf_maybe' : 'cf_no'}`}
                                 title={lead.confirmation === 'confirmed' ? 'The customer confirmed (C / Y), or staff confirmed the booking'
                                   : lead.confirmation === 'tentative' ? "The customer isn't sure they can make it; the appointment stays"
                                   : lead.booked_by === 'staff' && lead.customer_agreed === false
                                     ? "Booked by staff; the customer hasn't replied (or asked to cancel) and no call is logged"
                                     : "The customer hasn't confirmed yet"}>
-                                {lead.confirmation === 'confirmed' ? 'Appointment confirmed'
-                                  : lead.confirmation === 'tentative' ? 'Appointment tentative' : 'Appointment not confirmed'}
+                                <i className={`fa-regular ${lead.confirmation === 'confirmed' ? 'fa-circle-check' : lead.confirmation === 'tentative' ? 'fa-circle-question' : 'fa-clock'}`} aria-hidden="true"></i>
+                                {lead.confirmation === 'confirmed' ? 'Confirmed' : lead.confirmation === 'tentative' ? 'Tentative' : 'Not confirmed'}
+                              </span>
+                            )}
+                            {lead.booked_by && (
+                              <span className="appt_line appt_by">
+                                <AppIcon name={lead.booked_by === 'ai' ? 'ai' : 'staff'} />
+                                {lead.booked_by === 'ai' ? 'Booked by AI' : `Booked by staff${lead.booked_by_name ? `: ${lead.booked_by_name}` : ''}`}
                               </span>
                             )}
                           </div>
                         </Col>
-                        <Col xl={2} lg={2} sm={2} xs={12} onClick={() => handleLeadClick(lead)} className="a_link">
-                          <div className="w_card_list_box_label">
-                            <p className="label"><small>Appointment Time:</small></p>
-                            <p className="text-truncate">
-                              {(() => {
-                                const timeStr = lead?.booking?.booking_time ?? '';
-                                if (!timeStr) return 'Time Flexible';
-
-                                // Parse 12-hour format with AM/PM
-                                const [time, period] = timeStr.split(' ');
-                                let [hours, minutes] = time.split(':').map(Number);
-
-                                if (period === 'PM' && hours < 12) hours += 12;
-                                if (period === 'AM' && hours === 12) hours = 0;
-
-                                const date = new Date(2000, 0, 1, hours, minutes);
-                                return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-                              })()}
-                            </p>
-                            {lead.appointment_type && (
-                              <small className="text-muted appt_type">{lead.appointment_type === 'service' ? 'Service' : 'Sales'}</small>
-                            )}
-                          </div>
-                        </Col>
-                        <Col xl={2} lg={2} sm={2} xs={12}>
+                        <Col xl={3} lg={3} sm={3} xs={12}>
                           <div className="w_card_list_box_label">
                             <p className="label"><small>Assigned To:</small></p>
                             {canAssignLeads ? (
@@ -1337,41 +1266,25 @@ const LeadListContent = forwardRef(({ setEditLead, onLeadSelected, activeLeadId,
                       </Row>
                     </Col>
                     <Col xl={2} lg={1} sm={1} xs={7} className="appt_status_col">
-                      <Badge
-                        bg={getStatusVariant(lead.fe_lead_status)}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleShowStatusModal(lead);
-                        }}
-                        className="cursor-pointer text-wrap"
-                      >
-                        {lead.fe_lead_status || "N/A"} <i className="fa-regular fa-pen-to-square"></i>
-                      </Badge>
+                      <StatusPill status={lead.fe_lead_status} label={leadStatusLabel(lead) || "N/A"} onClick={(e) => { e.stopPropagation(); handleShowStatusModal(lead); }} />
                     </Col>
                     <Col xl={1} lg={2} sm={2} xs={5} className="appt_action_col">
                       <div className="d-flex gap-1 w_card_list_btns justify-content-end">
-                        <Button variant="custom" size="sm" onClick={(e) => {
-                          e.stopPropagation();
-                          handleShowDetails(lead);
-                        }}>
-                          <i className="fa-regular fa-eye"></i>
+                        <Button variant="custom" size="sm" className="lead_open text-nowrap" onClick={(e) => { e.stopPropagation(); handleLeadClick(lead); }}>
+                          <i className="fa-regular fa-message me-1" aria-hidden="true"></i>Open
                         </Button>
-                        <Button variant="custom" size="sm" title="Appointment history" aria-label="Appointment history"
-                          onClick={(e) => { e.stopPropagation(); setHistoryLead(lead); }}>
-                          <i className="fa-regular fa-clock-rotate-left"></i>
-                        </Button>
-                        <Button variant="custom" size="sm" onClick={(e) => {
-                          e.stopPropagation();
-                          handleLeadClick(lead);
-                        }}>
-                          <i className="fa-regular fa-envelope-open"></i>
-                        </Button>
-                        <Button variant="danger" size="sm" onClick={(e) => {
-                          e.stopPropagation();
-                          handleShowDeleteModal(lead);
-                        }}>
-                          <i className="fa-regular fa-trash"></i>
-                        </Button>
+                        <Dropdown align="end">
+                          <Dropdown.Toggle as={MoreToggle} id={`appt-more-${lead._id}`} aria-label={`More actions for ${lead.name || "appointment"}`} title="More actions">
+                            <i className="fa-regular fa-ellipsis" aria-hidden="true"></i>
+                          </Dropdown.Toggle>
+                          <Dropdown.Menu className="lead_more_menu">
+                            <Dropdown.Item as="button" onClick={() => handleShowDetails(lead)}><i className="fa-regular fa-eye" aria-hidden="true"></i>Lead details</Dropdown.Item>
+                            <Dropdown.Item as="button" onClick={() => setHistoryLead(lead)}><i className="fa-regular fa-clock-rotate-left" aria-hidden="true"></i>Appointment history</Dropdown.Item>
+                            <Dropdown.Item as="button" onClick={() => handleShowStatusModal(lead)}><i className="fa-regular fa-arrow-right-arrow-left" aria-hidden="true"></i>Change status</Dropdown.Item>
+                            <Dropdown.Divider />
+                            <Dropdown.Item as="button" className="text-danger" onClick={() => handleShowDeleteModal(lead)}><i className="fa-regular fa-trash" aria-hidden="true"></i>Delete lead</Dropdown.Item>
+                          </Dropdown.Menu>
+                        </Dropdown>
                       </div>
                     </Col>
                   </Row>
