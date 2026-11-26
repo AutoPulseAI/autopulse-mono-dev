@@ -20,8 +20,11 @@ const fail = (error, status) => Response.json({ error }, { status });
 const int = (v, d, min, max) => { const n = Number.parseInt(v, 10); return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : d; };
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
+// Dealerships only - not their employees, who are also type 'dealer' with the dealership as parent (Betsy, 25 Nov 2026:
+// "what is employees in there instead of the dealership?"). Same list as Admin > Integration health / DMS feed.
+const DEALERSHIPS_ONLY = { type: 'dealer', parent_id: null };
 async function dealers() {
-  const list = await User.find({ type: 'dealer' }).select('name timezone').sort({ name: 1 }).lean();
+  const list = await User.find(DEALERSHIPS_ONLY).select('name timezone').sort({ name: 1 }).lean();
   return list.map((d) => ({ id: String(d._id), name: d.name || 'Unnamed dealer', timezone: d.timezone || null }));
 }
 
