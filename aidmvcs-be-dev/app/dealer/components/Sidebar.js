@@ -42,8 +42,11 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   // AI Assistant menu (app/dealer/ai/**), with the number of open AI alerts.
   const canSeeAi = hasManageLeads || hasViewAssigned;
-  const isAiActive = pathname?.startsWith("/dealer/ai/") && !pathname.startsWith("/dealer/ai/actions");
-  const [aiOpen, setAiOpen] = useState(isAiActive);
+  // Sales / Service groups (25 Nov 2026): the group of the page on screen opens; Sales otherwise.
+  const SERVICE_PAGES = ["/dealer/service", "/dealer/service-appointments", "/dealer/parts-inventory"];
+  const isServicePage = SERVICE_PAGES.includes(pathname);
+  const [salesOpen, setSalesOpen] = useState(!isServicePage);
+  const [serviceOpen, setServiceOpen] = useState(isServicePage);
   const [aiAlertCount, setAiAlertCount] = useState(0);
   useEffect(() => {
     if (!canSeeAi) return undefined;
@@ -96,42 +99,79 @@ const Sidebar = ({ isOpen, onClose }) => {
   return (
     <div ref={sidebarRef} className={`sidebar ${isOpen ? "open" : "narrow"}`}>
       <ul className="list-unstyled">
-        {/* Betsy, 25 Nov 2026: Service has its own dashboard, so the other one is named "Sales Dashboard" and shows
-            Sales leads only (?department=sales); "All departments" stays in the Dashboard's own department picker. */}
-        <Suspense fallback={<DashboardLinks department={null} onDashboard={false} />}>
-          <DashboardLinksFromUrl onDashboard={pathname === "/dealer/dashboard"} />
-        </Suspense>
+        {/* Betsy / Bibi, 25 Nov 2026: a shorter side menu - everything for Sales under Sales, everything for Service
+            under Service; Campaigns and Sold Customers stay on their own. The group of the page on screen is open. */}
+        <MenuGroup icon="fa-chart-column" label="Sales" open={salesOpen} onToggle={() => setSalesOpen(!salesOpen)}>
+          <Suspense fallback={<DashboardLink department="sales" active={false} />}>
+            <DashboardLinkFromUrl department="sales" onDashboard={pathname === "/dealer/dashboard"} />
+          </Suspense>
+          {showDeskLog && (
+            <li>
+              <Link href="/dealer/desk-log" className={getLinkClass("/dealer/desk-log")}>
+                <i className="fa-regular fa-clipboard-list"></i>Desk Log
+              </Link>
+            </li>
+          )}
+          {/* Bibi, 25 Nov 2026: Tasks in the side menu (one page, AI calls and the team's reminders). The red number:
+              customers waiting on us. */}
+          {canSeeAi && <TasksLink active={pathname === "/dealer/ai/actions"} alerts={aiAlertCount} />}
+          {(hasManageLeads || hasViewAssigned) && (
+            <li>
+              <Link href={leadsHref} className={getLinkClass("/dealer/leads")}>
+                <i className="fa-regular fa-magnet"></i>Leads
+              </Link>
+            </li>
+          )}
+          {(hasManageLeads || hasViewAssigned) && (
+            <li>
+              <Link href="/dealer/customers" className={getLinkClass("/dealer/customers")}>
+                <i className="fa-regular fa-users"></i>Customers
+              </Link>
+            </li>
+          )}
+          {(hasManageLeads || hasViewAssigned) && (
+            <li>
+              <Link href={bookingHref} className={getLinkClass("/dealer/booking")}>
+                <i className="fa-regular fa-calendar-check"></i>Appointments
+              </Link>
+            </li>
+          )}
+          {canSeeAi && (
+            <>
+              <li>
+                <Link href="/dealer/ai/messages" className={getLinkClass("/dealer/ai/messages")}>
+                  <i className="fa-regular fa-message-bot"></i>AI Messages
+                </Link>
+              </li>
+              <li>
+                <Link href="/dealer/ai/insights" className={getLinkClass("/dealer/ai/insights")}>
+                  <i className="fa-regular fa-chart-line"></i>AI Insights
+                </Link>
+              </li>
+            </>
+          )}
+        </MenuGroup>
 
-        {showDeskLog && (
+        <MenuGroup icon="fa-screwdriver-wrench" label="Service" open={serviceOpen} onToggle={() => setServiceOpen(!serviceOpen)}>
+          <Suspense fallback={<DashboardLink department="service" active={false} />}>
+            <DashboardLinkFromUrl department="service" onDashboard={pathname === "/dealer/dashboard"} />
+          </Suspense>
           <li>
-            <Link href="/dealer/desk-log" className={getLinkClass("/dealer/desk-log")}>
-              <i className="fa-regular fa-clipboard-list"></i>Desk Log
+            <Link href="/dealer/service" className={getLinkClass("/dealer/service")}>
+              <i className="fa-regular fa-car-wrench"></i>Service Customers
             </Link>
           </li>
-        )}
-
-        {/* Bibi, 25 Nov 2026: "I'm not seeing anything on the side menu that says tasks" - the task list (AI calls
-            and the team's reminders) was only inside AI Assistant > Actions. Same page, opened on its Tasks tab; it is no longer
-            under AI Assistant (one place only, 25 Nov 2026). The red number: customers waiting on us. */}
-        {canSeeAi && (
-          <TasksLink active={pathname === "/dealer/ai/actions"} alerts={aiAlertCount} />
-        )}
-
-        {(hasManageLeads || hasViewAssigned) && (
           <li>
-            <Link href={leadsHref} className={getLinkClass("/dealer/leads")}>
-              <i className="fa-regular fa-magnet"></i>Leads
+            <Link href="/dealer/service-appointments" className={getLinkClass("/dealer/service-appointments")}>
+              <i className="fa-regular fa-calendar-clock"></i>Service Appointments
             </Link>
           </li>
-        )}
-
-        {(hasManageLeads || hasViewAssigned) && (
           <li>
-            <Link href="/dealer/customers" className={getLinkClass("/dealer/customers")}>
-              <i className="fa-regular fa-users"></i>Customers
+            <Link href="/dealer/parts-inventory" className={getLinkClass("/dealer/parts-inventory")}>
+              <i className="fa-regular fa-boxes-stacked"></i>Parts Inventory
             </Link>
           </li>
-        )}
+        </MenuGroup>
 
         {hasManageLeads && (
           <li>
@@ -141,60 +181,11 @@ const Sidebar = ({ isOpen, onClose }) => {
           </li>
         )}
 
-        {/*
-        
-       
-        {useCan("Manage Customer Conversation") && (
-          <li>
-            <Link href="/dealer/conversations" className={getLinkClass("/dealer/conversations")}>
-              <i className="fa-regular fa-messages"></i>Conversations
-            </Link>
-          </li>
-        )}
-        */}
-
-        {(hasManageLeads || hasViewAssigned) && (
-          <li>
-            <Link href={bookingHref} className={getLinkClass("/dealer/booking")}>
-              <i className="fa-regular fa-calendar-check"></i>Appointments
-            </Link>
-          </li>
-        )}
-
-        {canSeeAi && (
-          <li className="submenu">
-            <button
-              className={`nav-link submenu-toggle ${aiOpen ? "open" : ""}`}
-              onClick={() => setAiOpen(!aiOpen)}
-            >
-              <i className="fa-regular fa-message-bot"></i>AI Assistant
-              <i className={`fa-solid fa-chevron-${aiOpen ? "up" : "down"} ms-auto`}></i>
-            </button>
-
-            {aiOpen && (
-              <ul className="submenu-list">
-                <li>
-                  <Link href="/dealer/ai/messages" className={getLinkClass("/dealer/ai/messages")}>
-                    <i className="fa-regular fa-messages"></i>AI Messages
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/dealer/ai/insights" className={getLinkClass("/dealer/ai/insights")}>
-                    <i className="fa-regular fa-chart-line"></i>AI Insights
-                  </Link>
-                </li>
-              </ul>
-            )}
-          </li>
-        )}
-
-        {canFollowupSettings && (
-          <li>
-            <Link href="/dealer/report-schedule" className={getLinkClass("/dealer/report-schedule")}>
-              <i className="fa-regular fa-calendar-days"></i>Report Scheduling
-            </Link>
-          </li>
-        )}
+        <li>
+          <Link href="/dealer/sales" className={getLinkClass("/dealer/sales")}>
+            <i className="fa-regular fa-file-invoice-dollar"></i>Sold Customers
+          </Link>
+        </li>
 
         {canMessageTemplate && (
           <li>
@@ -250,36 +241,12 @@ const Sidebar = ({ isOpen, onClose }) => {
         </li>
 
         <li>
-          <Link href="/dealer/sales" className={getLinkClass("/dealer/sales")}>
-            <i className="fa-regular fa-file-invoice-dollar"></i>Sales
-          </Link>
-        </li>
-
-        <li>
-          <Link href="/dealer/service" className={getLinkClass("/dealer/service")}>
-            <i className="fa-regular fa-screwdriver-wrench"></i>Service
-          </Link>
-        </li>
-
-        <li>
-          <Link href="/dealer/service-appointments" className={getLinkClass("/dealer/service-appointments")}>
-            <i className="fa-regular fa-calendar-clock"></i>Service Appointments
-          </Link>
-        </li>
-
-        <li>
-          <Link href="/dealer/parts-inventory" className={getLinkClass("/dealer/parts-inventory")}>
-            <i className="fa-regular fa-boxes-stacked"></i>Parts Inventory
-          </Link>
-        </li>
-
-        <li>
           <Link href="https://chat.autopulse.ai/login" target="_blank" className="nav-link">
             <i className="fa-regular fa-message-bot"></i>Autopulse Chat
           </Link>
         </li>
 
-        {(manage_role || manage_staff || canForms) && (
+        {(manage_role || manage_staff || canForms || canFollowupSettings) && (
           <li className="submenu">
             <button
               className={`nav-link submenu-toggle ${adminOpen ? "open" : ""}`}
@@ -355,27 +322,33 @@ const Sidebar = ({ isOpen, onClose }) => {
 
 export default Sidebar;
 
-// The two dashboard links; the one for the department on screen is highlighted.
-function DashboardLinksFromUrl({ onDashboard }) {
-  const department = useSearchParams().get("department") || "";
-  return <DashboardLinks department={department} onDashboard={onDashboard} />;
+// A dashboard link (Sales or Service); highlighted when that department's dashboard is on screen.
+function DashboardLinkFromUrl({ department, onDashboard }) {
+  const current = useSearchParams().get("department") || "";
+  return <DashboardLink department={department} active={onDashboard && current === department} />;
 }
 
-function DashboardLinks({ department, onDashboard }) {
-  const cls = (d) => (onDashboard && department === d ? "nav-link active" : "nav-link");
+function DashboardLink({ department, active }) {
   return (
-    <>
-      <li>
-        <Link href="/dealer/dashboard?department=sales" className={cls("sales")}>
-          <i className="fa-regular fa-chart-column"></i>Sales Dashboard
-        </Link>
-      </li>
-      <li>
-        <Link href="/dealer/dashboard?department=service" className={cls("service")}>
-          <i className="fa-regular fa-screwdriver-wrench"></i>Service Dashboard
-        </Link>
-      </li>
-    </>
+    <li>
+      <Link href={`/dealer/dashboard?department=${department}`} className={active ? "nav-link active" : "nav-link"}>
+        <i className={`fa-regular ${department === "service" ? "fa-gauge" : "fa-chart-column"}`}></i>
+        {department === "service" ? "Service Dashboard" : "Sales Dashboard"}
+      </Link>
+    </li>
+  );
+}
+
+// A group of the side menu (Sales, Service) that opens and closes.
+function MenuGroup({ icon, label, open, onToggle, children }) {
+  return (
+    <li className="submenu">
+      <button className={`nav-link submenu-toggle ${open ? "open" : ""}`} onClick={onToggle} aria-expanded={open}>
+        <i className={`fa-regular ${icon}`}></i>{label}
+        <i className={`fa-solid fa-chevron-${open ? "up" : "down"} ms-auto`}></i>
+      </button>
+      {open && <ul className="submenu-list">{children}</ul>}
+    </li>
   );
 }
 
