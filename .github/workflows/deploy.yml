@@ -53,6 +53,7 @@ jobs:
           fi
           echo "core=$(echo "$CHANGED" | grep -q '^aidmvcs-be-dev/' && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "upsell=$(echo "$CHANGED" | grep -q '^agentic-upsell/' && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "qasheet=$(echo "$CHANGED" | grep -q '^qa-sheet/' && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "$CHANGED" | sed 's#/.*##' | sort -u
 
       - name: Set up SSH
@@ -139,6 +140,24 @@ jobs:
           curl -sf http://127.0.0.1:8100/health >/dev/null || { echo "AI service did not come back"; pm2 logs agentic-upsell --lines 40 --nostream; exit 1; }
           pm2 save
           echo "AI service deployed"
+          REMOTE
+
+      # The testing sheet (27 Nov 2026): its own small server, apart from the CRM - no CRM code, no CRM database.
+      # nginx sends www.autopulse.ai/test/ to it (127.0.0.1:3990, PM2 qa-sheet); its results and settings stay in
+      # /var/www/html/qa-sheet-data, never touched by a deploy. A qa-sheet-only merge deploys nothing else.
+      - name: Deploy qa-sheet
+        if: steps.changes.outputs.qasheet == 'true'
+        run: |
+          rsync -az --delete -e "$SSH" qa-sheet/ "$TARGET:/var/www/html/qa-sheet/"
+          $SSH "$TARGET" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          export PM2_HOME=/home/ubuntu/.pm2
+          cd /var/www/html/qa-sheet
+          if pm2 describe qa-sheet >/dev/null 2>&1; then pm2 restart qa-sheet; else pm2 start server.mjs --name qa-sheet; fi
+          pm2 save
+          for i in $(seq 1 15); do curl -sf http://127.0.0.1:3990/test/testing-sheet/health >/dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:3990/test/testing-sheet/health >/dev/null || { echo "qa-sheet did not start"; pm2 logs qa-sheet --lines 30 --nostream; exit 1; }
+          echo "qa-sheet deployed"
           REMOTE
 
       - name: Smoke test through Cloudflare

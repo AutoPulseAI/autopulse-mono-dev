@@ -24,7 +24,7 @@ It is its own small server (`server.mjs`), separate from the CRM:
 
 - **No CRM code and no CRM database.** It uses no packages. Results are kept in `/var/www/html/qa-sheet-data/results.json`, and screenshots in `shots/` next to that file.
 - **How requests reach it:** nginx sends `/test/` to `127.0.0.1:3990`, where it runs as PM2 `qa-sheet`.
-- **How it deploys:** not through the CRM's auto-deploy, and no merge to main. The server downloads this folder from the working branch (`ui-clickable-tabs-filters`) and restarts `qa-sheet`; see "Updating the live sheet" below.
+- **How it deploys:** merged to main, the auto-deploy's "Deploy qa-sheet" step copies this folder to `/var/www/html/qa-sheet` and starts or restarts PM2 `qa-sheet`. A change only in this folder does not redeploy the CRM or the AI.
 - **Settings:** they are kept in `/var/www/html/qa-sheet-data/settings.env`:
   - `QA_SHEET_KEY` (the link's key, 16+ characters);
   - `QA_LEAD_TESTERS` (the only people who may close a bug);
@@ -80,10 +80,3 @@ When a change adds, changes or removes a feature, page, tab, button or field, up
 
 Testers' results for removed rows stay in results.json, but the sheet no longer shows them.
 
-## Updating the live sheet
-
-Push this folder to `ui-clickable-tabs-filters`. Then run on the server; it asks for a GitHub token that can read the repo:
-
-```
-read -rsp "GitHub token: " T && echo && curl -sfL -H "Authorization: token $T" https://api.github.com/repos/AutoPulseAI/autopulse-mono-dev/tarball/ui-clickable-tabs-filters | tar xz --wildcards --strip-components=2 -C /var/www/html/qa-sheet '*/qa-sheet/' && unset T && PM2_HOME=/home/ubuntu/.pm2 pm2 restart qa-sheet
-```
