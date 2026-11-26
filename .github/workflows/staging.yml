@@ -79,8 +79,20 @@ jobs:
             $SSH "$TARGET" "install -m 600 /dev/null '$APP_ROOT/aidmvcs-be-dev/.env' && cat > '$APP_ROOT/aidmvcs-be-dev/.env'"
           $SSH "$TARGET" "APP_ROOT='$APP_ROOT' CRM_PORT='$CRM_PORT' bash -s" <<'REMOTE'
           set -euo pipefail
-          export PATH=/opt/node-22/bin:$PATH   # same private Node 22 the connect apps use; global Node 18 untouched
-          NODE=/opt/node-22/bin/node           # Next 16 needs Node >= 20.9 -> pin pm2's interpreter explicitly
+          # Staging owns its own Node 22 (Next 16 needs >= 20.9). The box's global Node 18 is left untouched,
+          # and we don't borrow another project's Node (it can be removed without notice).
+          NODE_DIR="$APP_ROOT/node"
+          NODE_VER=v22.21.1
+          if [ ! -x "$NODE_DIR/bin/node" ] || [ "$("$NODE_DIR/bin/node" -v)" != "$NODE_VER" ]; then
+            tmp=$(mktemp -d)
+            curl -fsSL "https://nodejs.org/dist/$NODE_VER/node-$NODE_VER-linux-x64.tar.xz" -o "$tmp/node.tar.xz"
+            rm -rf "$NODE_DIR" && mkdir -p "$NODE_DIR"
+            tar -xJf "$tmp/node.tar.xz" -C "$NODE_DIR" --strip-components=1
+            rm -rf "$tmp"
+          fi
+          export PATH="$NODE_DIR/bin:$PATH"
+          NODE="$NODE_DIR/bin/node"            # pin pm2's interpreter explicitly (pm2 daemon runs on Node 18)
+          node -v
           APP="$APP_ROOT/aidmvcs-be-dev"
           cd "$APP"
           npm ci --no-audit --no-fund
@@ -117,7 +129,6 @@ jobs:
             $SSH "$TARGET" "install -m 600 /dev/null '$APP_ROOT/agentic-upsell/.env' && cat > '$APP_ROOT/agentic-upsell/.env'"
           $SSH "$TARGET" "APP_ROOT='$APP_ROOT' AI_PORT='$AI_PORT' bash -s" <<'REMOTE'
           set -euo pipefail
-          export PATH=/opt/node-22/bin:$PATH
           APP="$APP_ROOT/agentic-upsell"
           cd "$APP"
           # pyproject requires Python >= 3.11 (Dockerfile: python:3.11). The box's system python3 is 3.10,
