@@ -1,5 +1,5 @@
 {
- "crawledAt": "2026-11-26T22:19:58.664Z",
+ "crawledAt": "2026-11-26T23:10:13.832Z",
  "app": "http://127.0.0.1:3137",
  "screens": {
   "admin/ai-studio": {
@@ -157,21 +157,21 @@
     },
     {
      "label": "Edit",
-     "id": "react-aria5385019980-_r_1_-tab-edit",
+     "id": "react-aria2406124904-_r_1_-tab-edit",
      "kind": "tab",
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "href": null
     },
     {
      "label": "Live (v1)",
-     "id": "react-aria5385019980-_r_1_-tab-live",
+     "id": "react-aria2406124904-_r_1_-tab-live",
      "kind": "tab",
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "href": null
     },
     {
      "label": "History (1)",
-     "id": "react-aria5385019980-_r_1_-tab-history",
+     "id": "react-aria2406124904-_r_1_-tab-history",
      "kind": "tab",
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "href": null
@@ -2258,14 +2258,14 @@
     },
     {
      "label": "General",
-     "id": "react-aria2575402185-_r_1_-tab-general",
+     "id": "react-aria3786344362-_r_1_-tab-general",
      "kind": "tab",
      "panel": "Add Package",
      "href": null
     },
     {
      "label": "Features",
-     "id": "react-aria2575402185-_r_1_-tab-features",
+     "id": "react-aria3786344362-_r_1_-tab-features",
      "kind": "tab",
      "panel": "Add Package",
      "href": null
@@ -3501,14 +3501,14 @@
     },
     {
      "label": "Switch store",
-     "id": "react-aria6750042824-_r_2_",
+     "id": "react-aria2099658323-_r_2_",
      "kind": "button",
      "panel": "",
      "href": null
     },
     {
      "label": "Notifications",
-     "id": "react-aria6750042824-_r_0_",
+     "id": "react-aria2099658323-_r_0_",
      "kind": "button",
      "panel": "",
      "href": null
@@ -4184,14 +4184,14 @@
      "href": null
     },
     {
-     "label": "RL Roberto Lazu 1 day ago Trade-in question 2 1 1 +19142241002",
+     "label": "CR Carla Reyes 5 minutes ago You: Composer test from the new box 1 3 +1217555804",
      "id": null,
      "kind": "button",
      "panel": "AI Messages",
      "href": null
     },
     {
-     "label": "CR Carla Reyes 17 days ago You: local smoke test reply 1 2 +12175558045",
+     "label": "RL Roberto Lazu 1 day ago Trade-in question 2 1 1 +19142241002",
      "id": null,
      "kind": "button",
      "panel": "AI Messages",
@@ -5102,7 +5102,7 @@
     },
     {
      "label": "Download report",
-     "id": "react-aria3785255313-_r_5_",
+     "id": "react-aria8625817914-_r_3_",
      "kind": "button",
      "panel": "Leads Dashboard",
      "href": null
@@ -5348,7 +5348,7 @@
     },
     {
      "label": "Download",
-     "id": "react-aria5044324228-_r_6_",
+     "id": "react-aria1514569663-_r_6_",
      "kind": "button",
      "panel": "Where leads come from",
      "href": null
@@ -5757,6 +5757,175 @@
    "parent": "dealer/dashboard",
    "via": "Show 'Data health'"
   },
+  "dealer/dashboard~How numbers are counted": {
+   "title": "Leads Dashboard",
+   "panels": [
+    "How each number is counted"
+   ],
+   "tabs": [],
+   "buttons": [
+    {
+     "label": "Hide",
+     "id": null,
+     "kind": "button",
+     "panel": "0",
+     "href": null
+    },
+    {
+     "label": "Numbers",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Fields",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Leads received Dashboard Leads of the dealer whose createdAt is in the range.",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Customer Replied (leads) Dashboard Leads of the dealer (any lead date) with at l",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Appointments made Dashboard Bookings of the dealer created in the range (any sta",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Appointments for these dates Dashboard Bookings of the dealer set for a day in t",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Showed Dashboard Scheduled bookings (appt.scheduled) marked showed, or completed",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Customer-days with a reply Dashboard All (customer, dealer-local day) pairs with",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Customer-days replied from today's leads Dashboard Customer-days whose reply lea",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Customer-days replied from past leads Dashboard Customer-days whose reply lead i",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Customer-days needing review Dashboard Customer-days whose reply could not be ti",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Customer-days replied, lead 7+ days old (overlapping) Dashboard Customer-days wi",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Customer-days replied, lead 15+ days old (overlapping) Dashboard Customer-days w",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Customer-days replied, lead 30+ days old (overlapping) Dashboard Customer-days w",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Customer-days replied, lead 60+ days old (overlapping) Dashboard Customer-days w",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Customer-days replied, lead 60-90 days old Dashboard Customer-days with lead age",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Customer-days replied, lead older than 90 days (came back after follow-ups ended",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Page buttons (previous / next / number)",
+     "id": null,
+     "kind": "link",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "› Next",
+     "id": null,
+     "kind": "link",
+     "panel": "How each number is counted",
+     "href": null
+    }
+   ],
+   "fields": [
+    {
+     "label": "Report",
+     "id": null,
+     "name": null,
+     "kind": "select",
+     "panel": "How each number is counted"
+    },
+    {
+     "label": "Search a number",
+     "id": null,
+     "name": null,
+     "kind": "input:text",
+     "panel": "How each number is counted"
+    }
+   ],
+   "route": "/dealer/dashboard",
+   "url": "/dealer/dashboard",
+   "parent": "dealer/dashboard",
+   "via": "Show 'How numbers are counted'"
+  },
   "dealer/desk-log": {
    "route": "/dealer/desk-log",
    "url": "/dealer/desk-log",
@@ -5789,7 +5958,7 @@
     },
     {
      "label": "More: check in, today's appointments, settings",
-     "id": "react-aria8816037714-_r_2_",
+     "id": "react-aria1372473780-_r_2_",
      "kind": "button",
      "panel": "Desk Log",
      "href": null
@@ -6113,7 +6282,7 @@
    "buttons": [
     {
      "label": "Add a standard form",
-     "id": "react-aria5532102114-_r_3_",
+     "id": "react-aria9062675390-_r_3_",
      "kind": "button",
      "panel": "Forms Library",
      "href": null
@@ -6856,7 +7025,7 @@
    "panels": [
     "Leads Dashboard",
     "CUSTOMER REPLIES BY LEAD AGE0 + 0 = 0 customer replied",
-    "Data health",
+    "How each number is counted",
     "Lead Sources",
     "Lead Status",
     "Lead Received",
@@ -6875,7 +7044,7 @@
     },
     {
      "label": "Download report",
-     "id": "react-aria5030582122-_r_5_",
+     "id": "react-aria771796955-_r_3_",
      "kind": "button",
      "panel": "Leads Dashboard",
      "href": null
@@ -7070,10 +7239,136 @@
      "href": null
     },
     {
-     "label": "Show all numbers (14)",
+     "label": "Numbers",
      "id": null,
      "kind": "button",
-     "panel": "Data health",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Fields",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Leads received Dashboard Leads of the dealer whose createdAt is in the range.",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Customer Replied (leads) Dashboard Leads of the dealer (any lead date) with at l",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Appointments made Dashboard Bookings of the dealer created in the range (any sta",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Appointments for these dates Dashboard Bookings of the dealer set for a day in t",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Showed Dashboard Scheduled bookings (appt.scheduled) marked showed, or completed",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Customer-days with a reply Dashboard All (customer, dealer-local day) pairs with",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Customer-days replied from today's leads Dashboard Customer-days whose reply lea",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Customer-days replied from past leads Dashboard Customer-days whose reply lead i",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Customer-days needing review Dashboard Customer-days whose reply could not be ti",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Customer-days replied, lead 7+ days old (overlapping) Dashboard Customer-days wi",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Customer-days replied, lead 15+ days old (overlapping) Dashboard Customer-days w",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Customer-days replied, lead 30+ days old (overlapping) Dashboard Customer-days w",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Customer-days replied, lead 60+ days old (overlapping) Dashboard Customer-days w",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Customer-days replied, lead 60-90 days old Dashboard Customer-days with lead age",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Customer-days replied, lead older than 90 days (came back after follow-ups ended",
+     "id": null,
+     "kind": "button",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "Page buttons (previous / next / number)",
+     "id": null,
+     "kind": "link",
+     "panel": "How each number is counted",
+     "href": null
+    },
+    {
+     "label": "› Next",
+     "id": null,
+     "kind": "link",
+     "panel": "How each number is counted",
      "href": null
     },
     {
@@ -7100,39 +7395,18 @@
      "panel": "Leads Dashboard"
     },
     {
-     "label": "Source",
+     "label": "Report",
      "id": null,
      "name": null,
      "kind": "select",
-     "panel": "0"
+     "panel": "How each number is counted"
     },
     {
-     "label": "Lead source",
+     "label": "Search a number",
      "id": null,
      "name": null,
-     "kind": "select",
-     "panel": "0"
-    },
-    {
-     "label": "Assigned staff",
-     "id": null,
-     "name": null,
-     "kind": "select",
-     "panel": "0"
-    },
-    {
-     "label": "AI or human",
-     "id": null,
-     "name": null,
-     "kind": "select",
-     "panel": "0"
-    },
-    {
-     "label": "Sales or service",
-     "id": null,
-     "name": null,
-     "kind": "select",
-     "panel": "0"
+     "kind": "input:text",
+     "panel": "How each number is counted"
     }
    ]
   },
@@ -7769,14 +8043,14 @@
    "buttons": [
     {
      "label": "My Current Plan",
-     "id": "react-aria1551776446-_r_2_-tab-currentplan",
+     "id": "react-aria7347045918-_r_2_-tab-currentplan",
      "kind": "tab",
      "panel": "My Subscription",
      "href": null
     },
     {
      "label": "Subscription Plans",
-     "id": "react-aria1551776446-_r_2_-tab-subscriptionplan",
+     "id": "react-aria7347045918-_r_2_-tab-subscriptionplan",
      "kind": "tab",
      "panel": "My Subscription",
      "href": null
@@ -9200,7 +9474,7 @@
     },
     {
      "label": "Forms",
-     "id": "react-aria9004375460-_r_5_",
+     "id": "react-aria1827596901-_r_5_",
      "kind": "button",
      "panel": "Customer Details",
      "href": null

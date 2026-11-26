@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-26T22:33:59.020Z",
+ "generatedAt": "2026-11-26T23:10:13.933Z",
  "app": {
   "name": "AutoPulse CRM",
   "url": "https://www.autopulse.ai",
@@ -40,12 +40,12 @@
    "title": "Sign-in & public pages"
   }
  ],
- "inventoryAt": "2026-11-26T22:19:58.664Z",
+ "inventoryAt": "2026-11-26T23:10:13.832Z",
  "totals": {
   "sections": 81,
-  "features": 211,
-  "buttons": 749,
-  "fields": 320
+  "features": 212,
+  "buttons": 787,
+  "fields": 319
  },
  "sections": [
   {
@@ -181,10 +181,10 @@
      "code": "DMA-B01"
     },
     {
-     "id": "dealer/_menu.b.x.react-aria6750042824-r-2",
+     "id": "dealer/_menu.b.x.react-aria2099658323-r-2",
      "label": "Switch store",
      "kind": "button",
-     "el": "#react-aria6750042824-_r_2_",
+     "el": "#react-aria2099658323-_r_2_",
      "href": null,
      "panel": "",
      "about": "Switch store.",
@@ -194,10 +194,10 @@
      "code": "DMA-B02"
     },
     {
-     "id": "dealer/_menu.b.x.react-aria6750042824-r-0",
+     "id": "dealer/_menu.b.x.react-aria2099658323-r-0",
      "label": "Notifications",
      "kind": "button",
-     "el": "#react-aria6750042824-_r_0_",
+     "el": "#react-aria2099658323-_r_0_",
      "href": null,
      "panel": "",
      "about": "Opens the notifications list.",
@@ -1294,10 +1294,10 @@
      "code": "DAS-B01"
     },
     {
-     "id": "dealer/dashboard.b.x.react-aria3785255313-r-5",
+     "id": "dealer/dashboard.b.x.react-aria8625817914-r-3",
      "label": "Download report",
      "kind": "button",
-     "el": "#react-aria3785255313-_r_5_",
+     "el": "#react-aria8625817914-_r_3_",
      "href": null,
      "panel": "Leads Dashboard",
      "about": "Download report.",
@@ -1710,10 +1710,10 @@
      "code": "DAS-B33"
     },
     {
-     "id": "dealer/dashboard.b.after-pressing-lead-sources.react-aria5044324228-r-6",
+     "id": "dealer/dashboard.b.after-pressing-lead-sources.react-aria1514569663-r-6",
      "label": "Download",
      "kind": "button",
-     "el": "#react-aria5044324228-_r_6_",
+     "el": "#react-aria1514569663-_r_6_",
      "href": null,
      "panel": "Where leads come from · after pressing 'Lead sources'",
      "about": "Download. (after pressing 'Lead sources')",
@@ -1903,6 +1903,266 @@
      "status": "live",
      "access": null,
      "code": "DAS-B48"
+    },
+    {
+     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.hide",
+     "label": "Hide",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "0 · after pressing 'How numbers are counted'",
+     "about": "Hide. (after pressing 'How numbers are counted')",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "DAS-B49"
+    },
+    {
+     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.numbers",
+     "label": "Numbers",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted · after pressing 'How numbers are counted'",
+     "about": "Numbers. (after pressing 'How numbers are counted')",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "DAS-B50"
+    },
+    {
+     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.fields",
+     "label": "Fields",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted · after pressing 'How numbers are counted'",
+     "about": "Fields. (after pressing 'How numbers are counted')",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "DAS-B51"
+    },
+    {
+     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.leads-received-dashboard-leads-of-the-dealer-whose-createdat",
+     "label": "Leads received Dashboard Leads of the dealer whose createdAt is in the range.",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted · after pressing 'How numbers are counted'",
+     "about": "Leads received Dashboard Leads of the dealer whose createdAt is in the range.. (after pressing 'How numbers are counted')",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "DAS-B52"
+    },
+    {
+     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.customer-replied-leads-dashboard-leads-of-the-dealer-any-lea",
+     "label": "Customer Replied (leads) Dashboard Leads of the dealer (any lead date) with at l",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted · after pressing 'How numbers are counted'",
+     "about": "Customer Replied (leads) Dashboard Leads of the dealer (any lead date) with at l. (after pressing 'How numbers are counted')",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "DAS-B53"
+    },
+    {
+     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.appointments-made-dashboard-bookings-of-the-dealer-created-i",
+     "label": "Appointments made Dashboard Bookings of the dealer created in the range (any sta",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted · after pressing 'How numbers are counted'",
+     "about": "Appointments made Dashboard Bookings of the dealer created in the range (any sta. (after pressing 'How numbers are counted')",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "DAS-B54"
+    },
+    {
+     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.appointments-for-these-dates-dashboard-bookings-of-the-deale",
+     "label": "Appointments for these dates Dashboard Bookings of the dealer set for a day in t",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted · after pressing 'How numbers are counted'",
+     "about": "Appointments for these dates Dashboard Bookings of the dealer set for a day in t. (after pressing 'How numbers are counted')",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "DAS-B55"
+    },
+    {
+     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.showed-dashboard-scheduled-bookings-appt-scheduled-marked-sh",
+     "label": "Showed Dashboard Scheduled bookings (appt.scheduled) marked showed, or completed",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted · after pressing 'How numbers are counted'",
+     "about": "Showed Dashboard Scheduled bookings (appt.scheduled) marked showed, or completed. (after pressing 'How numbers are counted')",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "DAS-B56"
+    },
+    {
+     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.customer-days-with-a-reply-dashboard-all-customer-dealer-loc",
+     "label": "Customer-days with a reply Dashboard All (customer, dealer-local day) pairs with",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted · after pressing 'How numbers are counted'",
+     "about": "Customer-days with a reply Dashboard All (customer, dealer-local day) pairs with. (after pressing 'How numbers are counted')",
+     "expect": "Only to a test contact: it is sent once, shows in the conversation, in the customer's language.",
+     "status": "live",
+     "access": null,
+     "code": "DAS-B57"
+    },
+    {
+     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.customer-days-replied-from-today-s-leads-dashboard-customer-",
+     "label": "Customer-days replied from today's leads Dashboard Customer-days whose reply lea",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted · after pressing 'How numbers are counted'",
+     "about": "Customer-days replied from today's leads Dashboard Customer-days whose reply lea. (after pressing 'How numbers are counted')",
+     "expect": "Only to a test contact: it is sent once, shows in the conversation, in the customer's language.",
+     "status": "live",
+     "access": null,
+     "code": "DAS-B58"
+    },
+    {
+     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.customer-days-replied-from-past-leads-dashboard-customer-day",
+     "label": "Customer-days replied from past leads Dashboard Customer-days whose reply lead i",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted · after pressing 'How numbers are counted'",
+     "about": "Customer-days replied from past leads Dashboard Customer-days whose reply lead i. (after pressing 'How numbers are counted')",
+     "expect": "Only to a test contact: it is sent once, shows in the conversation, in the customer's language.",
+     "status": "live",
+     "access": null,
+     "code": "DAS-B59"
+    },
+    {
+     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.customer-days-needing-review-dashboard-customer-days-whose-r",
+     "label": "Customer-days needing review Dashboard Customer-days whose reply could not be ti",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted · after pressing 'How numbers are counted'",
+     "about": "Customer-days needing review Dashboard Customer-days whose reply could not be ti. (after pressing 'How numbers are counted')",
+     "expect": "Only to a test contact: it is sent once, shows in the conversation, in the customer's language.",
+     "status": "live",
+     "access": null,
+     "code": "DAS-B60"
+    },
+    {
+     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.customer-days-replied-lead-7-days-old-overlapping-dashboard-",
+     "label": "Customer-days replied, lead 7+ days old (overlapping) Dashboard Customer-days wi",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted · after pressing 'How numbers are counted'",
+     "about": "Customer-days replied, lead 7+ days old (overlapping) Dashboard Customer-days wi. (after pressing 'How numbers are counted')",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "DAS-B61"
+    },
+    {
+     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.customer-days-replied-lead-15-days-old-overlapping-dashboard",
+     "label": "Customer-days replied, lead 15+ days old (overlapping) Dashboard Customer-days w",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted · after pressing 'How numbers are counted'",
+     "about": "Customer-days replied, lead 15+ days old (overlapping) Dashboard Customer-days w. (after pressing 'How numbers are counted')",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "DAS-B62"
+    },
+    {
+     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.customer-days-replied-lead-30-days-old-overlapping-dashboard",
+     "label": "Customer-days replied, lead 30+ days old (overlapping) Dashboard Customer-days w",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted · after pressing 'How numbers are counted'",
+     "about": "Customer-days replied, lead 30+ days old (overlapping) Dashboard Customer-days w. (after pressing 'How numbers are counted')",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "DAS-B63"
+    },
+    {
+     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.customer-days-replied-lead-60-days-old-overlapping-dashboard",
+     "label": "Customer-days replied, lead 60+ days old (overlapping) Dashboard Customer-days w",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted · after pressing 'How numbers are counted'",
+     "about": "Customer-days replied, lead 60+ days old (overlapping) Dashboard Customer-days w. (after pressing 'How numbers are counted')",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "DAS-B64"
+    },
+    {
+     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.customer-days-replied-lead-60-90-days-old-dashboard-customer",
+     "label": "Customer-days replied, lead 60-90 days old Dashboard Customer-days with lead age",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted · after pressing 'How numbers are counted'",
+     "about": "Customer-days replied, lead 60-90 days old Dashboard Customer-days with lead age. (after pressing 'How numbers are counted')",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "DAS-B65"
+    },
+    {
+     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.customer-days-replied-lead-older-than-90-days-came-back-afte",
+     "label": "Customer-days replied, lead older than 90 days (came back after follow-ups ended",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted · after pressing 'How numbers are counted'",
+     "about": "Customer-days replied, lead older than 90 days (came back after follow-ups ended. (after pressing 'How numbers are counted')",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "DAS-B66"
+    },
+    {
+     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.page-buttons-previous-next-number",
+     "label": "Page buttons (previous / next / number)",
+     "kind": "link",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted · after pressing 'How numbers are counted'",
+     "about": "Pages through a long list. (after pressing 'How numbers are counted')",
+     "expect": "The next / previous page of rows shows; the page number is highlighted.",
+     "status": "live",
+     "access": null,
+     "code": "DAS-B67"
+    },
+    {
+     "id": "dealer/dashboard.b.after-pressing-how-numbers-are-counted.next",
+     "label": "› Next",
+     "kind": "link",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted · after pressing 'How numbers are counted'",
+     "about": "› Next. (after pressing 'How numbers are counted')",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "DAS-B68"
     }
    ],
    "fields": [
@@ -2091,6 +2351,18 @@
      "kind": "select",
      "panel": "0 · after pressing 'Data health'",
      "tip": ""
+    },
+    {
+     "label": "Report",
+     "kind": "select",
+     "panel": "How each number is counted · after pressing 'How numbers are counted'",
+     "tip": ""
+    },
+    {
+     "label": "Search a number",
+     "kind": "input:text",
+     "panel": "How each number is counted · after pressing 'How numbers are counted'",
+     "tip": ""
     }
    ],
    "panels": [
@@ -2139,6 +2411,12 @@
      "via": "Show 'Data health'",
      "buttons": 2,
      "fields": 5
+    },
+    {
+     "key": "dealer/dashboard~How numbers are counted",
+     "via": "Show 'How numbers are counted'",
+     "buttons": 20,
+     "fields": 2
     }
    ],
    "code": "DAS"
@@ -2212,24 +2490,37 @@
     },
     {
      "id": "dealer/leads.f.chat-reply",
-     "title": "Reply box in the conversation (chat style)",
-     "about": "Betsy, 25 Nov 2026: type right in the conversation; know which messages are the customer's.",
+     "title": "Chat-style conversation: oldest at the top, newest at the bottom",
+     "about": "The user, 27 Nov 2026.",
      "steps": [
-      "Open a test lead's conversation (SMS tab).",
-      "Read the messages.",
-      "Type in the Reply by text box above the newest message and send it to your own test phone."
+      "Open a test lead with several messages.",
+      "Scroll up; press Load older messages at the top if shown."
      ],
-     "expect": "The customer's messages are on the left with a green edge, ours on the right; the message sends from the box, appears in the conversation and the box empties.",
+     "expect": "The conversation opens at the newest message, right above the message box; the customer's messages are on the left (green), ours on the right (blue), notes and status changes in the middle; each message has one short line (who, when, delivered) and From / To show on hover.",
      "status": "live",
      "auto": [],
      "access": null,
      "code": "LEA-05"
     },
     {
-     "id": "dealer/leads.f.vehicle-photos",
-     "title": "Attach Vehicle: photos and facts",
+     "id": "dealer/leads.f.chat-plus",
+     "title": "The + menu: attach, car, link, template, Write with AI, note, call, status",
      "steps": [
-      "In the reply box press Templates, Write with AI, links, car photos → Attach Vehicle; search a stock # and pick the car.",
+      "Press + in the message box.",
+      "Attach a photo from your computer; send the text to your test phone.",
+      "Open + again: Attach a car, Send a link, Template, Write with AI, Add note, Call, Update status."
+     ],
+     "expect": "Each opens its tool; an attached photo arrives as a picture message (by email: a link); Add note / Call / Update status open the same windows as the buttons on the lead card.",
+     "status": "live",
+     "auto": [],
+     "access": null,
+     "code": "LEA-06"
+    },
+    {
+     "id": "dealer/leads.f.vehicle-photos",
+     "title": "Attach a car: photos and facts",
+     "steps": [
+      "+ → Attach a car; search a stock # and pick the car.",
       "Tick two photos; click Miles, Drivetrain and Vehicle page.",
       "Send to your own test phone."
      ],
@@ -2237,19 +2528,19 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-06"
+     "code": "LEA-07"
     },
     {
      "id": "dealer/leads.f.dealer-links",
      "title": "Send a link (credit application...)",
      "steps": [
-      "Open the reply tools; press Full Credit Application (or another link shown)."
+      "+ → Send a link; press Full Credit Application (or another link shown)."
      ],
      "expect": "The link is added to the message as a line; only links set in Settings → AI → Links are shown.",
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-07"
+     "code": "LEA-08"
     },
     {
      "id": "dealer/leads.f.open-lead",
@@ -2263,21 +2554,19 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-08"
+     "code": "LEA-09"
     },
     {
      "id": "dealer/leads.f.reply",
-     "title": "Reply (asks SMS or Email)",
+     "title": "Reply from the message box under the conversation",
      "steps": [
-      "On an open test lead press Reply.",
-      "Choose SMS, type a short test message, send it to your own test phone.",
-      "Do the same with Email."
+      "Open a test lead; type in the box at the bottom of the conversation (Text or Email picked beside it) and press Enter (text) or the send arrow."
      ],
-     "expect": "The message appears in the conversation tagged as staff; it reaches your test phone / inbox; it is written in the customer's language.",
+     "expect": "The message is added at the bottom of the conversation, tagged as staff, and reaches your test phone / inbox in the customer's language; there is no separate Reply button on the Leads page.",
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-09"
+     "code": "LEA-10"
     },
     {
      "id": "dealer/leads.f.edit-lead",
@@ -2290,7 +2579,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-10"
+     "code": "LEA-11"
     },
     {
      "id": "dealer/leads.f.actions-menu",
@@ -2305,7 +2594,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-11"
+     "code": "LEA-12"
     },
     {
      "id": "dealer/leads.f.staff-opted-out",
@@ -2320,7 +2609,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-12"
+     "code": "LEA-13"
     },
     {
      "id": "dealer/leads.f.stopped",
@@ -2332,7 +2621,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-13"
+     "code": "LEA-14"
     },
     {
      "id": "dealer/leads.t.G-006",
@@ -2346,7 +2635,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-14"
+     "code": "LEA-15"
     },
     {
      "id": "dealer/leads.t.G-009",
@@ -2360,7 +2649,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-15"
+     "code": "LEA-16"
     },
     {
      "id": "dealer/leads.t.G-010",
@@ -2374,7 +2663,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-16"
+     "code": "LEA-17"
     },
     {
      "id": "dealer/leads.t.G-027",
@@ -2388,7 +2677,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-17"
+     "code": "LEA-18"
     },
     {
      "id": "dealer/leads.t.G-082",
@@ -2402,7 +2691,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-18"
+     "code": "LEA-19"
     },
     {
      "id": "dealer/leads.t.G-083",
@@ -2416,7 +2705,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-19"
+     "code": "LEA-20"
     },
     {
      "id": "dealer/leads.t.M25-03",
@@ -2430,7 +2719,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-20"
+     "code": "LEA-21"
     },
     {
      "id": "dealer/leads.t.M25-07",
@@ -2444,7 +2733,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-21"
+     "code": "LEA-22"
     },
     {
      "id": "dealer/leads.t.M25-10",
@@ -2458,7 +2747,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-22"
+     "code": "LEA-23"
     },
     {
      "id": "dealer/leads.t.M25-11",
@@ -2472,7 +2761,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-23"
+     "code": "LEA-24"
     },
     {
      "id": "dealer/leads.t.M25-12",
@@ -2486,7 +2775,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-24"
+     "code": "LEA-25"
     },
     {
      "id": "dealer/leads.t.M25-16",
@@ -2500,7 +2789,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-25"
+     "code": "LEA-26"
     },
     {
      "id": "dealer/leads.t.M25-17",
@@ -2514,7 +2803,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-26"
+     "code": "LEA-27"
     },
     {
      "id": "dealer/leads.t.M25-18",
@@ -2528,7 +2817,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-27"
+     "code": "LEA-28"
     }
    ],
    "buttons": [
@@ -4056,10 +4345,10 @@
      "code": "CUP-B23"
     },
     {
-     "id": "dealer/customers/[id].b.x.react-aria9004375460-r-5",
+     "id": "dealer/customers/[id].b.x.react-aria1827596901-r-5",
      "label": "Forms",
      "kind": "button",
-     "el": "#react-aria9004375460-_r_5_",
+     "el": "#react-aria1827596901-_r_5_",
      "href": null,
      "panel": "Customer Details",
      "about": "Forms.",
@@ -5581,10 +5870,10 @@
      "code": "DEL-B03"
     },
     {
-     "id": "dealer/desk-log.b.x.react-aria8816037714-r-2",
+     "id": "dealer/desk-log.b.x.react-aria1372473780-r-2",
      "label": "More: check in, today's appointments, settings",
      "kind": "button",
-     "el": "#react-aria8816037714-_r_2_",
+     "el": "#react-aria1372473780-_r_2_",
      "href": null,
      "panel": "Desk Log",
      "about": "Filter: More: check in, today's appointments, settings.",
@@ -6491,6 +6780,19 @@
      "code": "AIM-B01"
     },
     {
+     "id": "dealer/ai/messages.b.x.cr-carla-reyes-5-minutes-ago-you-composer-test-from-the-new-",
+     "label": "CR Carla Reyes 5 minutes ago You: Composer test from the new box 1 3 +1217555804",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "AI Messages",
+     "about": "CR Carla Reyes 5 minutes ago You: Composer test from the new box 1 3 +1217555804.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "AIM-B02"
+    },
+    {
      "id": "dealer/ai/messages.b.x.rl-roberto-lazu-1-day-ago-trade-in-question-2-1-1-1914224100",
      "label": "RL Roberto Lazu 1 day ago Trade-in question 2 1 1 +19142241002",
      "kind": "button",
@@ -6499,19 +6801,6 @@
      "panel": "AI Messages",
      "about": "RL Roberto Lazu 1 day ago Trade-in question 2 1 1 +19142241002.",
      "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "AIM-B02"
-    },
-    {
-     "id": "dealer/ai/messages.b.x.cr-carla-reyes-17-days-ago-you-local-smoke-test-reply-1-2-12",
-     "label": "CR Carla Reyes 17 days ago You: local smoke test reply 1 2 +12175558045",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "AI Messages",
-     "about": "CR Carla Reyes 17 days ago You: local smoke test reply 1 2 +12175558045.",
-     "expect": "Only to a test contact: it is sent once, shows in the conversation, in the customer's language.",
      "status": "live",
      "access": null,
      "code": "AIM-B03"
@@ -7256,10 +7545,10 @@
      "code": "REP-B01"
     },
     {
-     "id": "dealer/reports.b.x.react-aria5030582122-r-5",
+     "id": "dealer/reports.b.x.react-aria771796955-r-3",
      "label": "Download report",
      "kind": "button",
-     "el": "#react-aria5030582122-_r_5_",
+     "el": "#react-aria771796955-_r_3_",
      "href": null,
      "panel": "Leads Dashboard",
      "about": "Download report.",
@@ -7620,17 +7909,251 @@
      "code": "REP-B29"
     },
     {
-     "id": "dealer/reports.b.x.show-all-numbers-14",
-     "label": "Show all numbers (14)",
+     "id": "dealer/reports.b.x.numbers",
+     "label": "Numbers",
      "kind": "button",
      "el": null,
      "href": null,
-     "panel": "Data health",
-     "about": "Filter: Show all numbers (14).",
-     "expect": "The list / numbers narrow to it; the active choice is highlighted; refresh keeps it.",
+     "panel": "How each number is counted",
+     "about": "Numbers.",
+     "expect": "Works; no error message.",
      "status": "live",
      "access": null,
      "code": "REP-B30"
+    },
+    {
+     "id": "dealer/reports.b.x.fields",
+     "label": "Fields",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted",
+     "about": "Fields.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "REP-B31"
+    },
+    {
+     "id": "dealer/reports.b.x.leads-received-dashboard-leads-of-the-dealer-whose-createdat",
+     "label": "Leads received Dashboard Leads of the dealer whose createdAt is in the range.",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted",
+     "about": "Leads received Dashboard Leads of the dealer whose createdAt is in the range..",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "REP-B32"
+    },
+    {
+     "id": "dealer/reports.b.x.customer-replied-leads-dashboard-leads-of-the-dealer-any-lea",
+     "label": "Customer Replied (leads) Dashboard Leads of the dealer (any lead date) with at l",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted",
+     "about": "Customer Replied (leads) Dashboard Leads of the dealer (any lead date) with at l.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "REP-B33"
+    },
+    {
+     "id": "dealer/reports.b.x.appointments-made-dashboard-bookings-of-the-dealer-created-i",
+     "label": "Appointments made Dashboard Bookings of the dealer created in the range (any sta",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted",
+     "about": "Appointments made Dashboard Bookings of the dealer created in the range (any sta.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "REP-B34"
+    },
+    {
+     "id": "dealer/reports.b.x.appointments-for-these-dates-dashboard-bookings-of-the-deale",
+     "label": "Appointments for these dates Dashboard Bookings of the dealer set for a day in t",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted",
+     "about": "Appointments for these dates Dashboard Bookings of the dealer set for a day in t.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "REP-B35"
+    },
+    {
+     "id": "dealer/reports.b.x.showed-dashboard-scheduled-bookings-appt-scheduled-marked-sh",
+     "label": "Showed Dashboard Scheduled bookings (appt.scheduled) marked showed, or completed",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted",
+     "about": "Showed Dashboard Scheduled bookings (appt.scheduled) marked showed, or completed.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "REP-B36"
+    },
+    {
+     "id": "dealer/reports.b.x.customer-days-with-a-reply-dashboard-all-customer-dealer-loc",
+     "label": "Customer-days with a reply Dashboard All (customer, dealer-local day) pairs with",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted",
+     "about": "Customer-days with a reply Dashboard All (customer, dealer-local day) pairs with.",
+     "expect": "Only to a test contact: it is sent once, shows in the conversation, in the customer's language.",
+     "status": "live",
+     "access": null,
+     "code": "REP-B37"
+    },
+    {
+     "id": "dealer/reports.b.x.customer-days-replied-from-today-s-leads-dashboard-customer-",
+     "label": "Customer-days replied from today's leads Dashboard Customer-days whose reply lea",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted",
+     "about": "Customer-days replied from today's leads Dashboard Customer-days whose reply lea.",
+     "expect": "Only to a test contact: it is sent once, shows in the conversation, in the customer's language.",
+     "status": "live",
+     "access": null,
+     "code": "REP-B38"
+    },
+    {
+     "id": "dealer/reports.b.x.customer-days-replied-from-past-leads-dashboard-customer-day",
+     "label": "Customer-days replied from past leads Dashboard Customer-days whose reply lead i",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted",
+     "about": "Customer-days replied from past leads Dashboard Customer-days whose reply lead i.",
+     "expect": "Only to a test contact: it is sent once, shows in the conversation, in the customer's language.",
+     "status": "live",
+     "access": null,
+     "code": "REP-B39"
+    },
+    {
+     "id": "dealer/reports.b.x.customer-days-needing-review-dashboard-customer-days-whose-r",
+     "label": "Customer-days needing review Dashboard Customer-days whose reply could not be ti",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted",
+     "about": "Customer-days needing review Dashboard Customer-days whose reply could not be ti.",
+     "expect": "Only to a test contact: it is sent once, shows in the conversation, in the customer's language.",
+     "status": "live",
+     "access": null,
+     "code": "REP-B40"
+    },
+    {
+     "id": "dealer/reports.b.x.customer-days-replied-lead-7-days-old-overlapping-dashboard-",
+     "label": "Customer-days replied, lead 7+ days old (overlapping) Dashboard Customer-days wi",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted",
+     "about": "Customer-days replied, lead 7+ days old (overlapping) Dashboard Customer-days wi.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "REP-B41"
+    },
+    {
+     "id": "dealer/reports.b.x.customer-days-replied-lead-15-days-old-overlapping-dashboard",
+     "label": "Customer-days replied, lead 15+ days old (overlapping) Dashboard Customer-days w",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted",
+     "about": "Customer-days replied, lead 15+ days old (overlapping) Dashboard Customer-days w.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "REP-B42"
+    },
+    {
+     "id": "dealer/reports.b.x.customer-days-replied-lead-30-days-old-overlapping-dashboard",
+     "label": "Customer-days replied, lead 30+ days old (overlapping) Dashboard Customer-days w",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted",
+     "about": "Customer-days replied, lead 30+ days old (overlapping) Dashboard Customer-days w.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "REP-B43"
+    },
+    {
+     "id": "dealer/reports.b.x.customer-days-replied-lead-60-days-old-overlapping-dashboard",
+     "label": "Customer-days replied, lead 60+ days old (overlapping) Dashboard Customer-days w",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted",
+     "about": "Customer-days replied, lead 60+ days old (overlapping) Dashboard Customer-days w.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "REP-B44"
+    },
+    {
+     "id": "dealer/reports.b.x.customer-days-replied-lead-60-90-days-old-dashboard-customer",
+     "label": "Customer-days replied, lead 60-90 days old Dashboard Customer-days with lead age",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted",
+     "about": "Customer-days replied, lead 60-90 days old Dashboard Customer-days with lead age.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "REP-B45"
+    },
+    {
+     "id": "dealer/reports.b.x.customer-days-replied-lead-older-than-90-days-came-back-afte",
+     "label": "Customer-days replied, lead older than 90 days (came back after follow-ups ended",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted",
+     "about": "Customer-days replied, lead older than 90 days (came back after follow-ups ended.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "REP-B46"
+    },
+    {
+     "id": "dealer/reports.b.x.page-buttons-previous-next-number",
+     "label": "Page buttons (previous / next / number)",
+     "kind": "link",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted",
+     "about": "Pages through a long list.",
+     "expect": "The next / previous page of rows shows; the page number is highlighted.",
+     "status": "live",
+     "access": null,
+     "code": "REP-B47"
+    },
+    {
+     "id": "dealer/reports.b.x.next",
+     "label": "› Next",
+     "kind": "link",
+     "el": null,
+     "href": null,
+     "panel": "How each number is counted",
+     "about": "› Next.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "REP-B48"
     },
     {
      "id": "dealer/reports.b.x.emails-visible",
@@ -7643,7 +8166,7 @@
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
-     "code": "REP-B31"
+     "code": "REP-B49"
     },
     {
      "id": "dealer/reports.b.x.sms-visible",
@@ -7656,7 +8179,7 @@
      "expect": "Only to a test contact: it is sent once, shows in the conversation, in the customer's language.",
      "status": "live",
      "access": null,
-     "code": "REP-B32"
+     "code": "REP-B50"
     }
    ],
    "fields": [
@@ -7667,40 +8190,22 @@
      "tip": ""
     },
     {
-     "label": "Source",
+     "label": "Report",
      "kind": "select",
-     "panel": "0",
+     "panel": "How each number is counted",
      "tip": ""
     },
     {
-     "label": "Lead source",
-     "kind": "select",
-     "panel": "0",
-     "tip": ""
-    },
-    {
-     "label": "Assigned staff",
-     "kind": "select",
-     "panel": "0",
-     "tip": ""
-    },
-    {
-     "label": "AI or human",
-     "kind": "select",
-     "panel": "0",
-     "tip": ""
-    },
-    {
-     "label": "Sales or service",
-     "kind": "select",
-     "panel": "0",
+     "label": "Search a number",
+     "kind": "input:text",
+     "panel": "How each number is counted",
      "tip": ""
     }
    ],
    "panels": [
     "Leads Dashboard",
     "CUSTOMER REPLIES BY LEAD AGE0 + 0 = 0 customer replied",
-    "Data health",
+    "How each number is counted",
     "Lead Sources",
     "Lead Status",
     "Lead Received",
@@ -9032,10 +9537,10 @@
    ],
    "buttons": [
     {
-     "id": "dealer/forms.b.x.react-aria5532102114-r-3",
+     "id": "dealer/forms.b.x.react-aria9062675390-r-3",
      "label": "Add a standard form",
      "kind": "button",
-     "el": "#react-aria5532102114-_r_3_",
+     "el": "#react-aria9062675390-_r_3_",
      "href": null,
      "panel": "Forms Library",
      "about": "Add a standard form.",
@@ -10155,10 +10660,10 @@
    ],
    "buttons": [
     {
-     "id": "dealer/subscribe.b.x.react-aria1551776446-r-2-tab-currentplan",
+     "id": "dealer/subscribe.b.x.react-aria7347045918-r-2-tab-currentplan",
      "label": "My Current Plan",
      "kind": "tab",
-     "el": "#react-aria1551776446-_r_2_-tab-currentplan",
+     "el": "#react-aria7347045918-_r_2_-tab-currentplan",
      "href": null,
      "panel": "My Subscription",
      "about": "Tab: shows the 'My Current Plan' part of My subscription.",
@@ -10168,10 +10673,10 @@
      "code": "MYS-B01"
     },
     {
-     "id": "dealer/subscribe.b.x.react-aria1551776446-r-2-tab-subscriptionplan",
+     "id": "dealer/subscribe.b.x.react-aria7347045918-r-2-tab-subscriptionplan",
      "label": "Subscription Plans",
      "kind": "tab",
-     "el": "#react-aria1551776446-_r_2_-tab-subscriptionplan",
+     "el": "#react-aria7347045918-_r_2_-tab-subscriptionplan",
      "href": null,
      "panel": "My Subscription",
      "about": "Tab: shows the 'Subscription Plans' part of My subscription.",
@@ -11353,10 +11858,10 @@
      "code": "AAI-B19"
     },
     {
-     "id": "admin/ai-studio.b.x.react-aria5385019980-r-1-tab-edit",
+     "id": "admin/ai-studio.b.x.react-aria2406124904-r-1-tab-edit",
      "label": "Edit",
      "kind": "tab",
-     "el": "#react-aria5385019980-_r_1_-tab-edit",
+     "el": "#react-aria2406124904-_r_1_-tab-edit",
      "href": null,
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "about": "Tab: shows the 'Edit' part of AI Studio.",
@@ -11366,10 +11871,10 @@
      "code": "AAI-B20"
     },
     {
-     "id": "admin/ai-studio.b.x.react-aria5385019980-r-1-tab-live",
+     "id": "admin/ai-studio.b.x.react-aria2406124904-r-1-tab-live",
      "label": "Live (v1)",
      "kind": "tab",
-     "el": "#react-aria5385019980-_r_1_-tab-live",
+     "el": "#react-aria2406124904-_r_1_-tab-live",
      "href": null,
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "about": "Tab: shows the 'Live (v1)' part of AI Studio.",
@@ -11379,10 +11884,10 @@
      "code": "AAI-B21"
     },
     {
-     "id": "admin/ai-studio.b.x.react-aria5385019980-r-1-tab-history",
+     "id": "admin/ai-studio.b.x.react-aria2406124904-r-1-tab-history",
      "label": "History (1)",
      "kind": "tab",
-     "el": "#react-aria5385019980-_r_1_-tab-history",
+     "el": "#react-aria2406124904-_r_1_-tab-history",
      "href": null,
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "about": "Tab: shows the 'History (1)' part of AI Studio.",
@@ -13886,10 +14391,10 @@
      "code": "APA-B05"
     },
     {
-     "id": "admin/package.b.in-the-window-menu-that-add-package-opens.react-aria2575402185-r-1-tab-general",
+     "id": "admin/package.b.in-the-window-menu-that-add-package-opens.react-aria3786344362-r-1-tab-general",
      "label": "General",
      "kind": "tab",
-     "el": "#react-aria2575402185-_r_1_-tab-general",
+     "el": "#react-aria3786344362-_r_1_-tab-general",
      "href": null,
      "panel": "Add Package · in the window / menu that 'Add Package' opens",
      "about": "Tab: shows the 'General' part of Packages. (in the window / menu that 'Add Package' opens)",
@@ -13899,10 +14404,10 @@
      "code": "APA-B06"
     },
     {
-     "id": "admin/package.b.in-the-window-menu-that-add-package-opens.react-aria2575402185-r-1-tab-features",
+     "id": "admin/package.b.in-the-window-menu-that-add-package-opens.react-aria3786344362-r-1-tab-features",
      "label": "Features",
      "kind": "tab",
-     "el": "#react-aria2575402185-_r_1_-tab-features",
+     "el": "#react-aria3786344362-_r_1_-tab-features",
      "href": null,
      "panel": "Add Package · in the window / menu that 'Add Package' opens",
      "about": "Tab: shows the 'Features' part of Packages. (in the window / menu that 'Add Package' opens)",
