@@ -92,7 +92,7 @@ jobs:
           CRM_ENV: ${{ secrets.STAGING_CRM_ENV }}
         run: |
           rsync -az --delete -e "$SSH" \
-            --exclude='.env*' --exclude='node_modules' --exclude='.next/cache' --exclude='logs' \
+            --exclude='.env*' --exclude='/node_modules' --exclude='/.next/cache' --exclude='/logs' \
             aidmvcs-be-dev/ "$TARGET:$APP_ROOT/aidmvcs-be-dev/"
           printf '%s\n' "$CRM_ENV" | \
             $SSH "$TARGET" "install -m 600 /dev/null '$APP_ROOT/aidmvcs-be-dev/.env' && cat > '$APP_ROOT/aidmvcs-be-dev/.env'"
