@@ -59,6 +59,8 @@ const drillRangeText = (range) => {
 const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, selectedLeadId, compact = false, ...props }, ref) => {
   // All hooks must be called unconditionally at the top level
   const canAssignLeads = useCan("Assign Leads");
+  // Reassigning several leads at once needs its own permission (Betsy, 25 Nov 2026; app/lib/bulkPermission.js).
+  const canBulkReassign = useCan("Bulk Reassign Leads") && canAssignLeads;
   // SOW B b5 (G-010), the user's design of 24 Nov 2026: Actions > Select leads turns on bulk mode (a tick column, the
   // bulk bar and the scope line). `selected` is the truth: lead id -> { _id, name, owner, status }. `scope` only says
   // how it was made (all matching / this page / first N / pages / ticked one by one); `unticked` counts leads taken
@@ -148,6 +150,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       status: params.get('status') || '',
       lead_source: params.get('lead_source') || '',
       department: params.get('department') || '', // Betsy, 14 Nov 2026: Sales / Service / Parts
+      owner: params.get('owner') || '', // one staff member's leads (Betsy, 25 Nov 2026: bulk reassign a rep's leads)
       source: params.get('source') || '',
       message_filter: params.get('message_filter') || '',
       messages: params.get('messages') || '', // the dashboard's Messages card: who we messaged in the range
@@ -183,6 +186,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     status: filters.status,
     lead_source: filters.lead_source,
     department: filters.department,
+    owner: filters.owner,
     source: filters.source,
     message_filter: filters.message_filter
   });
@@ -277,6 +281,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       if (filters.stopped) queryParams += '&stopped=1';
       if (filters.lead_source) queryParams += `&lead_source=${encodeURIComponent(filters.lead_source)}`;
       if (filters.department) queryParams += `&department=${encodeURIComponent(filters.department)}`;
+      if (filters.owner) queryParams += `&owner=${encodeURIComponent(filters.owner)}`;
       if (filters.source) queryParams += `&source=${encodeURIComponent(filters.source)}`;
       if (filters.message_filter) queryParams += `&message_filter=${encodeURIComponent(filters.message_filter)}`;
       if (filters.messages) queryParams += `&messages=${encodeURIComponent(filters.messages)}`;
@@ -543,6 +548,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       url += drillQuery(filters);
       if (filters.lead_source) url += `&lead_source=${encodeURIComponent(filters.lead_source)}`;
       if (filters.department) url += `&department=${encodeURIComponent(filters.department)}`;
+      if (filters.owner) url += `&owner=${encodeURIComponent(filters.owner)}`;
       if (filters.source) url += `&source=${encodeURIComponent(filters.source)}`;
       if (filters.dateRange.startDate) url += `&startDate=${filters.dateRange.startDate.toISOString()}`;
       if (filters.dateRange.endDate) url += `&endDate=${filters.dateRange.endDate.toISOString()}`;
@@ -596,6 +602,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     if (filters.stopped) q += '&stopped=1';
     if (filters.lead_source) q += `&lead_source=${encodeURIComponent(filters.lead_source)}`;
     if (filters.department) q += `&department=${encodeURIComponent(filters.department)}`;
+    if (filters.owner) q += `&owner=${encodeURIComponent(filters.owner)}`;
     if (filters.source) q += `&source=${encodeURIComponent(filters.source)}`;
     if (filters.message_filter) q += `&message_filter=${encodeURIComponent(filters.message_filter)}`;
     if (filters.messages) q += `&messages=${encodeURIComponent(filters.messages)}`;
@@ -608,7 +615,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     return q;
   };
   const filtersActive = Boolean(filters.q || filters.name || filters.email || filters.phone || filters.status || filters.lead_source
-    || filters.department || filters.source || filters.message_filter || filters.messages || filters.stopped
+    || filters.department || filters.owner || filters.source || filters.message_filter || filters.messages || filters.stopped
     || filters.replyCohort || filters.apptAttribution || filters.reportKpi || filters.dateRange.startDate
     || (assignmentFilter && assignmentFilter !== 'all'));
   const lightRow = (l) => ({ _id: String(l._id), name: l.name || null, owner: l.assigned_to?.name || null,
@@ -686,10 +693,10 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
   // "Filters on": each applied filter as a chip; its x clears that filter only (the same way the field does).
   const FILTER_CHIPS = [
     ['q', 'Search'], ['name', 'Name'], ['email', 'Email'], ['phone', 'Phone'], ['status', 'Status'], ['lead_source', 'Lead source'],
-    ['department', 'Department'], ['source', 'Source type'], ['message_filter', 'Messages'],
+    ['department', 'Department'], ['owner', 'Assigned to'], ['source', 'Source type'], ['message_filter', 'Messages'],
   ];
   const filterChips = [
-    ...FILTER_CHIPS.filter(([key]) => filters[key]).map(([key, label]) => ({ key, text: `${label}: ${key === 'status' ? statusLabel(filters[key]) : key === 'source' ? (UP_TYPE_OPTIONS.find(([v]) => v === filters[key])?.[1] || filters[key]) : key === 'department' ? (DEPT_TABS.find(([v]) => v === filters[key])?.[1] || filters[key]) : filters[key]}` })),
+    ...FILTER_CHIPS.filter(([key]) => filters[key]).map(([key, label]) => ({ key, text: `${label}: ${key === 'status' ? statusLabel(filters[key]) : key === 'source' ? (UP_TYPE_OPTIONS.find(([v]) => v === filters[key])?.[1] || filters[key]) : key === 'department' ? (DEPT_TABS.find(([v]) => v === filters[key])?.[1] || filters[key]) : key === 'owner' ? (staffList.find((st) => String(st._id) === filters[key])?.name || 'Staff member') : filters[key]}` })),
     ...(filters.dateRange.startDate ? [{ key: 'dateRange', text: `Dates: ${moment(filters.dateRange.startDate).format('MMM D')} – ${moment(filters.dateRange.endDate || filters.dateRange.startDate).format('MMM D, YYYY')}` }] : []),
     ...(filters.stopped ? [{ key: 'stopped', text: 'Stopped' }] : []),
   ];
@@ -748,7 +755,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
 
   const applyFilters = useCallback(() => {
     const params = new URLSearchParams(window.location.search);
-    const textKeys = ['q', 'name', 'email', 'phone', 'status', 'lead_source', 'department', 'source', 'message_filter'];
+    const textKeys = ['q', 'name', 'email', 'phone', 'status', 'lead_source', 'department', 'owner', 'source', 'message_filter'];
     textKeys.forEach(key => {
       if (inputValues[key]) params.set(key, inputValues[key]);
       else params.delete(key);
@@ -770,6 +777,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       status: inputValues.status,
       lead_source: inputValues.lead_source,
       department: inputValues.department,
+      owner: inputValues.owner,
       source: inputValues.source,
       message_filter: inputValues.message_filter,
       page: 1
@@ -806,6 +814,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     inputValues.status,
     inputValues.lead_source,
     inputValues.department,
+    inputValues.owner,
     inputValues.source,
     inputValues.message_filter,
   ]);
@@ -848,6 +857,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       status: "",
       lead_source: "",
       department: "",
+      owner: "",
       source: "",
       message_filter: ""
     });
@@ -859,6 +869,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       status: "",
       lead_source: "",
       department: "",
+      owner: "",
       source: "",
       message_filter: "",
       dateRange: {
@@ -982,6 +993,8 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     else params.delete('status');
     if (filters.lead_source) params.set('lead_source', filters.lead_source);
     else params.delete('lead_source');
+    if (filters.owner) params.set('owner', filters.owner);
+    else params.delete('owner');
     if (filters.department) params.set('department', filters.department);
     else params.delete('department');
     if (filters.source) params.set('source', filters.source);
@@ -1040,6 +1053,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       if (filters.stopped) queryParams += '&stopped=1';
       if (filters.lead_source) queryParams += `&lead_source=${encodeURIComponent(filters.lead_source)}`;
       if (filters.department) queryParams += `&department=${encodeURIComponent(filters.department)}`;
+      if (filters.owner) queryParams += `&owner=${encodeURIComponent(filters.owner)}`;
       if (filters.source) queryParams += `&source=${encodeURIComponent(filters.source)}`;
       if (filters.message_filter) queryParams += `&message_filter=${encodeURIComponent(filters.message_filter)}`;
       if (filters.messages) queryParams += `&messages=${encodeURIComponent(filters.messages)}`;
@@ -1786,6 +1800,15 @@ useImperativeHandle(ref, () => ({
                   {inputValues.source && !inputValues.source.startsWith("up:") && <option value={inputValues.source}>{inputValues.source}</option>}
                 </Form.Select>
               </Col>
+              {canManageLeads && (
+                <Col xxl={2} xl={2} lg={2} md={2} xs={6}>
+                  <Form.Select name="owner" value={inputValues.owner || ""} onChange={handleInputChange} size="sm"
+                    aria-label="Assigned to">
+                    <option value="">Anyone (assigned to)</option>
+                    {staffList.map((st) => <option key={st._id} value={st._id}>{st.name}</option>)}
+                  </Form.Select>
+                </Col>
+              )}
               <Col xxl={1} xl={2} lg={2} md={2} xs={6}>
                 <Form.Select
                   name="message_filter"
@@ -1892,7 +1915,7 @@ useImperativeHandle(ref, () => ({
         )}
         {selectMode && !compact && (
           <div className="mt-2">
-            <BulkBar count={selected.size} canAssign={canAssignLeads} canChangeStatus={canManageLeads}
+            <BulkBar count={selected.size} canAssign={canBulkReassign} canChangeStatus={canManageLeads}
               busy={scopeLoading} exporting={bulkExporting} onAction={bulkAction} onClose={stopSelecting} />
             <BulkScope scope={scope} count={selected.size} pageCount={leads.length} perPage={pagination.itemsPerPage || 10}
               matching={matching.leads ? matching.total : pagination.totalItems} capped={matching.capped}

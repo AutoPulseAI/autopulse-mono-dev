@@ -9,6 +9,7 @@ import { requireUser } from '@lib/apiGuard';
 import { hasPermission } from '@lib/staffPermission';
 import { READ_ONLY, STANDARD_ROLES } from '@lib/standardRoles';
 import { ensureDismissPermission } from '@lib/taskPermission';
+import { ensureBulkReassignPermission } from '@lib/bulkPermission';
 
 export const runtime = 'nodejs';
 
@@ -26,6 +27,7 @@ export async function POST(req) {
     await Permission.create({ permission_name: READ_ONLY, entity: 'dealer', group: 'Leads Management' });
   }
   await ensureDismissPermission();
+  await ensureBulkReassignPermission();
   const perms = await Permission.find({ entity: 'dealer' }).select('permission_name').lean();
   const idOf = new Map(perms.map((p) => [p.permission_name, p._id]));
   const created = []; const skipped = [];

@@ -206,7 +206,14 @@ export async function GET(req) {
     }
   
     // 'all' or no filter = no additional restriction
-    
+
+    // One person's leads (Betsy, 25 Nov 2026: pick everything assigned to a rep who left, then bulk reassign). Only
+    // narrows: staff limited to their own leads above keep that limit.
+    const ownerParam = url.searchParams.get("owner");
+    if (ownerParam && !query.assigned_to && !unassignedFilter && mongoose.isValidObjectId(ownerParam)) {
+      query.assigned_to = new mongoose.Types.ObjectId(ownerParam);
+    }
+
     if (name) query.name = { $regex: name, $options: "i" };
     if (email) query.email = { $regex: email, $options: "i" };
     if (phone) {

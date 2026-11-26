@@ -1,5 +1,6 @@
 // Client meeting 25 Nov 2026 (planning/MEETING-25-NOV-ACTIONS.md): the items built from it.
 //   #8 inventory report: leads by car in stock (stock #, days in stock).
+//   #12 reassigning several leads at once needs "Bulk Reassign Leads"; one lead needs only "Assign Leads".
 //   #13 lead type: Internet / Phone / Walk-in / Campaign, else 'Not set' (no 'Other').
 //   #7 one search box on the Leads page: name, phone, email or stock number.
 //   #2 a lead is "tethered, not merged" to a customer with DealerVault (sale / service) history: own customer, shown as
@@ -43,6 +44,9 @@ const { oneBoxConditions } = await import('./app/lib/leadSearch.js');
 const { default: Vehicle } = await import('./app/models/Vehicle.js');
 const { evaluateKpi } = await import('./app/lib/reporting/registry.js');
 const { upType } = await import('./app/lib/reporting/normalize.js');
+const { canReassign, ensureBulkReassignPermission, BULK_REASSIGN } = await import('./app/lib/bulkPermission.js');
+const { default: Permission } = await import('./app/models/Permission.js');
+const { default: Role } = await import('./app/models/Role.js');
 
 const DEALER = new mongoose.Types.ObjectId().toString();
 let dbUp = false;
@@ -145,4 +149,23 @@ test('#13 lead type has no "Other": unknown is "Not set"; campaign stays', () =>
   assert.equal(upType({ source: 'manual' }), 'Not set');
   assert.equal(upType({ lead_source: 'campaign_Spring' }), 'Campaign');
   assert.equal(upType({ contact_type: 'walk_in' }), 'Walk-in');
+});
+
+db('#12 bulk reassign: staff with only "Assign Leads" reassign one lead, not several; Sales Manager gets the new permission', async () => {
+  const assign = await Permission.create({ permission_name: 'Assign Leads', entity: 'dealer', group: 'Leads Management' });
+  const rep = await Role.create({ name: 'BDC Rep', entity: 'dealer', entity_id: DEALER, permissions: [assign._id] });
+  const mgr = await Role.create({ name: 'Sales Manager', entity: 'dealer', entity_id: DEALER, permissions: [assign._id] });
+  await ensureBulkReassignPermission();
+  const bulk = await Permission.findOne({ permission_name: BULK_REASSIGN }).lean();
+  assert.ok(bulk, 'the permission is created');
+  assert.ok((await Role.findById(mgr._id).lean()).permissions.map(String).includes(String(bulk._id)));
+  assert.ok(!(await Role.findById(rep._id).lean()).permissions.map(String).includes(String(bulk._id)));
+  const mk = (role, n) => User.create({ name: n, email: `${n}${Date.now()}@x.test`, password: 'x', type: 'dealer',
+    parent_id: DEALER, role });
+  const repUser = await mk(rep._id, 'rep');
+  const mgrUser = await mk(mgr._id, 'mgr');
+  assert.equal(await canReassign(repUser, 1), true);
+  assert.equal(await canReassign(repUser, 2), false);
+  assert.equal(await canReassign(mgrUser, 25), true);
+  assert.equal(await canReassign({ type: 'dealer', parent_id: null, _id: DEALER }, 50), true, 'the dealership account');
 });

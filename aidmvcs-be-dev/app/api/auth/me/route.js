@@ -8,6 +8,7 @@ import { renewedToken, SESSION_DAYS } from "@lib/session";
 import Subscription from "@models/Subscription";
 import Package from "@models/Package";
 import { DISMISS_TASKS, ensureDismissPermission } from "@lib/taskPermission";
+import { BULK_REASSIGN, ensureBulkReassignPermission } from "@lib/bulkPermission";
 
 export async function GET(req) {
   try {
@@ -75,6 +76,8 @@ export async function GET(req) {
     // always hold it, as the server's check does.
     await ensureDismissPermission().catch(() => null);
     if (user.type === "dealer" && !user.parent_id && !permissions.includes(DISMISS_TASKS)) permissions.push(DISMISS_TASKS);
+    await ensureBulkReassignPermission().catch(() => null);
+    if (user.type === "dealer" && !user.parent_id && !permissions.includes(BULK_REASSIGN)) permissions.push(BULK_REASSIGN);
 
     // Prepare subscription data
     let subscriptionData = null;
