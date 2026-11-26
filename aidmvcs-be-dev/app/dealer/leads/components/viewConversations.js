@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { formatTimestamp } from "../../../utils/dateUtils";
 import useFetch from "../../../hooks/useFetch";
-import { Col, Row, Button, Spinner, Nav, Badge } from "react-bootstrap";
+import { Col, Row, Button, Spinner, Nav, Badge, Dropdown } from "react-bootstrap";
 import EmailReplyModal from "./EmailReplyModal";
 import { DEPARTMENT_NAMES, canReplyInDepartment, leadDepartment } from "@lib/departmentNames";
 import DateRangePickerComponent from "../../components/DateRangePicker";
@@ -81,6 +81,10 @@ export default function ViewConversations({
   const { fetchData } = useFetch();
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [showReplyModal, setShowReplyModal] = useState(false);
+  const [replyChannel, setReplyChannel] = useState(null); // the profile's SMS Reply / Email Reply (null = follow the tab)
+  // The newest real message (not a note) on a channel - what a reply on that channel answers.
+  const latestOn = (ch) => [...emails].filter((e) => e.communication_type === ch && !isNoteRecord(e) && e.message_id)
+    .sort((a, b) => new Date(b.timestamp || b.createdAt || 0) - new Date(a.timestamp || a.createdAt || 0))[0] || null;
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [editNote, setEditNote] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -879,11 +883,40 @@ export default function ViewConversations({
                         <i className="fa-regular fa-lock me-1" />{DEPARTMENT_NAMES[leadDepartment(lead)]} lead - {DEPARTMENT_NAMES[leadDepartment(lead)]} staff reply
                       </span>
                     )}
-                    {selectedConversation && getReplyChannel(lead, activeChannelTab, stoppedChannels) && replyAllowed && (
-                      <Button variant="custom" size="sm" className="act_sms" onClick={() => setShowReplyModal(true)}>
-                        <i className={actionsTarget ? "fa-duotone fa-comment-sms" : "fa-regular fa-reply me-1"}></i>
-                        {getReplyChannel(lead, activeChannelTab, stoppedChannels) === 'sms' ? 'SMS Reply' : 'Email Reply'}
-                      </Button>
+                    {/* Customer profile (25 Nov 2026): a reply button per channel the lead has a conversation on - SMS Reply and
+                        Email Reply side by side, instead of one button that follows the open conversation tab. */}
+                    {actionsTarget && replyAllowed && ["sms", "email"].map((ch) => {
+                      const can = ch === "sms" ? lead?.phone && !stoppedChannels.sms : lead?.email && !stoppedChannels.email;
+                      if (!can || !latestOn(ch)) return null;
+                      return (
+                        <Button key={ch} variant="custom" size="sm" className={ch === "sms" ? "act_sms" : "act_email"}
+                          onClick={() => { setReplyChannel(ch); setShowReplyModal(true); }}>
+                          <i className={ch === "sms" ? "fa-duotone fa-comment-sms" : "fa-duotone fa-envelope-open-text"}></i>
+                          {ch === "sms" ? "SMS Reply" : "Email Reply"}
+                        </Button>
+                      );
+                    })}
+                    {/* Leads page (26 Nov 2026): one "Reply" button; it asks SMS or Email, instead of a button whose name
+                        changes with the open tab. A channel with no phone / email, or that the customer opted out of, is
+                        shown but cannot be picked. */}
+                    {!actionsTarget && selectedConversation && getReplyChannel(lead, activeChannelTab, stoppedChannels) && replyAllowed && (
+                      <Dropdown className="d-inline-block">
+                        <Dropdown.Toggle variant="custom" size="sm" className="act_sms" id={`reply-${lead?._id}`}>
+                          <i className="fa-regular fa-reply me-1"></i>Reply
+                        </Dropdown.Toggle>
+                        <Dropdown.Menu>
+                          {["sms", "email"].map((ch) => {
+                            const has = ch === "sms" ? lead?.phone : lead?.email;
+                            const why = !has ? (ch === "sms" ? "no phone" : "no email") : stoppedChannels[ch] ? "opted out" : "";
+                            return (
+                              <Dropdown.Item key={ch} disabled={!!why} onClick={() => { setReplyChannel(ch); setShowReplyModal(true); }}>
+                                <i className={`fa-solid ${ch === "sms" ? "fa-comment-sms" : "fa-envelope"} me-2`}></i>
+                                {ch === "sms" ? "SMS reply" : "Email reply"}{why && <small className="text-muted ms-1">({why})</small>}
+                              </Dropdown.Item>
+                            );
+                          })}
+                        </Dropdown.Menu>
+                      </Dropdown>
                     )}
                     {lead?.phone && <CallButton phone={lead.phone} leadId={lead._id} dealerId={lead.dealer_id} size="sm"
                       className={actionsTarget ? "act_call" : ""} icon={actionsTarget ? "fa-duotone fa-phone-office" : null} />}
@@ -1351,8 +1384,8 @@ export default function ViewConversations({
           lead={lead}
           dealer_id={lead.dealer_id}
           onClose={() => setShowReplyModal(false)}
-          selectedConversation={selectedConversation}
-          communicationType={getReplyChannel(lead, activeChannelTab, stoppedChannels) || selectedConversation.communication_type || 'email'}
+          selectedConversation={(replyChannel && latestOn(replyChannel)) || selectedConversation}
+          communicationType={replyChannel || getReplyChannel(lead, activeChannelTab, stoppedChannels) || selectedConversation.communication_type || 'email'}
           agentViewLanguage={agentViewLanguage}
           leadUserLanguage={latestConversationUserLanguageLabel}
           showTranslationEnabled={showTranslation}

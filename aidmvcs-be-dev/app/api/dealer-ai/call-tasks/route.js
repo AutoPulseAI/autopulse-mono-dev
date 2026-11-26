@@ -61,6 +61,7 @@ export async function GET(req) {
         phone: task.phone || lead.phone || null,
         vehicle: lead.vehicle || null,
         crm_status: lead.crm_status || null,
+        customer_id: task.customer_id || lead.customer_id || null,
       };
     }),
   });

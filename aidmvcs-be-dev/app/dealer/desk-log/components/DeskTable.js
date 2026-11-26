@@ -38,6 +38,8 @@ const Clip = ({ text, className = "", children }) => (
 );
 
 const leadLink = (id) => `/dealer/leads?selectedLead=true&leadId=${id}`;
+// The customer's name opens their profile (Bibi, 26 Nov 2026); a visit with no customer yet opens the lead.
+const personLink = (row) => (row.customer_id ? `/dealer/customers/${row.customer_id}` : leadLink(row.lead_id));
 
 // What a saved outcome's rule did, in one line for the screen.
 function appliedText(a) {
@@ -197,7 +199,7 @@ export default function DeskTable({ rows, staff, tz, onChanged, onOpen, empty, d
                     {/* The design: the customer's name, blue and clickable. Everything else is one small icon with its
                         meaning on hover (24 Nov 2026), so every row stays one height. */}
                     <div className="dl_cust_line">
-                      <Link href={leadLink(row.lead_id)} onClick={() => rememberBack(leadLink(row.lead_id), "/dealer/desk-log", "Desk Log")}
+                      <Link href={personLink(row)} onClick={() => rememberBack(personLink(row), "/dealer/desk-log", "Desk Log")}
                         className="dl_cust_name" title={[row.customer || "No name", row.phone, row.lead_status_label && `Lead: ${row.lead_status_label}`].filter(Boolean).join(" · ")}>
                         {row.customer || "No name"}</Link>
                       <button type="button" className="dl_360" title="360 View: history, tasks, call / text without leaving the Desk Log" aria-label="360 View"
