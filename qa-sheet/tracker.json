@@ -1,0 +1,965 @@
+{
+ "source": "planning/P1-TRACKER.csv (SOW v6 gap rows)",
+ "copiedAt": "2026-11-27",
+ "rows": {
+  "G-001": {
+   "feature": "Reporting data dictionary",
+   "status": "Done",
+   "live": "Yes - super admin only (Reports flag)",
+   "where": "Dealer > Reports > Definitions (\"How each number is counted\")",
+   "order": "1 Reports"
+  },
+  "G-002": {
+   "feature": "Reporting entity grain",
+   "status": "Done",
+   "live": "Yes - super admin only (Reports flag)",
+   "where": "Dealer > Reports > Definitions (\"How each number is counted\")",
+   "order": "1 Reports"
+  },
+  "G-003": {
+   "feature": "Status,time,owner and provenance normalization",
+   "status": "Done",
+   "live": "Yes - super admin only (Reports flag)",
+   "where": "Dealer > Reports > Definitions (\"How each number is counted\")",
+   "order": "1 Reports"
+  },
+  "G-032": {
+   "feature": "Appointment outcome reporting",
+   "status": "Done",
+   "live": "Yes - super admin only (Reports flag)",
+   "where": "Dealer > Reports > Appointments (shown / no-show / cancelled)",
+   "order": "1 Reports"
+  },
+  "G-033": {
+   "feature": "Consistent report filters and saved views",
+   "status": "Done",
+   "live": "Yes - super admin only (Reports flag)",
+   "where": "Dealer > Reports: filter bar (dates, source, staff...)",
+   "order": "1 Reports"
+  },
+  "G-034": {
+   "feature": "Executive/store dashboard",
+   "status": "Done",
+   "live": "Yes - super admin only (Reports flag)",
+   "where": "Dealer > Reports > Executive tab; click a number -> Leads page",
+   "order": "1 Reports"
+  },
+  "G-035": {
+   "feature": "BDC productivity dashboard",
+   "status": "Done",
+   "live": "Yes - super admin only (Reports flag)",
+   "where": "Dealer > Reports > BDC tab; click a number -> Leads page",
+   "order": "1 Reports"
+  },
+  "G-036": {
+   "feature": "Sales/Desk Log dashboard",
+   "status": "Done",
+   "live": "Yes - super admin only (Reports flag)",
+   "where": "Dealer > Reports > Sales / Desk Log tab; click a number -> Leads page",
+   "order": "1 Reports"
+  },
+  "G-037": {
+   "feature": "Appointments dashboard",
+   "status": "Done",
+   "live": "Yes - super admin only (Reports flag)",
+   "where": "Dealer > Reports > Appointments tab; click a number -> Leads page",
+   "order": "1 Reports"
+  },
+  "G-038": {
+   "feature": "Service retention dashboard",
+   "status": "Done",
+   "live": "Yes - super admin only (Reports flag)",
+   "where": "Dealer > Reports > Service tab; click a number -> Leads page",
+   "order": "1 Reports"
+  },
+  "G-039": {
+   "feature": "AI operations dashboard",
+   "status": "Done",
+   "live": "Yes - super admin only (Reports flag)",
+   "where": "Dealer > Reports > AI tab; click a number -> Leads page",
+   "order": "1 Reports"
+  },
+  "G-040": {
+   "feature": "Lead source/ROI dashboard",
+   "status": "Done",
+   "live": "Yes - super admin only (Reports flag)",
+   "where": "Dealer > Reports > Lead source tab; click a number -> Leads page",
+   "order": "1 Reports"
+  },
+  "G-041": {
+   "feature": "Data quality/compliance dashboard",
+   "status": "Done",
+   "live": "Yes - super admin only (Reports flag)",
+   "where": "Dealer > Reports > Data quality tab; click a number -> Leads page",
+   "order": "1 Reports"
+  },
+  "G-042": {
+   "feature": "KPI governance and freshness",
+   "status": "Done",
+   "live": "Yes - super admin only (Reports flag)",
+   "where": "Dealer > Reports > Definitions; each number opens Leads with its CSV",
+   "order": "1 Reports"
+  },
+  "G-043": {
+   "feature": "Daily reply top-line metrics",
+   "status": "Done",
+   "live": "Yes - super admin only (Reports flag)",
+   "where": "Dealer > Dashboard, \"Customer replies by lead age\" under the Customer Replied card",
+   "order": "1 Reports"
+  },
+  "G-044": {
+   "feature": "Overlapping reply cohorts",
+   "status": "Done",
+   "live": "Yes - super admin only (Reports flag)",
+   "where": "Dealer > Dashboard, \"Customer replies by lead age\" under the Customer Replied card",
+   "order": "1 Reports"
+  },
+  "G-045": {
+   "feature": "Exclusive reply buckets",
+   "status": "Done",
+   "live": "Yes - super admin only (Reports flag)",
+   "where": "Dealer > Dashboard, \"Customer replies by lead age\" under the Customer Replied card",
+   "order": "1 Reports"
+  },
+  "G-046": {
+   "feature": "Opportunity attribution and ambiguity",
+   "status": "Done",
+   "live": "Yes - super admin only (Reports flag)",
+   "where": "Dealer > Dashboard, \"Customer replies by lead age\" under the Customer Replied card",
+   "order": "1 Reports"
+  },
+  "G-047": {
+   "feature": "Reply drill-down and filter controls",
+   "status": "Done",
+   "live": "Yes - super admin only (Reports flag)",
+   "where": "Dealer > Dashboard, \"Customer replies by lead age\" under the Customer Replied card",
+   "order": "1 Reports"
+  },
+  "G-048": {
+   "feature": "Scheduled branded performance email",
+   "status": "Done",
+   "live": "Yes - super admin only (Reports flag)",
+   "where": "Admin > Report Cron / Dealer > Report Schedule; the daily email in the inbox",
+   "order": "1 Reports"
+  },
+  "G-052": {
+   "feature": "Email reliability and snapshot parity",
+   "status": "Done",
+   "live": "Yes - super admin only (Reports flag)",
+   "where": "Admin > Report Cron / Dealer > Report Schedule; the daily email in the inbox",
+   "order": "1 Reports"
+  },
+  "G-053": {
+   "feature": "Reply-age insights in daily email",
+   "status": "Done",
+   "live": "Yes - super admin only (Reports flag)",
+   "where": "Admin > Report Cron / Dealer > Report Schedule; the daily email in the inbox",
+   "order": "1 Reports"
+  },
+  "G-049": {
+   "feature": "Four-way appointment attribution",
+   "status": "Done",
+   "live": "Yes - super admin only (Reports flag)",
+   "where": "Dealer > Dashboard appointment cards (AI / AI-assisted / staff) + Reports > Appointments",
+   "order": "1 Reports"
+  },
+  "G-050": {
+   "feature": "AI influence and activity definitions",
+   "status": "Done",
+   "live": "Yes (main, 19 Nov 2026)",
+   "where": "Dealer > Dashboard appointment cards (AI / AI-assisted / staff) + Reports > Appointments",
+   "order": "1 Reports"
+  },
+  "G-051": {
+   "feature": "Daily outcome presentation",
+   "status": "Done",
+   "live": "Yes (main, 19 Nov 2026)",
+   "where": "Dealer > Dashboard appointment cards (AI / AI-assisted / staff) + Reports > Appointments",
+   "order": "1 Reports"
+  },
+  "G-004": {
+   "feature": "Search and customer/vehicle opening",
+   "status": "Done",
+   "live": "Yes (main)",
+   "where": "Top search bar; Customers list -> open a customer",
+   "order": "2 User functions"
+  },
+  "G-005": {
+   "feature": "Independent multi-opportunity model",
+   "status": "Done",
+   "live": "Yes (on main by 17 Nov 2026)",
+   "where": "Customer > Leads tab: each lead shows its owner; a lead the AI carries in the customer's one conversation says on which lead; \"New lead for this customer\" button",
+   "order": "2 User functions"
+  },
+  "G-006": {
+   "feature": "Sales/service classifications",
+   "status": "Done",
+   "live": "Yes (main)",
+   "where": "Leads filters (lead type) for dealers; AI bucket view for super admin",
+   "order": "2 User functions"
+  },
+  "G-007": {
+   "feature": "Assignment and ownership history",
+   "status": "Done",
+   "live": "Yes (main)",
+   "where": "Customer > Overview > Recent Activity (\"Reassigned from X to Y\")",
+   "order": "2 User functions"
+  },
+  "G-008": {
+   "feature": "Duplicate and orphan review",
+   "status": "Done",
+   "live": "Yes (main)",
+   "where": "Customers > \"Possible duplicates\" button -> merge (preview / confirm / undo)",
+   "order": "2 User functions"
+  },
+  "G-009": {
+   "feature": "Source taxonomy and funnel timestamps",
+   "status": "Done",
+   "live": "Yes (on main by 17 Nov 2026)",
+   "where": "Leads > Add lead: \"Lead Source\" picker + \"Edit list\" (add / rename / remove, change history)",
+   "order": "2 User functions"
+  },
+  "G-010": {
+   "feature": "Governed bulk operations",
+   "status": "Done",
+   "live": "Yes (on main by 17 Nov 2026)",
+   "where": "Leads list: tick leads -> \"Change status to\" (Lead Not Contacted, Contacted - No Next Action, DND, Closed - Lost) -> Preview -> Confirm",
+   "order": "2 User functions"
+  },
+  "G-025": {
+   "feature": "Unified BDC task queue",
+   "status": "Done",
+   "live": "Yes (main)",
+   "where": "AI Assistant > Call Tasks + Dealer Action Required (filters)",
+   "order": "2 User functions"
+  },
+  "G-026": {
+   "feature": "Unified activity timeline",
+   "status": "Done",
+   "live": "Yes (main)",
+   "where": "Customer > Overview > Recent Activity (appointments, full messages, lead / period filters)",
+   "order": "2 User functions"
+  },
+  "G-027": {
+   "feature": "Templates and permitted actions",
+   "status": "Done",
+   "live": "Yes (main)",
+   "where": "Lead > Email reply box > Template picker",
+   "order": "2 User functions"
+  },
+  "G-028": {
+   "feature": "Operational exception queues",
+   "status": "Done",
+   "live": "Yes (main)",
+   "where": "Desk Log views; AI Assistant > Call Tasks \"Missed\"; Leads status filters",
+   "order": "2 User functions"
+  },
+  "G-029": {
+   "feature": "Reuse existing workflow engine",
+   "status": "Done",
+   "live": "Yes (main)",
+   "where": "-",
+   "order": "2 User functions"
+  },
+  "G-030": {
+   "feature": "Appointment list/calendar",
+   "status": "Done",
+   "live": "Yes (main)",
+   "where": "Appointments page: Sales / Service filter; type under the time",
+   "order": "2 User functions"
+  },
+  "G-031": {
+   "feature": "Appointment lifecycle and history",
+   "status": "Done",
+   "live": "Yes (main)",
+   "where": "Appointments page: clock icon (history)",
+   "order": "2 User functions"
+  },
+  "G-059": {
+   "feature": "Call from profile,opportunity,Desk Log",
+   "status": "Done",
+   "live": "Yes (main)",
+   "where": "Customer header Call button; lead Phone line; Desk Log phone",
+   "order": "2 User functions"
+  },
+  "G-060": {
+   "feature": "Email/text from all required contexts",
+   "status": "Done",
+   "live": "Yes (main)",
+   "where": "Send SMS / conversation / Desk Log message",
+   "order": "2 User functions"
+  },
+  "G-061": {
+   "feature": "Editable contact/identity fields",
+   "status": "Done",
+   "live": "Yes (main)",
+   "where": "Customer > Edit (phones, emails, addresses, labels, primary; history kept)",
+   "order": "2 User functions"
+  },
+  "G-062": {
+   "feature": "Unlimited linked trade-ins",
+   "status": "Done",
+   "live": "Yes (main)",
+   "where": "Customer > Trade In (\"Same VIN elsewhere\" warning)",
+   "order": "2 User functions"
+  },
+  "G-063": {
+   "feature": "Trade/opportunity history and counts",
+   "status": "Done",
+   "live": "Yes (main)",
+   "where": "Customer > Trade In > History; payoff / lienholder for managers only",
+   "order": "2 User functions"
+  },
+  "G-082": {
+   "feature": "Autosave and in-place consistency",
+   "status": "Done",
+   "live": "Yes (main 98c7922, 19 Nov 2026)",
+   "where": "Lead card Edit, Customer profile fields / phones / emails, Desk Log visit: save by themselves",
+   "order": "2 User functions"
+  },
+  "G-083": {
+   "feature": "Cross-session sync and conflicts",
+   "status": "Done",
+   "live": "Yes (on main by 17 Nov 2026)",
+   "where": "Leads, Appointments, Desk Log, Dealer Action Required: change something in another browser, it shows within 30 s; editing a lead someone else just saved says \"Reload\"",
+   "order": "2 User functions"
+  },
+  "G-011": {
+   "feature": "Desk Log list/detail",
+   "status": "Done",
+   "live": "Yes - super admin only (Desk Log flag)",
+   "where": "Dealer > Desk Log (list, detail, stages incl. Appraisal, Stage / Outcome filters)",
+   "order": "3 Desk Log"
+  },
+  "G-012": {
+   "feature": "Showroom stages and APPRAISAL",
+   "status": "Done",
+   "live": "Yes - super admin only (Desk Log flag)",
+   "where": "Dealer > Desk Log (list, detail, stages incl. Appraisal, Stage / Outcome filters)",
+   "order": "3 Desk Log"
+  },
+  "G-013": {
+   "feature": "Showroom visit tracking",
+   "status": "Done",
+   "live": "Yes - super admin only (Desk Log flag)",
+   "where": "Dealer > Desk Log (list, detail, stages incl. Appraisal, Stage / Outcome filters)",
+   "order": "3 Desk Log"
+  },
+  "G-014": {
+   "feature": "Manager showroom operations",
+   "status": "Done",
+   "live": "Yes - super admin only (Desk Log flag)",
+   "where": "Dealer > Desk Log (list, detail, stages incl. Appraisal, Stage / Outcome filters)",
+   "order": "3 Desk Log"
+  },
+  "G-015": {
+   "feature": "Separate stage,status,outcome,workflow",
+   "status": "Done",
+   "live": "Yes - super admin only (Desk Log flag)",
+   "where": "Dealer > Desk Log (list, detail, stages incl. Appraisal, Stage / Outcome filters)",
+   "order": "3 Desk Log"
+  },
+  "G-016": {
+   "feature": "Sold pending and delivered outcomes",
+   "status": "Done",
+   "live": "Yes (on main by 17 Nov 2026)",
+   "where": "Desk Log: Sold Pending / Sold Delivered rows show the DMS deal, or \"Not in the DMS yet\" / \"DMS shows delivered\"",
+   "order": "3 Desk Log"
+  },
+  "G-017": {
+   "feature": "Disposition-to-workflow configuration",
+   "status": "Done",
+   "live": "Yes (on main by 17 Nov 2026)",
+   "where": "AI Studio > Cadences > Unsold: one first message per reason (edit wording there); Desk Log outcome menu says what each reason does",
+   "order": "3 Desk Log"
+  },
+  "G-018": {
+   "feature": "UNSOLD / Negative Equity",
+   "status": "Done",
+   "live": "Yes (on main by 17 Nov 2026)",
+   "where": "Desk Log: UNSOLD NEGATIVE EQUITY -> first follow-up about trade equity / finance options (no numbers)",
+   "order": "3 Desk Log"
+  },
+  "G-019": {
+   "feature": "UNSOLD / Price/Payment",
+   "status": "Done",
+   "live": "Yes (on main by 17 Nov 2026)",
+   "where": "Desk Log: UNSOLD PRICE/PAYMENT -> first follow-up asks what price / payment works (no promises)",
+   "order": "3 Desk Log"
+  },
+  "G-020": {
+   "feature": "UNSOLD / Credit",
+   "status": "Done",
+   "live": "Yes (on main by 17 Nov 2026)",
+   "where": "Desk Log: UNSOLD CREDIT -> first follow-up offers the finance team (never suggests an approval)",
+   "order": "3 Desk Log"
+  },
+  "G-021": {
+   "feature": "UNSOLD / Hot",
+   "status": "Done",
+   "live": "Yes (on main by 17 Nov 2026)",
+   "where": "Desk Log: UNSOLD HOT -> follow-up today + a call task for the salesperson (AI Assistant > Call Tasks)",
+   "order": "3 Desk Log"
+  },
+  "G-022": {
+   "feature": "UNSOLD / Future Follow-Up",
+   "status": "Done",
+   "live": "Yes (on main by 17 Nov 2026)",
+   "where": "Desk Log: UNSOLD FUTURE F/U (date required) -> first follow-up goes out on that date",
+   "order": "3 Desk Log"
+  },
+  "G-023": {
+   "feature": "UNSOLD / Car Finder",
+   "status": "Done",
+   "live": "Yes (on main by 17 Nov 2026)",
+   "where": "Desk Log: UNSOLD CAR FINDER -> first follow-up says we are looking, mentions a match from stock if there is one",
+   "order": "3 Desk Log"
+  },
+  "G-024": {
+   "feature": "UNSOLD / DND",
+   "status": "Done",
+   "live": "Yes (on main by 17 Nov 2026)",
+   "where": "Desk Log: a DND customer's row says \"Do not contact (DND)\" and has no Call / Message buttons",
+   "order": "3 Desk Log"
+  },
+  "G-081": {
+   "feature": "Appraisal audit and conversion",
+   "status": "Done",
+   "live": "Yes (on main by 17 Nov 2026)",
+   "where": "Reports > Sales & profit > Show all numbers: \"Appraisal log\", \"Appraised opportunities\"",
+   "order": "3 Desk Log"
+  },
+  "G-064": {
+   "feature": "Rooftop Forms & Documents Library",
+   "status": "Done",
+   "live": "Yes (on main by 17 Nov 2026)",
+   "where": "Admin > Forms Library: upload, name, category, on/off, new version, department / roles / lead statuses, keep-copies days",
+   "order": "4 Forms"
+  },
+  "G-065": {
+   "feature": "Form mapping and data population",
+   "status": "Done",
+   "live": "Yes (on main by 17 Nov 2026)",
+   "where": "Forms Library > a form > \"What fills each field\" (+ Preview mapping / Show grid); Customer > Documents > Fill in and check",
+   "order": "4 Forms"
+  },
+  "G-066": {
+   "feature": "Form review and snapshot storage",
+   "status": "Done",
+   "live": "Yes (on main by 17 Nov 2026)",
+   "where": "Customer > Documents: Preview PDF, Save copy, Download / Print (logged); later customer changes never change a saved copy",
+   "order": "4 Forms"
+  },
+  "G-067": {
+   "feature": "Dealer template types and boundaries",
+   "status": "Done",
+   "live": "Yes (on main by 17 Nov 2026)",
+   "where": "Any PDF the dealer uploads, by category (buyer's order, trade appraisal, test drive, credit app, We Owe, delivery, privacy, other)",
+   "order": "4 Forms"
+  },
+  "G-068": {
+   "feature": "Central contact eligibility service",
+   "status": "Done",
+   "live": "Yes (main 98c7922, 19 Nov 2026)",
+   "where": "Admin > Contact compliance",
+   "order": "5 Integrations"
+  },
+  "G-069": {
+   "feature": "Federal/state DNC integration",
+   "status": "Partly done",
+   "live": "Yes (main 98c7922, 19 Nov 2026)",
+   "where": "Admin > Contact compliance",
+   "order": "5 Integrations"
+  },
+  "G-070": {
+   "feature": "FCC reassigned-number screening",
+   "status": "Partly done",
+   "live": "Yes (main 98c7922, 19 Nov 2026)",
+   "where": "Admin > Contact compliance",
+   "order": "5 Integrations"
+  },
+  "G-071": {
+   "feature": "Compliance admin and operations",
+   "status": "Done",
+   "live": "Yes (main 98c7922, 19 Nov 2026)",
+   "where": "Admin > Contact compliance",
+   "order": "5 Integrations"
+  },
+  "G-072": {
+   "feature": "Vendor access and scheduler adapters",
+   "status": "Partly done",
+   "live": "Yes (main 98c7922, 19 Nov 2026)",
+   "where": "Settings > Service scheduler",
+   "order": "5 Integrations"
+  },
+  "G-073": {
+   "feature": "Availability and safe booking",
+   "status": "Open",
+   "live": "No",
+   "where": "-",
+   "order": "5 Integrations"
+  },
+  "G-074": {
+   "feature": "Scheduler sync and exceptions",
+   "status": "Open",
+   "live": "No",
+   "where": "-",
+   "order": "5 Integrations"
+  },
+  "G-084": {
+   "feature": "Field-by-field import and source authority",
+   "status": "Done",
+   "live": "Yes (main, PR #245-247, 18 Nov 2026)",
+   "where": "Admin > DMS feed (decisions per file, held files, record history); Reports > Lead sources gross",
+   "order": "5 Integrations"
+  },
+  "G-085": {
+   "feature": "Ownership and disputed data protection",
+   "status": "Done",
+   "live": "Yes (main, PR #245, 18 Nov 2026)",
+   "where": "Admin > DMS feed > a record's history",
+   "order": "5 Integrations"
+  },
+  "G-086": {
+   "feature": "Provenance and decision engine",
+   "status": "Done",
+   "live": "Yes (main, PR #245-247, 18 Nov 2026)",
+   "where": "Admin > DMS feed: ACCEPT / RETAIN / REVIEW / REJECT with reason per row",
+   "order": "5 Integrations"
+  },
+  "G-087": {
+   "feature": "Feed deduplication and failure safety",
+   "status": "Done",
+   "live": "Yes (main, PR #245, 18 Nov 2026)",
+   "where": "Admin > DMS feed > Held files (release / discard)",
+   "order": "5 Integrations"
+  },
+  "G-088": {
+   "feature": "Vehicle Databases licensed OEM feed",
+   "status": "Built, not running",
+   "live": "No",
+   "where": "-",
+   "order": "5 Integrations"
+  },
+  "G-089": {
+   "feature": "Daily time-or-mileage forecasting",
+   "status": "Built, not running",
+   "live": "No",
+   "where": "-",
+   "order": "5 Integrations"
+  },
+  "G-090": {
+   "feature": "Dynamic controlling-trigger updates",
+   "status": "Built, not running",
+   "live": "No",
+   "where": "-",
+   "order": "5 Integrations"
+  },
+  "G-091": {
+   "feature": "60/30 reminder ledger and eligibility",
+   "status": "Built, not running",
+   "live": "No",
+   "where": "-",
+   "order": "5 Integrations"
+  },
+  "G-092": {
+   "feature": "Service outreach,scheduling and observability",
+   "status": "Built, not running",
+   "live": "No",
+   "where": "-",
+   "order": "5 Integrations"
+  },
+  "G-054": {
+   "feature": "Role model and tenant isolation",
+   "status": "Done",
+   "live": "Yes (main, 19 Nov 2026)",
+   "where": "Employee Roles > Add standard roles",
+   "order": "Not in Betsy order"
+  },
+  "G-055": {
+   "feature": "Admin-managed taxonomies/preferences",
+   "status": "Open",
+   "live": "No",
+   "where": "-",
+   "order": "Not in Betsy order"
+  },
+  "G-056": {
+   "feature": "Print and export UX",
+   "status": "Done",
+   "live": "Yes (main, 19 Nov 2026)",
+   "where": "Customer profile > Print; Desk Log > Print",
+   "order": "Not in Betsy order"
+  },
+  "G-057": {
+   "feature": "Responsive and accessible core workflows",
+   "status": "Open",
+   "live": "No",
+   "where": "-",
+   "order": "Not in Betsy order"
+  },
+  "G-058": {
+   "feature": "Integration health dashboard",
+   "status": "Done",
+   "live": "Yes (main, 19 Nov 2026)",
+   "where": "Admin > Integration health",
+   "order": "Not in Betsy order"
+  },
+  "G-075": {
+   "feature": "Tri-state capabilities and policy audit",
+   "status": "Partly done",
+   "live": "Yes (main, 13 Nov 2026)",
+   "where": "Settings > Dealer Intelligence (Yes / No / Not configured)",
+   "order": "Not in Betsy order"
+  },
+  "G-076": {
+   "feature": "Fees and price disclosures",
+   "status": "Partly done",
+   "live": "Yes (main, 13 Nov 2026)",
+   "where": "Settings > Dealer Intelligence (Yes / No / Not configured)",
+   "order": "Not in Betsy order"
+  },
+  "G-077": {
+   "feature": "Inventory and department facts",
+   "status": "Partly done",
+   "live": "Yes (main, 13 Nov 2026)",
+   "where": "Settings > Dealer Intelligence (Yes / No / Not configured)",
+   "order": "Not in Betsy order"
+  },
+  "G-078": {
+   "feature": "Trade/prequal/calculator verification",
+   "status": "Partly done",
+   "live": "Yes (main, 13 Nov 2026)",
+   "where": "Settings > Dealer Intelligence (Yes / No / Not configured)",
+   "order": "Not in Betsy order"
+  },
+  "G-079": {
+   "feature": "Shipping and local delivery policies",
+   "status": "Partly done",
+   "live": "Yes (main, 13 Nov 2026)",
+   "where": "Settings > Dealer Intelligence (Yes / No / Not configured)",
+   "order": "Not in Betsy order"
+  },
+  "G-080": {
+   "feature": "AI policy and link integrity",
+   "status": "Partly done",
+   "live": "Yes (main, 13 Nov 2026)",
+   "where": "Settings > Dealer Intelligence (Yes / No / Not configured)",
+   "order": "Not in Betsy order"
+  },
+  "G-093": {
+   "feature": "Reuse current architecture and stable IDs",
+   "status": "Open",
+   "live": "No",
+   "where": "-",
+   "order": "Not in Betsy order"
+  },
+  "G-094": {
+   "feature": "Gap matrix,prior obligations and pricing",
+   "status": "Open",
+   "live": "No",
+   "where": "-",
+   "order": "Not in Betsy order"
+  },
+  "G-095": {
+   "feature": "Flexibility and change control",
+   "status": "Open",
+   "live": "No",
+   "where": "-",
+   "order": "Not in Betsy order"
+  },
+  "G-096": {
+   "feature": "Acceptance,warranty and handoff",
+   "status": "Open",
+   "live": "No",
+   "where": "-",
+   "order": "Not in Betsy order"
+  },
+  "G-097": {
+   "feature": "Excluded/conditional work and dealer inputs",
+   "status": "Open",
+   "live": "No",
+   "where": "-",
+   "order": "Not in Betsy order"
+  },
+  "G-098": {
+   "feature": "Verify deployed chatbot version",
+   "status": "Open",
+   "live": "No",
+   "where": "-",
+   "order": "Not in Betsy order"
+  },
+  "G-099": {
+   "feature": "Remove unsafe missing-ADF fallback",
+   "status": "Open",
+   "live": "No",
+   "where": "-",
+   "order": "Not in Betsy order"
+  },
+  "G-100": {
+   "feature": "Implement real human takeover if requested",
+   "status": "Open",
+   "live": "No",
+   "where": "-",
+   "order": "Not in Betsy order"
+  },
+  "G-101": {
+   "feature": "Unify chatbot leads and conversation evidence",
+   "status": "Open",
+   "live": "No",
+   "where": "-",
+   "order": "Not in Betsy order"
+  },
+  "G-102": {
+   "feature": "Separate booking request from confirmed appointment",
+   "status": "Open",
+   "live": "No",
+   "where": "-",
+   "order": "Not in Betsy order"
+  },
+  "G-103": {
+   "feature": "Propagate consent and suppression from chatbot",
+   "status": "Open",
+   "live": "No",
+   "where": "-",
+   "order": "Not in Betsy order"
+  },
+  "G-104": {
+   "feature": "Verify Messenger deployment and Meta requirements",
+   "status": "Open",
+   "live": "No",
+   "where": "-",
+   "order": "Not in Betsy order"
+  },
+  "G-105": {
+   "feature": "Reconcile chatbot and CRM vehicle facts",
+   "status": "Open",
+   "live": "No",
+   "where": "-",
+   "order": "Not in Betsy order"
+  },
+  "G-106": {
+   "feature": "Confirm multi-industry and chat commercial scope",
+   "status": "Open",
+   "live": "No",
+   "where": "-",
+   "order": "Not in Betsy order"
+  },
+  "G-107": {
+   "feature": "Isolated staging and release workflow",
+   "status": "Open",
+   "live": "No",
+   "where": "-",
+   "order": "Not in Betsy order"
+  },
+  "E-01": {
+   "feature": "FTC first text for night leads",
+   "status": "Done",
+   "live": "Yes (main)",
+   "where": "Any new lead's first text / email",
+   "order": "Betsy emails"
+  },
+  "E-02": {
+   "feature": "\"Found a better deal\" -> \"Did you take delivery?\"",
+   "status": "Done",
+   "live": "Yes (main)",
+   "where": "AI conversation",
+   "order": "Betsy emails"
+  },
+  "E-03": {
+   "feature": "Cash vs finance price answer",
+   "status": "Done",
+   "live": "Yes (main)",
+   "where": "AI conversation",
+   "order": "Betsy emails"
+  },
+  "E-04": {
+   "feature": "Same tab + Back button",
+   "status": "Done",
+   "live": "Yes (main)",
+   "where": "Dashboard links open in the same tab with Back",
+   "order": "Betsy emails"
+  },
+  "E-05": {
+   "feature": "Source & sub-source report by lead type, timeframe vs current leads",
+   "status": "Done",
+   "live": "Yes - super admin only (Reports flag)",
+   "where": "Dealer > Reports > Lead sources",
+   "order": "Betsy emails"
+  },
+  "E-06": {
+   "feature": "Business-hours re-engage question",
+   "status": "Done",
+   "live": "Yes (main)",
+   "where": "AI after-hours reply",
+   "order": "Betsy emails"
+  },
+  "E-07": {
+   "feature": "Replied today = everyone who replied today, newest first",
+   "status": "Done",
+   "live": "Yes (main)",
+   "where": "Dashboard > Customer Replied",
+   "order": "Betsy emails"
+  },
+  "E-08": {
+   "feature": "Source report as PDF",
+   "status": "Done",
+   "live": "Yes - super admin only (Reports flag)",
+   "where": "Lead sources > Download report > PDF",
+   "order": "Betsy emails"
+  },
+  "E-09": {
+   "feature": "Full report as PDF",
+   "status": "Done",
+   "live": "Yes - super admin only (Reports flag)",
+   "where": "Dashboard > Download report > PDF",
+   "order": "Betsy emails"
+  },
+  "E-10": {
+   "feature": "Gross profit from DealerVault in the source report",
+   "status": "Done",
+   "live": "Yes (on main by 17 Nov 2026)",
+   "where": "Lead sources > Front / Back / Total Gross",
+   "order": "Betsy emails"
+  },
+  "E-11": {
+   "feature": "AI sets ~1 appointment a day; Betsy wants 25-30%",
+   "status": "Open",
+   "live": "No",
+   "where": "-",
+   "order": "Betsy emails"
+  },
+  "E-12": {
+   "feature": "\"15 min before closing\" (customer name never received)",
+   "status": "Open",
+   "live": "No",
+   "where": "-",
+   "order": "Betsy emails"
+  },
+  "SEC-1": {
+   "feature": "Staff creation checks the caller may create that user type",
+   "status": "Done",
+   "live": "Yes (10 Nov 2026, admin-only screens)",
+   "where": "No visible change (same screens, blocked for outsiders)",
+   "order": "Security (extra, not in the 119)"
+  },
+  "SEC-2": {
+   "feature": "Dealer delete requires super admin",
+   "status": "Done",
+   "live": "Yes (10 Nov 2026, admin-only screens)",
+   "where": "No visible change (same screens, blocked for outsiders)",
+   "order": "Security (extra, not in the 119)"
+  },
+  "SEC-3": {
+   "feature": "Report cron endpoints require admin / server secret",
+   "status": "Done",
+   "live": "Yes (10 Nov 2026, admin-only screens)",
+   "where": "No visible change (same screens, blocked for outsiders)",
+   "order": "Security (extra, not in the 119)"
+  },
+  "SEC-4": {
+   "feature": "Read APIs require login (conversations, lead detail, stats, email accounts...)",
+   "status": "Done",
+   "live": "Yes (10 Nov 2026, admin-only screens)",
+   "where": "No visible change (same screens, blocked for outsiders)",
+   "order": "Security (extra, not in the 119)"
+  },
+  "SEC-5": {
+   "feature": "Lead list / CSV only for your own dealer",
+   "status": "Done",
+   "live": "Yes (10 Nov 2026, admin-only screens)",
+   "where": "No visible change (same screens, blocked for outsiders)",
+   "order": "Security (extra, not in the 119)"
+  },
+  "SEC-6": {
+   "feature": "Booking update requires login or AI service token",
+   "status": "Done",
+   "live": "Yes (10 Nov 2026, admin-only screens)",
+   "where": "No visible change (same screens, blocked for outsiders)",
+   "order": "Security (extra, not in the 119)"
+  },
+  "SEC-7": {
+   "feature": "Login reply no longer sends the email code back to the browser",
+   "status": "Done",
+   "live": "Yes (10 Nov 2026, admin-only screens)",
+   "where": "Login screen",
+   "order": "Security (extra, not in the 119)"
+  },
+  "SEC-8": {
+   "feature": "Login code: secure random, limited wrong attempts",
+   "status": "Done",
+   "live": "Yes (10 Nov 2026, admin-only screens)",
+   "where": "Login screen",
+   "order": "Security (extra, not in the 119)"
+  },
+  "SEC-9": {
+   "feature": "Super admin login also needs the email code",
+   "status": "Not doing (not requested)",
+   "live": "",
+   "where": "Login screen",
+   "order": "Security (extra, not in the 119)"
+  },
+  "SEC-10": {
+   "feature": "No plain-text passwords in new-account emails (set-password link instead)",
+   "status": "Not doing (not requested)",
+   "live": "",
+   "where": "Login screen",
+   "order": "Security (extra, not in the 119)"
+  },
+  "SEC-11": {
+   "feature": "Admin sign-in with a code but no password no longer works",
+   "status": "Done",
+   "live": "Yes (10 Nov 2026, admin-only screens)",
+   "where": "No visible change",
+   "order": "Security (extra, not in the 119)"
+  },
+  "M-4.4": {
+   "feature": "Admin: tracking codes / campaigns per dealer (SOW B campaign taxonomy; 13 Nov meeting 4.4)",
+   "status": "Done",
+   "live": "Yes (main 98c7922, 19 Nov 2026)",
+   "where": "Leads > Lead source > Edit list > Campaigns; lead card Campaign; Reports filter Campaign",
+   "order": "2 User functions"
+  },
+  "M-5.1": {
+   "feature": "\"Bought elsewhere\" escalates to the dealer, who closes it lost",
+   "status": "Done",
+   "live": "Yes (main 98c7922, 19 Nov 2026)",
+   "where": "Dealership Action Required: \"Customer found or bought a car elsewhere\"",
+   "order": "AI (13 Nov meeting)"
+  },
+  "M-10.8": {
+   "feature": "Customer profile: Push To + Change History buttons (13 Nov meeting 10.8)",
+   "status": "Done",
+   "live": "Yes (main, 19 Nov 2026)",
+   "where": "-",
+   "order": "2 User functions"
+  },
+  "M-10.9": {
+   "feature": "Customer profile: Wish List / Value tabs (10.9)",
+   "status": "Done",
+   "live": "Yes (main, 19 Nov 2026)",
+   "where": "-",
+   "order": "2 User functions"
+  },
+  "M-10.15": {
+   "feature": "Reverse phone lookup (10.15)",
+   "status": "Waiting for Betsy",
+   "live": "No",
+   "where": "-",
+   "order": "2 User functions"
+  },
+  "FLAGS": {
+   "feature": "Reports, reply cohorts, attribution, daily email, Desk Log visible to dealers",
+   "status": "Waiting for Betsy",
+   "live": "No",
+   "where": "featureFlags.js: all still admin",
+   "order": "All"
+  },
+  "FORMS-OCR": {
+   "feature": "Scanned / photo forms read (local OCR first, AI once as fallback)",
+   "status": "Done",
+   "live": "Yes (main 98c7922, 19 Nov 2026)",
+   "where": "Admin > Forms Library: upload a scan",
+   "order": "4 Forms"
+  }
+ }
+}

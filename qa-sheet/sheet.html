@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Feature &amp; Test Sheet</title>
+  <link rel="stylesheet" href="assets/sheet.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="wrap top-row">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">AP</span>
+        <div>
+          <h1>AutoPulse CRM · Feature &amp; Test Sheet</h1>
+          <p class="sub"><span id="scope">Loading…</span></p>
+        </div>
+      </div>
+      <div class="tester">
+        <label for="tester-pick">Tester name</label>
+        <div class="tester-row">
+          <select id="tester-pick" aria-label="Choose your name"><option value="">Choose your name…</option></select>
+          <input id="tester" maxlength="80" placeholder="Type your new name" autocomplete="name" hidden />
+        </div>
+      </div>
+    </div>
+    <nav class="wrap tabs" role="tablist" aria-label="Sheet">
+      <button type="button" role="tab" class="tab" id="tab-overview" data-tab="overview" aria-selected="false">Testing overview</button>
+      <button type="button" role="tab" class="tab" id="tab-test" data-tab="test" aria-selected="true">Test checklist</button>
+      <button type="button" role="tab" class="tab" id="tab-results" data-tab="results" aria-selected="false">Results &amp; issues <span class="count" id="open-count" hidden></span></button>
+    </nav>
+  </header>
+
+  <main class="wrap">
+    <!-- ============ TEST CHECKLIST ============ -->
+    <section id="pane-test" class="pane" role="tabpanel" aria-labelledby="tab-test">
+      <div class="cards" aria-label="Progress">
+        <div class="card-stat"><span class="k">Your progress</span><span class="v" id="me-done">–</span><span class="h" id="me-of">Type your name above</span><div class="meter"><span id="me-bar"></span></div></div>
+        <div class="card-stat ok"><span class="k">Your passes</span><span class="v" id="me-pass">–</span><span class="h">tests that work</span></div>
+        <div class="card-stat bad"><span class="k">Your fails</span><span class="v" id="me-fail">–</span><span class="h">problems you found</span></div>
+        <div class="card-stat warn"><span class="k">Your blocked</span><span class="v" id="me-blocked">–</span><span class="h">could not test</span></div>
+        <div class="card-stat soon"><span class="k">Coming soon</span><span class="v" id="n-soon">–</span><span class="h">not testable yet</span></div>
+      </div>
+
+      <div class="general" id="general-box">
+        <div class="general-head">
+          <div><b>Found a problem that is not one of the tests?</b> <span class="muted small">Report it as a <b>general problem</b> on the screen where it happens: use <i>⚑ Report a general problem on this screen</i> at the top of that screen, or pick the screen here. Add as many problems and screenshots as you need.</span></div>
+          <div class="general-pick">
+            <select id="general-screen" aria-label="Screen the problem is on"><option value="">Choose the screen…</option></select>
+            <button type="button" class="btn" id="general-report">⚑ Report a general problem</button>
+          </div>
+        </div>
+        <div id="general-form"></div>
+        <div id="general-reports"></div>
+      </div>
+
+      <details class="auto" id="auto-box">
+        <summary><span class="auto-title">Automated tests</span><span class="auto-sum" id="auto-sum"></span></summary>
+        <div class="auto-grid" id="auto-grid"></div>
+        <div class="auto-how">
+          <b>How to run them</b>
+          <ol>
+            <li><b>UI check</b> (any computer with Chrome, on a local or test copy): <code>node qa-sheet/ui-check.mjs --json /tmp/qa-ui.json</code> — opens every page, tab and pop-up and checks no button is missing and no script or server error appears.</li>
+            <li><b>Publish here</b>: <code>node qa-sheet/collect-results.mjs --ui /tmp/qa-ui.json</code>, then deploy.</li>
+          </ol>
+        </div>
+      </details>
+
+      <div class="filters" role="search">
+        <input type="search" id="q" placeholder="Search by name or code (e.g. INB-03)…" />
+        <select id="area" aria-label="Area"><option value="">All areas</option></select>
+        <select id="show" aria-label="Show">
+          <option value="">All tests</option>
+          <option value="mine-open">Not tested by me</option>
+          <option value="mine-bad">My fails &amp; blocked</option>
+          <option value="mine-pass">My passes</option>
+          <option value="anyone-bad">Failed by anyone</option>
+          <option value="soon">Coming soon</option>
+        </select>
+        <label class="check"><input type="checkbox" id="show-buttons" checked /> Button checks</label>
+        <label class="check"><input type="checkbox" id="show-fields" /> Field lists</label>
+        <span class="sec-all"><button type="button" class="btn small" id="expand-all">Expand all</button> <button type="button" class="btn small" id="collapse-all">Collapse all</button></span>
+      </div>
+
+      <div class="layout">
+        <aside class="side" aria-label="Sections"><div id="toc"></div></aside>
+        <div id="sections" class="content"></div>
+      </div>
+    </section>
+
+    <!-- ============ TESTING OVERVIEW ============ -->
+    <section id="pane-overview" class="pane" role="tabpanel" aria-labelledby="tab-overview" hidden>
+      <div class="ov-kpis" id="ov-kpis"></div>
+      <div class="ov-grid">
+        <div class="block ov-wide">
+          <div class="block-head"><h2>Activity per day</h2><div class="seg" role="group" aria-label="Period" id="ov-days"><button type="button" data-days="7" class="on">7 days</button><button type="button" data-days="14">14 days</button><button type="button" data-days="30">30 days</button></div></div>
+          <p class="muted small">Issues reported, fixed by the lead developer, closed by the lead tester, and reopened, per day.</p>
+          <div id="ov-daily"></div>
+        </div>
+        <div class="block">
+          <div class="block-head"><h2>Issues by screen</h2></div>
+          <p class="muted small">Every reported issue, by its current state. Click a screen to see its issues.</p>
+          <div id="ov-screens"></div>
+        </div>
+        <div class="block">
+          <div class="block-head"><h2>Testers</h2></div>
+          <p class="muted small">Tests done (pass, fail, blocked) and issues found by each tester.</p>
+          <div id="ov-testers"></div>
+        </div>
+        <div class="block ov-wide">
+          <div class="block-head"><h2>Reopened issues</h2></div>
+          <p class="muted small">Issues that failed again after a fix: the ones to watch.</p>
+          <div id="ov-reopened"></div>
+        </div>
+        <div class="block ov-wide">
+          <div class="block-head"><h2>All activity</h2><button type="button" class="btn" id="ov-csv">Download (CSV)</button></div>
+          <div class="filters inline">
+            <select id="ov-f-kind" aria-label="Kind"><option value="">Every step</option><option value="result">Test results</option><option value="open">Reported</option><option value="fixed">Fixed</option><option value="verified">Closed</option><option value="reopen">Reopened</option><option value="comment">Comments</option></select>
+            <select id="ov-f-who" aria-label="Person"><option value="">Everyone</option></select>
+            <select id="ov-f-screen" aria-label="Screen"><option value="">All screens</option></select>
+          </div>
+          <div class="table-wrap"><table class="grid" id="ov-log"><thead><tr><th>When</th><th>Step</th><th>By</th><th>Test</th><th>Screen</th><th>Note</th></tr></thead><tbody></tbody></table></div>
+          <button type="button" class="btn" id="ov-more" hidden>Show more</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ RESULTS & ISSUES ============ -->
+    <section id="pane-results" class="pane" role="tabpanel" aria-labelledby="tab-results" hidden>
+      <div class="block">
+        <div class="block-head"><h2>Testers</h2><button type="button" class="btn" id="csv-all">Download all results (CSV)</button></div>
+        <div class="table-wrap"><table class="grid" id="testers"><thead><tr><th>Tester</th><th>Tested</th><th class="num">Pass</th><th class="num">Fail</th><th class="num">Blocked</th><th>Last result</th><th></th></tr></thead><tbody></tbody></table></div>
+      </div>
+
+      <div class="block">
+        <div class="block-head">
+          <h2>Issues <span class="muted" id="issue-total"></span></h2>
+          <button type="button" class="btn" id="csv-issues">Download issues (CSV)</button>
+        </div>
+        <ol class="flow-help">
+          <li><b>Open</b>: testers report it (a Fail/Blocked test, or a general problem on a screen). Every tester's report, note and screenshots stay with the bug.</li>
+          <li><b>Fixed · awaiting lead tester</b>: the developer says what changed and where (pull request). Not closed yet.</li>
+          <li><b>Closed (verified)</b>: the lead tester re-tests and closes it. Only the lead tester can close a bug.</li>
+          <li><b>Reopened</b>: anyone can reopen it if it still fails; the cycle repeats. The bug's <b>Full history</b> keeps every step, tester and screenshot.</li>
+        </ol>
+        <div class="filters inline">
+          <div class="seg" role="group" aria-label="Issue state" id="state-seg">
+            <button type="button" data-state="open" class="on">Open <span id="c-open"></span></button>
+            <button type="button" data-state="fixed">Fixed <span id="c-fixed"></span></button>
+            <button type="button" data-state="verified">Closed <span id="c-verified"></span></button>
+            <button type="button" data-state="">All</button>
+          </div>
+          <select id="i-tester" aria-label="Tester"><option value="">All testers</option></select>
+          <select id="i-area" aria-label="Area"><option value="">All areas</option></select>
+          <select id="i-screen" aria-label="Screen"><option value="">All screens</option></select>
+          <input type="search" id="i-q" placeholder="Search issues…" />
+        </div>
+        <div id="issues"></div>
+      </div>
+    </section>
+    <p class="foot" id="foot"></p>
+  </main>
+
+  <div class="lightbox" id="lightbox" hidden><img alt="Screenshot" id="lightbox-img" /><button type="button" class="btn" id="lightbox-close">Close</button></div>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <script type="module" src="assets/sheet.js"></script>
+</body>
+</html>
