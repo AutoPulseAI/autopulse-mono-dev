@@ -1,4 +1,5 @@
 // Client meeting 25 Nov 2026 (planning/MEETING-25-NOV-ACTIONS.md): the items built from it.
+//   #7 one search box on the Leads page: name, phone, email or stock number.
 //   #2 a lead is "tethered, not merged" to a customer with DealerVault (sale / service) history: own customer, shown as
 //      a possible match, joined only after a manager's merge; #6 who merged.
 // Uses its own local MongoDB database (meeting25_test, cleared before each test, dropped at the end; local hosts only;
@@ -36,6 +37,8 @@ const { default: Lead } = await import('./app/models/Lead.js');
 const { default: User } = await import('./app/models/User.js');
 const { linkCustomerToLead } = await import('./app/lib/customerResolver.js');
 const { possibleMatchesFor, duplicateGroups } = await import('./app/lib/duplicateCustomers.js');
+const { oneBoxConditions } = await import('./app/lib/leadSearch.js');
+const { default: Vehicle } = await import('./app/models/Vehicle.js');
 
 const DEALER = new mongoose.Types.ObjectId().toString();
 let dbUp = false;
@@ -99,4 +102,20 @@ db('#2 customers without dealership history still link on phone or email as befo
   const lead = await newLead({ email: 'walk@example.com' });
   const r = await linkCustomerToLead(lead);
   assert.equal(String(r.customerId), String(earlier._id));
+});
+
+db('#7 one search box finds a lead by name, email, phone digits (any format) and inventory stock number', async () => {
+  await Vehicle.create({ dealerId: DEALER, vin: '1HGCM82633A004352', stocknumber: 'P1234' });
+  const byCar = await newLead({ name: 'Ann Stock', vin: '1HGCM82633A004352' });
+  const byPhone = await newLead({ name: 'Ben Phone', phone: '+1 (718) 555-0199' });
+  const byEmail = await newLead({ name: 'Cy Mail', email: 'cy@dealer.com' });
+  const find = async (q) => (await Lead.find({ dealer_id: DEALER, $or: await oneBoxConditions(q, DEALER) }).lean())
+    .map((l) => String(l._id)).sort();
+  assert.deepEqual(await find('P1234'), [String(byCar._id)]);
+  assert.deepEqual(await find('p12'), [String(byCar._id)], 'start of the stock number, any case');
+  assert.deepEqual(await find('718-555-0199'), [String(byPhone._id)]);
+  assert.deepEqual(await find('5550199'), [String(byPhone._id)]);
+  assert.deepEqual(await find('cy@dealer'), [String(byEmail._id)]);
+  assert.deepEqual(await find('ben'), [String(byPhone._id)]);
+  assert.deepEqual(await find('(718'), [String(byPhone._id)], 'a typed bracket is not a broken regex');
 });

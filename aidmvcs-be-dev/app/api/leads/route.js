@@ -1,3 +1,4 @@
+import { oneBoxConditions } from "@lib/leadSearch";
 import { REPLY_AGE_GROUPS, contactedLeadIds, repliedLeadIds, replyAgeGroup, replySplitGroup } from '@lib/contactedLeads';
 import { contactTypeLabel, validContactType } from '@lib/leadContactType';
 import { namePartsOf } from '@lib/personName';
@@ -104,6 +105,8 @@ export async function GET(req) {
     const name = url.searchParams.get("name");
     const email = url.searchParams.get("email");
     const phone = url.searchParams.get("phone");
+    // One search box (Betsy, 25 Nov 2026: "you can search by name, phone number, email, or stock number - this one bar").
+    const q = String(url.searchParams.get("q") || "").trim().slice(0, 100);
     const status = url.searchParams.get("fe_lead_status");
     const leadSources = url.searchParams.getAll("lead_source");
     const department = departmentMatch(url.searchParams.get("department")); // Sales / Service / Parts (missing = sales)
@@ -232,6 +235,7 @@ export async function GET(req) {
         };
       }
     }
+    if (q) orConditions.push(await oneBoxConditions(q, dealerId));
     // "Contacted" = the customer actually talked to us (app/lib/contactedLeads.js), applied once the other filters are in.
     if (status && status !== 'Contacted') query.fe_lead_status = status;
     if (leadSources && leadSources.length > 0) {
