@@ -76,7 +76,7 @@
   color: #64748b; border-bottom: 3px solid transparent; text-transform: uppercase; letter-spacing: 0.03em; }
 .inbox_tabs button.on { color: #111827; border-bottom-color: #0d6efd; }
 .inbox_tabs button:hover:not(.on) { color: #0d6efd; }
-.inbox_chat { display: flex; flex-direction: column; height: calc(100vh - 370px); min-height: 420px; }
+.inbox_chat { display: flex; flex-direction: column; height: calc(100vh - 400px); min-height: 420px; }
 .inbox_chat > .position-relative { flex: 0 0 auto; }
 .inbox_chat > .chat_thread { flex: 1 1 auto; max-height: none; min-height: 0; }
 .inbox_chat > .w_card { flex: 1 1 auto; }
@@ -163,3 +163,8 @@
 .inbox_drawer .lead_center_col { position: static !important; max-height: none; overflow: visible; }
 .inbox_drawer_head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .inbox_drawer_backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.25); z-index: 1044; }
+.lead_next_row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin-top: 8px; font-size: 0.82rem; }
+.lead_next_row .lead_next { margin: 0; }
+.lead_next_fact { color: #334155; }
+.lead_next_fact i { color: #4f46e5; }
+.inbox_journey { flex: 1 1 260px; min-width: 220px; margin: 0 8px; }

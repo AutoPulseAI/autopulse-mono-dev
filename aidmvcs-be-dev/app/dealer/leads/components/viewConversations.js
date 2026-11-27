@@ -15,7 +15,8 @@ import StatusModal from "./StatusModal"; // Import StatusModal
 import LeadNotesModal from "./LeadNotesModal"; // Import LeadNotesModal
 import AiLeadPanel from "../../ai/components/AiLeadPanel";
 import CallButton from "../../components/CallButton";
-import LeadInfoCard from "./LeadInfoCard";
+import LeadInfoCard, { LeadNextStep } from "./LeadInfoCard";
+import LeadJourney from "../../components/LeadJourney";
 import { deskLogMenuVisible } from "../../desk-log/deskLogAccess";
 // import AutoReplyToggle from "./AutoReplyToggle"; // Import AutoReplyToggle
 // import PendingAutoReplyIndicator from "./PendingAutoReplyIndicator"; // Import Pending indicator
@@ -860,15 +861,9 @@ export default function ViewConversations({
                 <span><small>PHONE</small>{lead?.phone || "-"}</span>
                 <span><small>EMAIL</small>{lead?.email || "-"}</span>
               </div>
+              {/* Next step, AI type, vehicle wanted and the lead's journey, on screen (the user, 27 Nov 2026). */}
+              {lead?._id && <LeadNextStep key={`next-${lead._id}-${lead.fe_lead_status || ""}`} lead={lead} timezone={dealerTimezone} />}
               <div className="inbox_actions_bar">
-                {[["sms", "fa-duotone fa-comment-sms", "Text", Boolean(lead?.phone) && !stoppedChannels.sms],
-                  ["email", "fa-duotone fa-envelope-open-text", "Email", Boolean(lead?.email) && !stoppedChannels.email]].map(([ch, icon, label, ok]) => (
-                  <button key={ch} type="button" className="inbox_act" disabled={!ok || !replyAllowed}
-                    title={ok ? `Write a ${ch === "sms" ? "text" : "email"} in the box under the conversation` : ch === "sms" ? "No phone, or texts stopped" : "No email, or emails stopped"}
-                    onClick={() => { setActiveChannelTab(ch); setTimeout(() => document.querySelector(".chat_textarea")?.focus(), 50); }}>
-                    <i className={icon}></i><span>{label}</span>
-                  </button>
-                ))}
                 {lead?.phone && (
                   <span className="inbox_act inbox_act_call">
                     <CallButton phone={lead.phone} leadId={lead._id} dealerId={lead.dealer_id} size="sm" variant="link" label="Call"
@@ -887,11 +882,15 @@ export default function ViewConversations({
                   <a className="inbox_act" href={`/dealer/customers/${lead.customer_id}`}>
                     <i className="fa-duotone fa-user"></i><span>Customer profile</span></a>
                 )}
-                <button type="button" className="inbox_act" onClick={handleClose}>
-                  <i className="fa-duotone fa-list"></i><span>Back to list</span></button>
-                <button type="button" className={`inbox_act ms-auto${showInfo ? " on" : ""}`} onClick={() => setShowInfo(!showInfo)}
-                  aria-pressed={showInfo} title="The lead's card, journey, lead type, source, booking and AI Assistant">
-                  <i className="fa-duotone fa-id-card"></i><span>Lead profile</span></button>
+                {/* The lead's journey in the free space of the action row (the user, 27 Nov 2026). */}
+                {lead?._id && (
+                  <div className="inbox_journey">
+                    <LeadJourney key={`j-${lead._id}-${lead.fe_lead_status || ""}`} leadId={lead._id} timezone={dealerTimezone} />
+                  </div>
+                )}
+                <button type="button" className={`inbox_act${showInfo ? " on" : ""}`} onClick={() => setShowInfo(!showInfo)}
+                  aria-pressed={showInfo} title="Edit the lead, its menu (View ADF...), Manager override, booking and the AI Assistant">
+                  <i className="fa-duotone fa-gear"></i><span>Lead settings</span></button>
               </div>
             </div>
           )}
@@ -901,8 +900,8 @@ export default function ViewConversations({
               className={tabbed ? `inbox_drawer${showInfo ? " open" : ""}` : ""} aria-hidden={tabbed && !showInfo}>
               {tabbed && (
                 <div className="inbox_drawer_head">
-                  <strong><i className="fa-duotone fa-id-card me-2"></i>Lead profile</strong>
-                  <Button variant="outline-secondary" size="sm" onClick={() => setShowInfo(false)} aria-label="Close the lead profile">
+                  <strong><i className="fa-duotone fa-gear me-2"></i>Lead settings</strong>
+                  <Button variant="outline-secondary" size="sm" onClick={() => setShowInfo(false)} aria-label="Close lead settings">
                     <i className="fa-solid fa-xmark"></i></Button>
                 </div>
               )}
@@ -926,7 +925,7 @@ export default function ViewConversations({
                 <div className="w_card leadinfo_card mb-2 row gx-1">
                   {/* The lead's details, editable in one click (LeadInfoCard: 13 Nov 2026 meeting / BB 17 Nov). */}
                   <div className="col-12">
-                    <LeadInfoCard lead={lead} dealerTimezone={dealerTimezone} onStatusClick={() => setShowStatusModal(true)}
+                    <LeadInfoCard lead={lead} dealerTimezone={dealerTimezone} onStatusClick={() => setShowStatusModal(true)} settingsOnly={tabbed}
                       onSaved={(saved) => { if (!embedded && onLeadSelected) onLeadSelected({ ...lead, ...saved }); onLeadSaved?.(saved); }} />
                   </div>
 
