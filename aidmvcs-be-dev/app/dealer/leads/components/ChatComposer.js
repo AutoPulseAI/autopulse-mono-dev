@@ -19,7 +19,7 @@ const auth = () => {
 };
 
 export default function ChatComposer({ lead, channel, onChannel, canText, canEmail, latestOf, onSent, thread = [],
-  leadUserLanguage = "English", onAddNote, onUpdateStatus, onCheckIn, disabledReason = null }) {
+  leadUserLanguage = "English", onAddNote, onUpdateStatus, onCheckIn, showCall = true, disabledReason = null }) {
   const { dealerParent } = useUser() || {};
   const dealerId = lead?.dealer_id;
   const [text, setText] = useState("");
@@ -137,9 +137,9 @@ export default function ChatComposer({ lead, channel, onChannel, canText, canEma
           {links.length > 0 && <MenuItem icon="fa-link" label="Send a link (credit application...)" onClick={() => setPanel("links")} />}
           {templates.length > 0 && <MenuItem icon="fa-file-lines" label="Template" onClick={() => setPanel("templates")} />}
           <MenuItem icon="fa-wand-magic-sparkles" label="Write with AI" onClick={() => { setPanel(null); setShowAI(true); }} />
-          <div className="chat_menu_sep" />
+          {(onAddNote || showCall || onUpdateStatus || onCheckIn) && <div className="chat_menu_sep" />}
           {onAddNote && <MenuItem icon="fa-note-sticky" label="Add note" onClick={() => { setPanel(null); onAddNote(); }} />}
-          {lead?.phone && (
+          {showCall && lead?.phone && (
             <div className="chat_menu_call">
               <CallButton phone={lead.phone} leadId={lead._id} dealerId={dealerId} size="sm" variant="link" label="Call" />
             </div>

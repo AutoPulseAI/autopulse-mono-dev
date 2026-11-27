@@ -110,6 +110,10 @@ export default function ViewConversations({
   const previousLeadIdRef = useRef(null);
   const [activeChannelTab, setActiveChannelTab] = useState("sms");
   const threadRef = useRef(null); // the chat thread: kept scrolled to the newest message at the bottom
+  // Leads page (the user, 27 Nov 2026): one inbox - the lead's header on top with tabs (Conversation / Lead details /
+  // AI Assistant) instead of a middle column; the customer profile (embedded) keeps its own layout.
+  const [leadTab, setLeadTab] = useState("conversation");
+  const tabbed = !embedded;
   // Channels this customer opted out of (the AI's consent record), re-read whenever the lead or its status changes.
   const [stoppedChannels, setStoppedChannels] = useState({});
   useEffect(() => {
@@ -823,8 +827,45 @@ export default function ViewConversations({
       )}
 
         <Col xxl={embedded ? 12 : 9} lg={embedded ? 12 : 8} md={12} sm={12}>
+          {tabbed && (
+            <div className="inbox_head w_card mb-2" data-testid="lead-tabs">
+              <div className="d-flex flex-wrap align-items-center gap-2">
+                <div className="me-auto">
+                  <div className="inbox_name">{lead?.name || "Lead"}</div>
+                  <div className="small text-muted">
+                    {leadStatusLabel(lead) || lead?.fe_lead_status || "New Lead"}
+                    {lead?.phone ? ` · ${lead.phone}` : ""}{lead?.email ? ` · ${lead.email}` : ""}
+                  </div>
+                </div>
+                <Button variant="outline-custom" size="sm" onClick={handlePrevLead} disabled={isNavigating} aria-label="Previous lead">
+                  <i className="fa-solid fa-chevron-left"></i>
+                </Button>
+                <Button variant="outline-custom" size="sm" onClick={handleNextLead} disabled={isNavigating} aria-label="Next lead">
+                  <i className="fa-solid fa-chevron-right"></i>
+                </Button>
+                {lead?.customer_id && (
+                  <Button variant="outline-secondary" size="sm" href={`/dealer/customers/${lead.customer_id}`}>
+                    <i className="fa-regular fa-user me-1"></i>Customer profile
+                  </Button>
+                )}
+                <Button variant="outline-secondary" size="sm" onClick={handleClose}>
+                  <i className="fa-solid fa-arrow-left me-1"></i>Back to list
+                </Button>
+              </div>
+              <div className="inbox_tabs" role="tablist">
+                {[["conversation", "fa-messages", "Conversation"], ["details", "fa-id-card", "Lead details"],
+                  ["ai", "fa-message-bot", "AI Assistant"]].map(([key, icon, label]) => (
+                  <button key={key} type="button" role="tab" aria-selected={leadTab === key}
+                    className={leadTab === key ? "on" : ""} onClick={() => setLeadTab(key)}>
+                    <i className={`fa-regular ${icon} me-1`} aria-hidden="true"></i>{label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <Row className="gx-3">
-            <Col xxl={4} lg={5} md={5}>
+            <Col xxl={tabbed ? 12 : 4} lg={tabbed ? 12 : 5} md={tabbed ? 12 : 5}
+              className={tabbed && leadTab === "conversation" ? "d-none" : ""}>
               {/* Stays in view while the conversation scrolls (BB, 17 Nov 2026: "as the conversation gets long this
                   column shifts to the bottom"); scrolls on its own when taller than the screen. */}
               <div className="dealer_info position-sticky mb-3 lead_center_col">
@@ -842,7 +883,7 @@ export default function ViewConversations({
                   />
                 )} */}
                 
-                <div className="w_card leadinfo_card mb-2 row gx-1">
+                <div className={`w_card leadinfo_card mb-2 row gx-1${tabbed && leadTab !== "details" ? " d-none" : ""}`}>
                   {/* The lead's details, editable in one click (LeadInfoCard: 13 Nov 2026 meeting / BB 17 Nov). */}
                   <div className="col-12">
                     <LeadInfoCard lead={lead} dealerTimezone={dealerTimezone} onStatusClick={() => setShowStatusModal(true)}
@@ -885,7 +926,7 @@ export default function ViewConversations({
                   {/* Every action on the lead in one place (BB, 17 Nov 2026: "all call to action should be in one place").
                       On the customer profile they sit in the opportunity's own action row instead (Bibi, 25 Nov 2026:
                       "this way all communication is in one place") - actionsTarget is that row. */}
-                  {(() => { const actions = (
+                  {!tabbed && (() => { const actions = (
                   <div className={actionsTarget ? "lead_actions_row" : "lead_actions mt-2"}>
                     {selectedConversation && getReplyChannel(lead, activeChannelTab, stoppedChannels) && !replyAllowed && (
                       <span className="small text-muted align-self-center" title="Reply from the department's own staff">
@@ -936,8 +977,9 @@ export default function ViewConversations({
                   ); return actionsTarget ? createPortal(actions, actionsTarget) : actions; })()}
                 </div>
                 {/* What the AI is doing with this lead (stage, next touch, call task, consent; on/off) */}
-                {lead?._id && <AiLeadPanel key={`${lead._id}-${lead.fe_lead_status || lead.status || ""}`} leadId={lead._id} />}
-                {!embedded && (
+                {lead?._id && (!tabbed || leadTab === "ai") && (
+                  <AiLeadPanel key={`${lead._id}-${lead.fe_lead_status || lead.status || ""}`} leadId={lead._id} />)}
+                {!embedded && !tabbed && (
                 <div className="d-flex align-items-center justify-content-between gap-2">
                   <Button
                     variant="outline-custom"
@@ -976,8 +1018,9 @@ export default function ViewConversations({
               </div>
             </Col>
 
-            <Col xxl={8} lg={7} md={7}>
-              <div className="position-relative mb-xl-3 mb-2">
+            <Col xxl={tabbed ? 12 : 8} lg={tabbed ? 12 : 7} md={tabbed ? 12 : 7}
+              className={tabbed ? (leadTab === "conversation" ? "inbox_chat" : "d-none") : ""}>
+              <div className="position-relative mb-2">
                 {isNavigating && (
                   <div 
                     style={{
@@ -1150,7 +1193,7 @@ export default function ViewConversations({
                           className={`w_card conversation-item ${
                             selectedConversation?._id === email._id ? 'selected-conversation' : ''
                           } ${isNote ? 'note-item' : ["received", "incoming"].includes(email.status) ? 'chat_in'
-                            : ["failed", "undelivered", "bounced", "error"].includes(email.status) ? 'chat_out chat_failed' : 'chat_out'}`}
+                            : `chat_out ${author.kind === 'ai' ? 'chat_ai' : 'chat_staff'}${["failed", "undelivered", "bounced", "error"].includes(email.status) ? ' chat_failed' : ''}`}`}
                           onClick={() => setSelectedConversation(email)}
                           style={isNote ? (isAiNote(email) ? {
                             borderLeft: '4px solid #2196f3',
@@ -1329,9 +1372,12 @@ export default function ViewConversations({
                   onSent={handleReplySuccess}
                   thread={emails}
                   leadUserLanguage={latestConversationUserLanguageLabel}
-                  onAddNote={() => setShowNotesModal(true)}
-                  onUpdateStatus={() => setShowStatusModal(true)}
-                  onCheckIn={showCheckIn ? () => { window.location.href = `/dealer/desk-log?check_in=${lead._id}`; } : null}
+                  // One place for each action: on the Leads page they are in the box's + menu; on the customer profile
+                  // they stay in the opportunity's action row (so not in the + menu there).
+                  showCall={tabbed}
+                  onAddNote={tabbed ? () => setShowNotesModal(true) : null}
+                  onUpdateStatus={tabbed ? () => setShowStatusModal(true) : null}
+                  onCheckIn={tabbed && showCheckIn ? () => { window.location.href = `/dealer/desk-log?check_in=${lead._id}`; } : null}
                   disabledReason={!replyAllowed ? `${DEPARTMENT_NAMES[leadDepartment(lead)]} lead - ${DEPARTMENT_NAMES[leadDepartment(lead)]} staff reply`
                     : lead.fe_lead_status === "Opted Out" && lead.status_source === "staff" ? "Opted Out by staff - nothing is sent" : null}
                 />
