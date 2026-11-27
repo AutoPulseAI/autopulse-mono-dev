@@ -135,3 +135,5 @@
 .inbox_actions .form-select { flex: 1 1 0; width: auto; }
 .inbox_pager { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px;
   padding: 6px 4px; border-top: 1px solid #e5e7eb; font-size: 0.82rem; text-align: center; }
+.inbox_head { padding-bottom: 10px !important; }
+.inbox_info .lead_center_col { max-height: calc(100vh - 230px); overflow-y: auto; top: 10px; }
