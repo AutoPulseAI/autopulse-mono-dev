@@ -1,4 +1,5 @@
 import { oneBoxConditions } from "@lib/leadSearch";
+import { attachInboxPreview } from "@lib/leadInbox";
 import { REPLY_AGE_GROUPS, contactedLeadIds, repliedLeadIds, replyAgeGroup, replySplitGroup } from '@lib/contactedLeads';
 import { contactTypeLabel, validContactType } from '@lib/leadContactType';
 import { namePartsOf } from '@lib/personName';
@@ -710,6 +711,8 @@ export async function GET(req) {
       }
       // The AI's stage per lead, read only (app/lib/ai/aiStage.js).
       await attachAiStages(leads);
+      // ?preview=1 (the Leads page's side list as an inbox): last message and unread count per lead.
+      if (url.searchParams.get("preview") === "1") await attachInboxPreview(leads).catch(() => null);
       // AutoPulse super admins only: the AI's bucket, stage and next message - never sent to a dealer's users.
       if ((await loadSettingsEditor(req)).superAdmin) await attachAiAdminLabels(leads);
       // Appointments list: "Made by AI" / "Made by Staff" on each one.

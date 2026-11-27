@@ -45,6 +45,20 @@ export function isStatusNote(email) {
   return Boolean((email?.is_note || email?.status === "note") && STATUS_NOTE.test(String(email?.mail_content || "").trim()));
 }
 
+// A status note split for the conversation's system line (the user, 27 Nov 2026: status changes shown "in a much
+// better way"): { to, from, by, why }. "Status changed from A to B by Name (extra)" / "Set to B by the AI: why" /
+// "Appointment moved by Name...". null when it is not one of those.
+export function statusNoteParts(text) {
+  const t = String(text || "").trim();
+  let m = /^Status changed from (.+?) to (.+?) by (.+?)(?:\s*\((.+)\))?\s*$/.exec(t);
+  if (m) return { from: m[1], to: m[2], by: m[3], why: m[4] || null };
+  m = /^Set to (.+?) by (the AI|.+?)(?::\s*(.+))?$/.exec(t);
+  if (m) return { from: null, to: m[1], by: m[2] === "the AI" ? "AI" : m[2], why: m[3] || null };
+  m = /^Appointment moved by (.+?)(?::\s*|\s+-\s+|\s+)(.*)$/.exec(t);
+  if (m) return { from: null, to: "Appointment moved", by: m[1], why: m[2] || null };
+  return null;
+}
+
 // {message id: staff name} for each AI appointment text sent within 6 hours after staff set the appointment.
 export function staffBookedTexts(emails) {
   const out = {};

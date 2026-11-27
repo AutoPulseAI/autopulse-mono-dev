@@ -81,3 +81,47 @@
 .inbox_chat > .chat_thread { flex: 1 1 auto; max-height: none; min-height: 0; }
 .inbox_chat > .w_card { flex: 1 1 auto; }
 .inbox_chat > .chat_composer { flex: 0 0 auto; border-top: 0; }
+
+/* 27 Nov 2026 (2): sender on top, time + ticks at the bottom right; status changes as one quiet line; notes as small
+   sticky cards; day chips. */
+.chat_who { font-weight: 700; font-size: 0.74rem; }
+.chat_who.customer { color: #0f766e; }
+.chat_who.ai { color: #15803d; }
+.chat_who.staff { color: #1d4ed8; }
+.chat_who.system { color: #64748b; }
+.chat_foot { display: flex; justify-content: flex-end; align-items: center; gap: 6px; font-size: 0.7rem; color: #667781;
+  margin-top: 2px; }
+.chat_foot_tag { background: rgba(21,128,61,0.12); color: #15803d; border-radius: 6px; padding: 0 5px; font-weight: 700; }
+.chat_tick { color: #8696a0; }
+.chat_tick.read { color: #34b7f1; }
+.chat_tick.failed { color: #dc2626; font-weight: 600; }
+.chat_system { align-self: center; max-width: 90%; display: flex; gap: 8px; align-items: flex-start; font-size: 0.78rem;
+  color: #334155; background: rgba(255,255,255,0.75); border-radius: 8px; padding: 4px 12px;
+  box-shadow: 0 1px 0.5px rgba(0,0,0,0.06); }
+.chat_system > i { color: #64748b; margin-top: 3px; }
+.chat_system_by { color: #64748b; }
+.chat_day { align-self: center; background: #fff; color: #54656f; font-size: 0.72rem; font-weight: 600; border-radius: 8px;
+  padding: 3px 12px; box-shadow: 0 1px 0.5px rgba(0,0,0,0.08); margin: 4px 0; }
+.chat_thread .conversation-item.note-item { background: #fff9db !important; border-left: 3px solid #f59f00 !important;
+  border-radius: 8px !important; max-width: 70%; }
+.chat_note_head { font-weight: 700; color: #92400e; font-size: 0.74rem; }
+.chat_note_edit { border: 0; background: transparent; color: #b45309; padding: 0 2px; opacity: 0.6; }
+.chat_note_edit:hover { opacity: 1; }
+
+/* The lead list beside the conversation as an inbox, like WhatsApp (the user, 27 Nov 2026). */
+.inbox_row { display: flex; align-items: center; gap: 10px; padding-right: 26px; min-width: 0; }
+.inbox_avatar { flex: 0 0 38px; width: 38px; height: 38px; border-radius: 50%; background: #dfe5e7; color: #3b4a54;
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem; }
+.inbox_main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.inbox_top, .inbox_bottom { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.inbox_title { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.inbox_title.unread { font-weight: 800; }
+.inbox_time { flex: 0 0 auto; font-size: 0.7rem; color: #667781; }
+.inbox_snip { flex: 1; min-width: 0; font-size: 0.8rem; color: #667781; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+.inbox_snip b { color: #3b4a54; font-weight: 600; }
+.inbox_unread { flex: 0 0 auto; background: #25d366; color: #fff; border-radius: 10px; font-size: 0.68rem;
+  font-weight: 700; padding: 1px 7px; }
+.inbox_menu { position: absolute; top: 50%; right: -4px; transform: translateY(-50%); }
+.inbox_menu .btn { border: 0; background: transparent; }
+.inbox_filters_closed > div:not(:first-child) { display: none !important; }
