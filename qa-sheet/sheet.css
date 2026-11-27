@@ -346,3 +346,6 @@ details.timeline .pill { margin-left: 6px; }
 .dropzone .dz-text, .dropzone .dz-ready { flex: 1 1 auto; min-width: 0; line-height: 1.35; }
 .dropzone .dz-or { display: none; }
 .dropzone .dz-choose { flex: none; white-space: nowrap; }
+.dropzone .dz-off { display: none; flex: none; border: 0; background: transparent; color: #2563eb; font-size: 18px; line-height: 1; padding: 0 2px; cursor: pointer; }
+.paste-active .dropzone:not(.busy) .dz-off { display: inline-block; }
+.paste-active .dropzone { cursor: pointer; }

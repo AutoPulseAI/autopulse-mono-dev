@@ -109,7 +109,8 @@ function dropZone(onFiles, { label = "Click this test, then Ctrl+V - or drop a s
     onclick: (e) => { e.stopPropagation(); input.click(); } });
   const zone = h("div", { class: "dropzone", tabindex: "0", "aria-label": `${label}, or choose a file` },
     h("span", { class: "dz-ico", "aria-hidden": "true", text: "\u{1F4CB}" }), h("span", { class: "spinner", "aria-hidden": "true" }),
-    text, h("span", { class: "dz-ready", text: "Ready - press Ctrl+V to paste your screenshot here" }), h("span", { class: "dz-or", text: "·" }), choose, input);
+    text, h("span", { class: "dz-ready", text: "Ready - press Ctrl+V to paste the screenshot here" }), h("span", { class: "dz-or", text: "·" }), choose,
+    h("button", { type: "button", class: "dz-off", title: "Stop pasting into this test (Esc)", "aria-label": "Stop pasting into this test", text: "×" }), input);
   const take = async (files) => {
     const list = imagesFrom(files);
     if (!list.length) { toast("Paste or drop an image (PNG, JPEG or WebP)", true); return; }
@@ -119,7 +120,7 @@ function dropZone(onFiles, { label = "Click this test, then Ctrl+V - or drop a s
     try { await onFiles(list); } finally { zone.classList.remove("busy"); text.textContent = label; }
   };
   zone.__take = take;
-  zone.addEventListener("click", () => zone.focus());
+  zone.addEventListener("click", (e) => { if (!e.target.closest(".dz-off, .dz-choose") && zone.closest(".paste-active")) zone.focus(); });
   input.addEventListener("change", () => { take([...(input.files || [])]); input.value = ""; });
   zone.addEventListener("paste", (e) => { const items = [...(e.clipboardData?.items || [])]; if (items.some((i) => i.kind === "file")) { e.preventDefault(); take(items); } });
   zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("over"); });
@@ -137,8 +138,19 @@ function setPasteHost(el) {
   pasteHost = el && el.querySelector(".dropzone") ? el : null;
   pasteHost?.classList.add("paste-active");
 }
-document.addEventListener("pointerdown", (e) => setPasteHost(e.target.closest?.(PASTE_HOSTS) || null));
-document.addEventListener("focusin", (e) => { const host = e.target.closest?.(PASTE_HOSTS); if (host) setPasteHost(host); });
+document.addEventListener("pointerdown", (e) => {
+  const host = e.target.closest?.(PASTE_HOSTS) || null;
+  // Clicking the ready box of the selected test again (or its x) lets go of it (the user, 28 Nov 2026).
+  if (host && host === pasteHost && (e.target.closest(".dz-off") || (e.target.closest(".dropzone") && !e.target.closest(".dz-choose")))) {
+    e.preventDefault();
+    setPasteHost(null);
+    document.activeElement?.blur?.();
+    return;
+  }
+  setPasteHost(host);
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && pasteHost) { setPasteHost(null); document.activeElement?.blur?.(); } });
+document.addEventListener("focusin", (e) => { const host = e.target.closest?.(PASTE_HOSTS); if (host && !e.target.closest(".dropzone")) setPasteHost(host); });
 document.addEventListener("paste", (e) => {
   if (e.defaultPrevented) return; // the box or a note already took it
   const items = [...(e.clipboardData?.items || [])];
@@ -390,7 +402,7 @@ function resultPanel(row) {
       (r?.shots || []).length ? h("div", { class: "shots" }, r.shots.map((s) => h("div", { class: "shot" },
         h("img", { src: `${ROOT}shots/${s.file}`, alt: "Screenshot", loading: "lazy", onclick: () => lightbox(`${ROOT}shots/${s.file}`) }),
         h("button", { type: "button", title: "Remove this screenshot", "aria-label": "Remove screenshot", text: "×", onclick: () => removeShot(row, s.file) })))) : null,
-      r?.at ? h("div", { class: "by" }, r.status ? h("span", { class: `pill s-${r.status}`, text: LABEL[r.status] }) : "Cleared", ` by you · ${when(r.at)} `,
+      r?.at ? h("div", { class: "by" }, r.status ? h("span", { class: `pill s-${r.status}`, text: LABEL[r.status] }) : "Cleared", ` by ${r.tester || me()} · ${when(r.at)} `,
         r.issue ? h("span", { class: `pill i-${r.issue.state}`, text: `Issue: ${ISSUE[r.issue.state]}`, title: r.issue.fixNote || r.issue.note || "" }) : null) : null,
     ];
     const oth = others(row.id);
@@ -544,6 +556,8 @@ function refreshCounts() {
   for (const r of testable) { const s = mine(r.id)?.status; if (s) n[s] += 1; }
   const done = n.pass + n.fail + n.blocked;
   $("me-done").textContent = name ? `${done} / ${testable.length}` : "–";
+  // Every result shows the tester's name, never "you" (the user, 28 Nov 2026).
+  for (const el of document.querySelectorAll("[data-who]")) el.textContent = `${name ? `${name}'s` : "Your"} ${el.dataset.who}`;
   $("me-of").textContent = name ? `tests done by ${name}` : "Type your name above to start";
   $("me-bar").style.width = `${testable.length ? (done / testable.length) * 100 : 0}%`;
   for (const k of ["pass", "fail", "blocked"]) $(`me-${k}`).textContent = name ? n[k] : "–";
