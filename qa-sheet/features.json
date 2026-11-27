@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-27T00:01:40.948Z",
+ "generatedAt": "2026-11-27T00:56:10.743Z",
  "app": {
   "name": "AutoPulse CRM",
   "url": "https://www.autopulse.ai",
@@ -40,12 +40,12 @@
    "title": "Sign-in & public pages"
   }
  ],
- "inventoryAt": "2026-11-26T23:47:45.000Z",
+ "inventoryAt": "2026-11-27T00:56:10.673Z",
  "totals": {
   "sections": 81,
-  "features": 213,
-  "buttons": 787,
-  "fields": 319
+  "features": 214,
+  "buttons": 710,
+  "fields": 303
  },
  "sections": [
   {
@@ -181,10 +181,10 @@
      "code": "DMA-B01"
     },
     {
-     "id": "dealer/_menu.b.x.react-aria1954031804-r-2",
+     "id": "dealer/_menu.b.x.react-aria67089089-r-2",
      "label": "Switch store",
      "kind": "button",
-     "el": "#react-aria1954031804-_r_2_",
+     "el": "#react-aria67089089-_r_2_",
      "href": null,
      "panel": "",
      "about": "Switch store.",
@@ -194,10 +194,10 @@
      "code": "DMA-B02"
     },
     {
-     "id": "dealer/_menu.b.x.react-aria1954031804-r-0",
+     "id": "dealer/_menu.b.x.react-aria67089089-r-0",
      "label": "Notifications",
      "kind": "button",
-     "el": "#react-aria1954031804-_r_0_",
+     "el": "#react-aria67089089-_r_0_",
      "href": null,
      "panel": "",
      "about": "Opens the notifications list.",
@@ -1294,10 +1294,10 @@
      "code": "DAS-B01"
     },
     {
-     "id": "dealer/dashboard.b.x.react-aria3846846543-r-5",
+     "id": "dealer/dashboard.b.x.react-aria5834541963-r-5",
      "label": "Download report",
      "kind": "button",
-     "el": "#react-aria3846846543-_r_5_",
+     "el": "#react-aria5834541963-_r_5_",
      "href": null,
      "panel": "Leads Dashboard",
      "about": "Download report.",
@@ -1710,10 +1710,10 @@
      "code": "DAS-B33"
     },
     {
-     "id": "dealer/dashboard.b.after-pressing-lead-sources.react-aria3434872396-r-6",
+     "id": "dealer/dashboard.b.after-pressing-lead-sources.react-aria8834757251-r-4",
      "label": "Download",
      "kind": "button",
-     "el": "#react-aria3434872396-_r_6_",
+     "el": "#react-aria8834757251-_r_4_",
      "href": null,
      "panel": "Where leads come from · after pressing 'Lead sources'",
      "about": "Download. (after pressing 'Lead sources')",
@@ -2490,13 +2490,14 @@
     },
     {
      "id": "dealer/leads.f.lead-tabs",
-     "title": "Open lead: header with tabs (Conversation / Lead details / AI Assistant)",
-     "about": "The user, 27 Nov 2026: one inbox screen instead of a middle column.",
+     "title": "Open lead: three panels - lead list, conversation, lead details",
+     "about": "The user, 27 Nov 2026.",
      "steps": [
       "Open a test lead.",
-      "Press each tab; use the < > arrows, Customer profile and Back to list in the header."
+      "Read the right panel; press Details in the header twice.",
+      "Use the < > arrows, Customer profile and Back to list."
      ],
-     "expect": "The header shows the name, status, phone and email; Conversation fills the screen with the message box pinned at the bottom and only the messages scrolling; Lead details holds the lead card (edit, status, source, journey, manager override); AI Assistant holds the AI panel; Call, Add note, Update status and Check in are only in the message box's + menu.",
+     "expect": "Left: the lead list with its filters; middle: the conversation with the message box pinned at the bottom; right: the lead card (edit, status, up type, department, source, sub-source, AI type, vehicle wanted, next step, journey, contact, owner, Manager override) and the AI Assistant under it; Details folds the right panel so the conversation gets the width and opens it again; Call, Add note, Update status and Check in are in the message box's + menu. Bulk actions (select leads, reassign, bulk history) are on the Leads list (Back to list → Actions).",
      "status": "live",
      "auto": [],
      "access": null,
@@ -2507,14 +2508,28 @@
      "title": "Chat-style conversation: oldest at the top, newest at the bottom",
      "about": "The user, 27 Nov 2026.",
      "steps": [
-      "Open a test lead with several messages.",
+      "Open a test lead with several messages over several days.",
       "Scroll up; press Load older messages at the top if shown."
      ],
-     "expect": "The conversation opens at the newest message, right above the message box; the customer's messages are white bubbles on the left, the AI's green and staff's blue on the right, notes and status changes in the middle; each message has one short line (who, when, delivered) and From / To show on hover.",
+     "expect": "It opens at the newest message above the message box; a day chip (e.g. Thu, Nov 26, 2026) starts each day; the customer's messages are white bubbles on the left, the AI's green and staff's blue on the right, each with the sender on top and the time with ✓ / ✓✓ (delivered) or a red Failed at the bottom right; a status change is one small line in the middle (old → new status, by whom, why, time); notes are small yellow cards with a pencil to edit; From / To show on hover.",
      "status": "live",
      "auto": [],
      "access": null,
      "code": "LEA-06"
+    },
+    {
+     "id": "dealer/leads.f.inbox-list",
+     "title": "Lead list as an inbox",
+     "steps": [
+      "Look at the list beside the conversation and its filters.",
+      "Press a lead's ⋮.",
+      "Use the page arrows at the bottom of the list."
+     ],
+     "expect": "The filters (status, lead source, department, source type, dates, Search / Clear) are shown above the list - the filter button folds and unfolds them; each lead shows initials, name, the last message (AI: / You: when it was ours, an envelope for email, a red mark when it failed), its time and a green count of unread customer messages; ⋮ opens a small box under the row with Assigned to and Delete; the bottom shows ‹ Page N of M › with the number of leads.",
+     "status": "live",
+     "auto": [],
+     "access": null,
+     "code": "LEA-07"
     },
     {
      "id": "dealer/leads.f.chat-plus",
@@ -2528,7 +2543,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-07"
+     "code": "LEA-08"
     },
     {
      "id": "dealer/leads.f.vehicle-photos",
@@ -2542,7 +2557,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-08"
+     "code": "LEA-09"
     },
     {
      "id": "dealer/leads.f.dealer-links",
@@ -2554,7 +2569,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-09"
+     "code": "LEA-10"
     },
     {
      "id": "dealer/leads.f.open-lead",
@@ -2568,7 +2583,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-10"
+     "code": "LEA-11"
     },
     {
      "id": "dealer/leads.f.reply",
@@ -2580,7 +2595,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-11"
+     "code": "LEA-12"
     },
     {
      "id": "dealer/leads.f.edit-lead",
@@ -2593,7 +2608,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-12"
+     "code": "LEA-13"
     },
     {
      "id": "dealer/leads.f.actions-menu",
@@ -2608,7 +2623,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-13"
+     "code": "LEA-14"
     },
     {
      "id": "dealer/leads.f.staff-opted-out",
@@ -2623,7 +2638,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-14"
+     "code": "LEA-15"
     },
     {
      "id": "dealer/leads.f.stopped",
@@ -2635,7 +2650,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-15"
+     "code": "LEA-16"
     },
     {
      "id": "dealer/leads.t.G-006",
@@ -2649,7 +2664,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-16"
+     "code": "LEA-17"
     },
     {
      "id": "dealer/leads.t.G-009",
@@ -2663,7 +2678,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-17"
+     "code": "LEA-18"
     },
     {
      "id": "dealer/leads.t.G-010",
@@ -2677,7 +2692,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-18"
+     "code": "LEA-19"
     },
     {
      "id": "dealer/leads.t.G-027",
@@ -2691,7 +2706,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-19"
+     "code": "LEA-20"
     },
     {
      "id": "dealer/leads.t.G-082",
@@ -2705,7 +2720,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-20"
+     "code": "LEA-21"
     },
     {
      "id": "dealer/leads.t.G-083",
@@ -2719,7 +2734,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-21"
+     "code": "LEA-22"
     },
     {
      "id": "dealer/leads.t.M25-03",
@@ -2733,7 +2748,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-22"
+     "code": "LEA-23"
     },
     {
      "id": "dealer/leads.t.M25-07",
@@ -2747,7 +2762,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-23"
+     "code": "LEA-24"
     },
     {
      "id": "dealer/leads.t.M25-10",
@@ -2761,7 +2776,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-24"
+     "code": "LEA-25"
     },
     {
      "id": "dealer/leads.t.M25-11",
@@ -2775,7 +2790,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-25"
+     "code": "LEA-26"
     },
     {
      "id": "dealer/leads.t.M25-12",
@@ -2789,7 +2804,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-26"
+     "code": "LEA-27"
     },
     {
      "id": "dealer/leads.t.M25-16",
@@ -2803,7 +2818,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-27"
+     "code": "LEA-28"
     },
     {
      "id": "dealer/leads.t.M25-17",
@@ -2817,7 +2832,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-28"
+     "code": "LEA-29"
     },
     {
      "id": "dealer/leads.t.M25-18",
@@ -2831,7 +2846,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-29"
+     "code": "LEA-30"
     }
    ],
    "buttons": [
@@ -3289,142 +3304,10 @@
      "code": "BUH-02"
     }
    ],
-   "buttons": [
-    {
-     "id": "dealer/leads/bulk-history.b.x.back-to-leads",
-     "label": "Back to Leads",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "",
-     "about": "Back to Leads.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "BUH-B01"
-    },
-    {
-     "id": "dealer/leads/bulk-history.b.x.date-range",
-     "label": "Date Range",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Bulk history",
-     "about": "The date range component: presets and a custom range.",
-     "expect": "The list / numbers reload for the picked dates; the label shows the range.",
-     "status": "live",
-     "access": null,
-     "code": "BUH-B02"
-    },
-    {
-     "id": "dealer/leads/bulk-history.b.x.search",
-     "label": "Search",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Bulk history",
-     "about": "Runs the search with what is typed in the search fields.",
-     "expect": "Only matching rows show; the count updates; an empty search shows everything.",
-     "status": "live",
-     "access": null,
-     "code": "BUH-B03"
-    },
-    {
-     "id": "dealer/leads/bulk-history.b.x.clear",
-     "label": "Clear",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Bulk history",
-     "about": "Empties the search / filters.",
-     "expect": "Every filter is back to its default and the full list shows.",
-     "status": "live",
-     "access": null,
-     "code": "BUH-B04"
-    },
-    {
-     "id": "dealer/leads/bulk-history.b.in-the-window-menu-that-date-range-opens.page-buttons-previous-next-number",
-     "label": "Page buttons (previous / next / number)",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Bulk history · in the window / menu that 'Date Range' opens",
-     "about": "Pages through a long list. (in the window / menu that 'Date Range' opens)",
-     "expect": "The next / previous page of rows shows; the page number is highlighted.",
-     "status": "live",
-     "access": null,
-     "code": "BUH-B05"
-    },
-    {
-     "id": "dealer/leads/bulk-history.b.in-the-window-menu-that-date-range-opens.apply",
-     "label": "Apply",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Bulk history · in the window / menu that 'Date Range' opens",
-     "about": "Applies the picked dates / filters. (in the window / menu that 'Date Range' opens)",
-     "expect": "The page reloads its data for them; the picker closes.",
-     "status": "live",
-     "access": null,
-     "code": "BUH-B06"
-    },
-    {
-     "id": "dealer/leads/bulk-history.b.in-the-window-menu-that-date-range-opens.clear",
-     "label": "Clear",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Bulk history · in the window / menu that 'Date Range' opens",
-     "about": "Empties the search / filters. (in the window / menu that 'Date Range' opens)",
-     "expect": "Every filter is back to its default and the full list shows.",
-     "status": "live",
-     "access": null,
-     "code": "BUH-B07"
-    }
-   ],
-   "fields": [
-    {
-     "label": "Lead name, phone or email",
-     "kind": "input:text",
-     "panel": "Bulk history",
-     "tip": ""
-    },
-    {
-     "label": "Done by",
-     "kind": "select",
-     "panel": "Bulk history",
-     "tip": ""
-    },
-    {
-     "label": "Change",
-     "kind": "select",
-     "panel": "Bulk history",
-     "tip": ""
-    },
-    {
-     "label": "Result",
-     "kind": "select",
-     "panel": "Bulk history",
-     "tip": ""
-    },
-    {
-     "label": "(no label)",
-     "kind": "select",
-     "panel": "Bulk history · in the window / menu that 'Date Range' opens",
-     "tip": ""
-    }
-   ],
-   "panels": [
-    "Bulk history"
-   ],
-   "parts": [
-    {
-     "key": "dealer/leads/bulk-history::Date Range",
-     "via": "Button 'Date Range'",
-     "buttons": 3,
-     "fields": 1
-    }
-   ],
+   "buttons": [],
+   "fields": [],
+   "panels": [],
+   "parts": [],
    "code": "BUH"
   },
   {
@@ -4359,10 +4242,10 @@
      "code": "CUP-B23"
     },
     {
-     "id": "dealer/customers/[id].b.x.react-aria536487848-r-3",
+     "id": "dealer/customers/[id].b.x.react-aria7109571392-r-3",
      "label": "Forms",
      "kind": "button",
-     "el": "#react-aria536487848-_r_3_",
+     "el": "#react-aria7109571392-_r_3_",
      "href": null,
      "panel": "Customer Details",
      "about": "Forms.",
@@ -5884,10 +5767,10 @@
      "code": "DEL-B03"
     },
     {
-     "id": "dealer/desk-log.b.x.react-aria8843040948-r-2",
+     "id": "dealer/desk-log.b.x.react-aria1552568639-r-2",
      "label": "More: check in, today's appointments, settings",
      "kind": "button",
-     "el": "#react-aria8843040948-_r_2_",
+     "el": "#react-aria1552568639-_r_2_",
      "href": null,
      "panel": "Desk Log",
      "about": "Filter: More: check in, today's appointments, settings.",
@@ -6794,13 +6677,13 @@
      "code": "AIM-B01"
     },
     {
-     "id": "dealer/ai/messages.b.x.cr-carla-reyes-43-minutes-ago-you-composer-test-from-the-new",
-     "label": "CR Carla Reyes 43 minutes ago You: Composer test from the new box 1 3 +121755580",
+     "id": "dealer/ai/messages.b.x.cr-carla-reyes-2-hours-ago-you-composer-test-from-the-new-bo",
+     "label": "CR Carla Reyes 2 hours ago You: Composer test from the new box 1 3 +12175558045",
      "kind": "button",
      "el": null,
      "href": null,
      "panel": "AI Messages",
-     "about": "CR Carla Reyes 43 minutes ago You: Composer test from the new box 1 3 +121755580.",
+     "about": "CR Carla Reyes 2 hours ago You: Composer test from the new box 1 3 +12175558045.",
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
@@ -7476,47 +7359,9 @@
      "code": "RES-04"
     }
    ],
-   "buttons": [
-    {
-     "id": "dealer/report-schedule.b.x.add-schedule",
-     "label": "Add Schedule",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Schedule Rules",
-     "about": "Add Schedule.",
-     "expect": "A form opens; required fields are checked; Save adds it and it shows in the list; Cancel adds nothing.",
-     "status": "live",
-     "access": null,
-     "code": "RES-B01"
-    },
-    {
-     "id": "dealer/report-schedule.b.x.save-settings",
-     "label": "Save Settings",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Schedule Rules",
-     "about": "Save Settings.",
-     "expect": "Saves; a success message shows and the value stays after a refresh; a wrong value is refused with a message.",
-     "status": "live",
-     "access": null,
-     "code": "RES-B02"
-    }
-   ],
-   "fields": [
-    {
-     "label": "Enter email address(es) for reports (comma-separated)",
-     "kind": "input:text",
-     "panel": "Report Email",
-     "tip": ""
-    }
-   ],
-   "panels": [
-    "Manage Report Schedule",
-    "Report Email",
-    "Schedule Rules"
-   ],
+   "buttons": [],
+   "fields": [],
+   "panels": [],
    "parts": [],
    "code": "RES"
   },
@@ -7528,7 +7373,7 @@
    "who": "—",
    "access": null,
    "autoScreen": "UI-dealer/reports",
-   "landed": "/dealer/dashboard",
+   "landed": null,
    "skipped": null,
    "features": [
     {
@@ -7544,689 +7389,9 @@
      "code": "REP-01"
     }
    ],
-   "buttons": [
-    {
-     "id": "dealer/reports.b.x.today",
-     "label": "Today",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Leads Dashboard",
-     "about": "Filter: Today.",
-     "expect": "The list / numbers narrow to it; the active choice is highlighted; refresh keeps it.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B01"
-    },
-    {
-     "id": "dealer/reports.b.x.react-aria5676538120-r-3",
-     "label": "Download report",
-     "kind": "button",
-     "el": "#react-aria5676538120-_r_3_",
-     "href": null,
-     "panel": "Leads Dashboard",
-     "about": "Download report.",
-     "expect": "A file downloads with the same data as on screen.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B02"
-    },
-    {
-     "id": "dealer/reports.b.x.total-leads.dealer-leads-startdate-date-enddate-date",
-     "label": "Total Leads",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/leads?startDate=:date&endDate=:date",
-     "panel": "Leads Dashboard",
-     "about": "Goes to /dealer/leads?startDate=:date&endDate=:date.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B03"
-    },
-    {
-     "id": "dealer/reports.b.x.customer-replied.dealer-leads-status-contacted-startdate-date-enddate-date",
-     "label": "Customer Replied",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/leads?status=Contacted&startDate=:date&endDate=:date",
-     "panel": "0",
-     "about": "Goes to /dealer/leads?status=Contacted&startDate=:date&endDate=:date.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B04"
-    },
-    {
-     "id": "dealer/reports.b.x.messages-delivered.dealer-leads-messages-sent-startdate-date-enddate-date",
-     "label": "Messages Delivered",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/leads?messages=sent&startDate=:date&endDate=:date",
-     "panel": "0",
-     "about": "Goes to /dealer/leads?messages=sent&startDate=:date&endDate=:date.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B05"
-    },
-    {
-     "id": "dealer/reports.b.x.dealer-action-required.dealer-ai-actions-tab-dar",
-     "label": "Dealer Action Required",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/ai/actions?tab=dar",
-     "panel": "0",
-     "about": "Goes to /dealer/ai/actions?tab=dar.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B06"
-    },
-    {
-     "id": "dealer/reports.b.x.appointments-made-today.dealer-booking-madestartdate-date-madeenddate-date",
-     "label": "Appointments Made Today",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/booking?madeStartDate=:date&madeEndDate=:date",
-     "panel": "0",
-     "about": "Goes to /dealer/booking?madeStartDate=:date&madeEndDate=:date.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B07"
-    },
-    {
-     "id": "dealer/reports.b.x.appointments-for-today.dealer-booking-bookingstartdate-date-bookingenddate-date",
-     "label": "Appointments for Today",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/booking?bookingStartDate=:date&bookingEndDate=:date",
-     "panel": "0",
-     "about": "Goes to /dealer/booking?bookingStartDate=:date&bookingEndDate=:date.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B08"
-    },
-    {
-     "id": "dealer/reports.b.x.appointments-showed.dealer-booking-funnel-showed-funnelstartdate-date-funnelendd",
-     "label": "Appointments Showed",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/booking?funnel=showed&funnelStartDate=:date&funnelEndDate=:date",
-     "panel": "0",
-     "about": "Goes to /dealer/booking?funnel=showed&funnelStartDate=:date&funnelEndDate=:date.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B09"
-    },
-    {
-     "id": "dealer/reports.b.x.appointments-sold.dealer-booking-funnel-sold-funnelstartdate-date-funnelenddat",
-     "label": "Appointments Sold",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/booking?funnel=sold&funnelStartDate=:date&funnelEndDate=:date",
-     "panel": "0",
-     "about": "Goes to /dealer/booking?funnel=sold&funnelStartDate=:date&funnelEndDate=:date.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B10"
-    },
-    {
-     "id": "dealer/reports.b.x.replied-from-today-s-leads.dealer-leads-status-contacted-reply-age-new-startdate-date-e",
-     "label": "Replied from Today's Leads",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/leads?status=Contacted&reply_age=new&startDate=:date&endDate=:date",
-     "panel": "CUSTOMER REPLIES BY LEAD AGE0 + 0 = 0 customer replied",
-     "about": "Goes to /dealer/leads?status=Contacted&reply_age=new&startDate=:date&endDate=:date.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B11"
-    },
-    {
-     "id": "dealer/reports.b.x.replied-from-past-leads.dealer-leads-status-contacted-reply-age-older-startdate-date",
-     "label": "Replied from Past Leads",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/leads?status=Contacted&reply_age=older&startDate=:date&endDate=:date",
-     "panel": "0",
-     "about": "Goes to /dealer/leads?status=Contacted&reply_age=older&startDate=:date&endDate=:date.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B12"
-    },
-    {
-     "id": "dealer/reports.b.x.lead-1-7-days-old.dealer-leads-status-contacted-reply-age-d1-7-startdate-date-",
-     "label": "Lead 1-7 days old",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/leads?status=Contacted&reply_age=d1_7&startDate=:date&endDate=:date",
-     "panel": "0",
-     "about": "Goes to /dealer/leads?status=Contacted&reply_age=d1_7&startDate=:date&endDate=:date.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B13"
-    },
-    {
-     "id": "dealer/reports.b.x.lead-8-15-days-old.dealer-leads-status-contacted-reply-age-d8-15-startdate-date",
-     "label": "Lead 8-15 days old",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/leads?status=Contacted&reply_age=d8_15&startDate=:date&endDate=:date",
-     "panel": "0",
-     "about": "Goes to /dealer/leads?status=Contacted&reply_age=d8_15&startDate=:date&endDate=:date.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B14"
-    },
-    {
-     "id": "dealer/reports.b.x.lead-16-30-days-old.dealer-leads-status-contacted-reply-age-d16-30-startdate-dat",
-     "label": "Lead 16-30 days old",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/leads?status=Contacted&reply_age=d16_30&startDate=:date&endDate=:date",
-     "panel": "0",
-     "about": "Goes to /dealer/leads?status=Contacted&reply_age=d16_30&startDate=:date&endDate=:date.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B15"
-    },
-    {
-     "id": "dealer/reports.b.x.lead-31-60-days-old.dealer-leads-status-contacted-reply-age-d31-60-startdate-dat",
-     "label": "Lead 31-60 days old",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/leads?status=Contacted&reply_age=d31_60&startDate=:date&endDate=:date",
-     "panel": "0",
-     "about": "Goes to /dealer/leads?status=Contacted&reply_age=d31_60&startDate=:date&endDate=:date.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B16"
-    },
-    {
-     "id": "dealer/reports.b.x.lead-over-60-days-old.dealer-leads-status-contacted-reply-age-d61-plus-startdate-d",
-     "label": "Lead Over 60 days old",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/leads?status=Contacted&reply_age=d61_plus&startDate=:date&endDate=:date",
-     "panel": "0",
-     "about": "Goes to /dealer/leads?status=Contacted&reply_age=d61_plus&startDate=:date&endDate=:date.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B17"
-    },
-    {
-     "id": "dealer/reports.b.x.ai.dealer-leads-appt-attribution-ai-startdate-date-enddate-date",
-     "label": "AI",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/leads?appt_attribution=ai&startDate=:date&endDate=:date",
-     "panel": "0",
-     "about": "Goes to /dealer/leads?appt_attribution=ai&startDate=:date&endDate=:date.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B18"
-    },
-    {
-     "id": "dealer/reports.b.x.ai-assisted.dealer-leads-appt-attribution-ai-assisted-startdate-date-end",
-     "label": "AI-assisted",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/leads?appt_attribution=ai_assisted&startDate=:date&endDate=:date",
-     "panel": "0",
-     "about": "Goes to /dealer/leads?appt_attribution=ai_assisted&startDate=:date&endDate=:date.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B19"
-    },
-    {
-     "id": "dealer/reports.b.x.human-only.dealer-leads-appt-attribution-human-only-startdate-date-endd",
-     "label": "Human-only",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/leads?appt_attribution=human_only&startDate=:date&endDate=:date",
-     "panel": "0",
-     "about": "Goes to /dealer/leads?appt_attribution=human_only&startDate=:date&endDate=:date.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B20"
-    },
-    {
-     "id": "dealer/reports.b.x.unknown.dealer-leads-appt-attribution-unknown-startdate-date-enddate",
-     "label": "Unknown",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/leads?appt_attribution=unknown&startDate=:date&endDate=:date",
-     "panel": "0",
-     "about": "Goes to /dealer/leads?appt_attribution=unknown&startDate=:date&endDate=:date.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B21"
-    },
-    {
-     "id": "dealer/reports.b.x.lead-sources",
-     "label": "Lead sources",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "0",
-     "about": "Lead sources.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B22"
-    },
-    {
-     "id": "dealer/reports.b.x.leads-appointments",
-     "label": "Leads & appointments",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "0",
-     "about": "Leads & appointments.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B23"
-    },
-    {
-     "id": "dealer/reports.b.x.ai-staff",
-     "label": "AI & staff",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "0",
-     "about": "AI & staff.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B24"
-    },
-    {
-     "id": "dealer/reports.b.x.sales-profit",
-     "label": "Sales & profit",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "0",
-     "about": "Filter: Sales & profit.",
-     "expect": "The list / numbers narrow to it; the active choice is highlighted; refresh keeps it.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B25"
-    },
-    {
-     "id": "dealer/reports.b.x.service",
-     "label": "Service",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "0",
-     "about": "Filter: Service.",
-     "expect": "The list / numbers narrow to it; the active choice is highlighted; refresh keeps it.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B26"
-    },
-    {
-     "id": "dealer/reports.b.x.data-health",
-     "label": "Data health",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "0",
-     "about": "Data health.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B27"
-    },
-    {
-     "id": "dealer/reports.b.x.how-numbers-are-counted",
-     "label": "How numbers are counted",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "0",
-     "about": "How numbers are counted.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B28"
-    },
-    {
-     "id": "dealer/reports.b.x.hide",
-     "label": "Hide",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "0",
-     "about": "Hide.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B29"
-    },
-    {
-     "id": "dealer/reports.b.x.numbers",
-     "label": "Numbers",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Numbers.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B30"
-    },
-    {
-     "id": "dealer/reports.b.x.fields",
-     "label": "Fields",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Fields.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B31"
-    },
-    {
-     "id": "dealer/reports.b.x.leads-received-dashboard-leads-of-the-dealer-whose-createdat",
-     "label": "Leads received Dashboard Leads of the dealer whose createdAt is in the range.",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Leads received Dashboard Leads of the dealer whose createdAt is in the range..",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B32"
-    },
-    {
-     "id": "dealer/reports.b.x.customer-replied-leads-dashboard-leads-of-the-dealer-any-lea",
-     "label": "Customer Replied (leads) Dashboard Leads of the dealer (any lead date) with at l",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Customer Replied (leads) Dashboard Leads of the dealer (any lead date) with at l.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B33"
-    },
-    {
-     "id": "dealer/reports.b.x.appointments-made-dashboard-bookings-of-the-dealer-created-i",
-     "label": "Appointments made Dashboard Bookings of the dealer created in the range (any sta",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Appointments made Dashboard Bookings of the dealer created in the range (any sta.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B34"
-    },
-    {
-     "id": "dealer/reports.b.x.appointments-for-these-dates-dashboard-bookings-of-the-deale",
-     "label": "Appointments for these dates Dashboard Bookings of the dealer set for a day in t",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Appointments for these dates Dashboard Bookings of the dealer set for a day in t.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B35"
-    },
-    {
-     "id": "dealer/reports.b.x.showed-dashboard-scheduled-bookings-appt-scheduled-marked-sh",
-     "label": "Showed Dashboard Scheduled bookings (appt.scheduled) marked showed, or completed",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Showed Dashboard Scheduled bookings (appt.scheduled) marked showed, or completed.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B36"
-    },
-    {
-     "id": "dealer/reports.b.x.customer-days-with-a-reply-dashboard-all-customer-dealer-loc",
-     "label": "Customer-days with a reply Dashboard All (customer, dealer-local day) pairs with",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Customer-days with a reply Dashboard All (customer, dealer-local day) pairs with.",
-     "expect": "Only to a test contact: it is sent once, shows in the conversation, in the customer's language.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B37"
-    },
-    {
-     "id": "dealer/reports.b.x.customer-days-replied-from-today-s-leads-dashboard-customer-",
-     "label": "Customer-days replied from today's leads Dashboard Customer-days whose reply lea",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Customer-days replied from today's leads Dashboard Customer-days whose reply lea.",
-     "expect": "Only to a test contact: it is sent once, shows in the conversation, in the customer's language.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B38"
-    },
-    {
-     "id": "dealer/reports.b.x.customer-days-replied-from-past-leads-dashboard-customer-day",
-     "label": "Customer-days replied from past leads Dashboard Customer-days whose reply lead i",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Customer-days replied from past leads Dashboard Customer-days whose reply lead i.",
-     "expect": "Only to a test contact: it is sent once, shows in the conversation, in the customer's language.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B39"
-    },
-    {
-     "id": "dealer/reports.b.x.customer-days-needing-review-dashboard-customer-days-whose-r",
-     "label": "Customer-days needing review Dashboard Customer-days whose reply could not be ti",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Customer-days needing review Dashboard Customer-days whose reply could not be ti.",
-     "expect": "Only to a test contact: it is sent once, shows in the conversation, in the customer's language.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B40"
-    },
-    {
-     "id": "dealer/reports.b.x.customer-days-replied-lead-7-days-old-overlapping-dashboard-",
-     "label": "Customer-days replied, lead 7+ days old (overlapping) Dashboard Customer-days wi",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Customer-days replied, lead 7+ days old (overlapping) Dashboard Customer-days wi.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B41"
-    },
-    {
-     "id": "dealer/reports.b.x.customer-days-replied-lead-15-days-old-overlapping-dashboard",
-     "label": "Customer-days replied, lead 15+ days old (overlapping) Dashboard Customer-days w",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Customer-days replied, lead 15+ days old (overlapping) Dashboard Customer-days w.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B42"
-    },
-    {
-     "id": "dealer/reports.b.x.customer-days-replied-lead-30-days-old-overlapping-dashboard",
-     "label": "Customer-days replied, lead 30+ days old (overlapping) Dashboard Customer-days w",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Customer-days replied, lead 30+ days old (overlapping) Dashboard Customer-days w.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B43"
-    },
-    {
-     "id": "dealer/reports.b.x.customer-days-replied-lead-60-days-old-overlapping-dashboard",
-     "label": "Customer-days replied, lead 60+ days old (overlapping) Dashboard Customer-days w",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Customer-days replied, lead 60+ days old (overlapping) Dashboard Customer-days w.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B44"
-    },
-    {
-     "id": "dealer/reports.b.x.customer-days-replied-lead-60-90-days-old-dashboard-customer",
-     "label": "Customer-days replied, lead 60-90 days old Dashboard Customer-days with lead age",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Customer-days replied, lead 60-90 days old Dashboard Customer-days with lead age.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B45"
-    },
-    {
-     "id": "dealer/reports.b.x.customer-days-replied-lead-older-than-90-days-came-back-afte",
-     "label": "Customer-days replied, lead older than 90 days (came back after follow-ups ended",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Customer-days replied, lead older than 90 days (came back after follow-ups ended.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B46"
-    },
-    {
-     "id": "dealer/reports.b.x.page-buttons-previous-next-number",
-     "label": "Page buttons (previous / next / number)",
-     "kind": "link",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "Pages through a long list.",
-     "expect": "The next / previous page of rows shows; the page number is highlighted.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B47"
-    },
-    {
-     "id": "dealer/reports.b.x.next",
-     "label": "› Next",
-     "kind": "link",
-     "el": null,
-     "href": null,
-     "panel": "How each number is counted",
-     "about": "› Next.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B48"
-    },
-    {
-     "id": "dealer/reports.b.x.emails-visible",
-     "label": "Emails (Visible)",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Message Sent",
-     "about": "Emails (Visible).",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B49"
-    },
-    {
-     "id": "dealer/reports.b.x.sms-visible",
-     "label": "SMS (Visible)",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Message Sent",
-     "about": "SMS (Visible).",
-     "expect": "Only to a test contact: it is sent once, shows in the conversation, in the customer's language.",
-     "status": "live",
-     "access": null,
-     "code": "REP-B50"
-    }
-   ],
-   "fields": [
-    {
-     "label": "Department",
-     "kind": "select",
-     "panel": "Leads Dashboard",
-     "tip": ""
-    },
-    {
-     "label": "Report",
-     "kind": "select",
-     "panel": "How each number is counted",
-     "tip": ""
-    },
-    {
-     "label": "Search a number",
-     "kind": "input:text",
-     "panel": "How each number is counted",
-     "tip": ""
-    }
-   ],
-   "panels": [
-    "Leads Dashboard",
-    "CUSTOMER REPLIES BY LEAD AGE0 + 0 = 0 customer replied",
-    "How each number is counted",
-    "Lead Sources",
-    "Lead Status",
-    "Lead Received",
-    "Message Sent",
-    "Lead Source Field",
-    "Lead Source Performance"
-   ],
+   "buttons": [],
+   "fields": [],
+   "panels": [],
    "parts": [],
    "code": "REP"
   },
@@ -8538,10 +7703,7 @@
    ],
    "buttons": [],
    "fields": [],
-   "panels": [
-    "Parts Inventory",
-    "Part Inventory List"
-   ],
+   "panels": [],
    "parts": [],
    "code": "PAI"
   },
@@ -9549,182 +8711,10 @@
      "code": "FOL-05"
     }
    ],
-   "buttons": [
-    {
-     "id": "dealer/forms.b.x.react-aria4700236167-r-3",
-     "label": "Add a standard form",
-     "kind": "button",
-     "el": "#react-aria4700236167-_r_3_",
-     "href": null,
-     "panel": "Forms Library",
-     "about": "Add a standard form.",
-     "expect": "A form opens; required fields are checked; Save adds it and it shows in the list; Cancel adds nothing.",
-     "status": "live",
-     "access": null,
-     "code": "FOL-B01"
-    },
-    {
-     "id": "dealer/forms.b.x.upload-a-form",
-     "label": "Upload a form",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Forms Library",
-     "about": "Upload a form.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "FOL-B02"
-    },
-    {
-     "id": "dealer/forms.b.in-the-window-menu-that-add-a-standard-form-opens.buyer-s-order-sales",
-     "label": "Buyer's Order · Sales",
-     "kind": "link",
-     "el": null,
-     "href": null,
-     "panel": "Forms Library · in the window / menu that 'Add a standard form' opens",
-     "about": "Filter: Buyer's Order · Sales. (in the window / menu that 'Add a standard form' opens)",
-     "expect": "The list / numbers narrow to it; the active choice is highlighted; refresh keeps it.",
-     "status": "live",
-     "access": null,
-     "code": "FOL-B03"
-    },
-    {
-     "id": "dealer/forms.b.in-the-window-menu-that-add-a-standard-form-opens.credit-application-finance",
-     "label": "Credit Application · Finance",
-     "kind": "link",
-     "el": null,
-     "href": null,
-     "panel": "Forms Library · in the window / menu that 'Add a standard form' opens",
-     "about": "Credit Application · Finance. (in the window / menu that 'Add a standard form' opens)",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "FOL-B04"
-    },
-    {
-     "id": "dealer/forms.b.in-the-window-menu-that-add-a-standard-form-opens.we-owe-sales",
-     "label": "We Owe · Sales",
-     "kind": "link",
-     "el": null,
-     "href": null,
-     "panel": "Forms Library · in the window / menu that 'Add a standard form' opens",
-     "about": "Filter: We Owe · Sales. (in the window / menu that 'Add a standard form' opens)",
-     "expect": "The list / numbers narrow to it; the active choice is highlighted; refresh keeps it.",
-     "status": "live",
-     "access": null,
-     "code": "FOL-B05"
-    },
-    {
-     "id": "dealer/forms.b.in-the-window-menu-that-add-a-standard-form-opens.guest-up-sheet-sales",
-     "label": "Guest / Up Sheet · Sales",
-     "kind": "link",
-     "el": null,
-     "href": null,
-     "panel": "Forms Library · in the window / menu that 'Add a standard form' opens",
-     "about": "Filter: Guest / Up Sheet · Sales. (in the window / menu that 'Add a standard form' opens)",
-     "expect": "The list / numbers narrow to it; the active choice is highlighted; refresh keeps it.",
-     "status": "live",
-     "access": null,
-     "code": "FOL-B06"
-    },
-    {
-     "id": "dealer/forms.b.in-the-window-menu-that-add-a-standard-form-opens.referral-form-marketing",
-     "label": "Referral Form · Marketing",
-     "kind": "link",
-     "el": null,
-     "href": null,
-     "panel": "Forms Library · in the window / menu that 'Add a standard form' opens",
-     "about": "Referral Form · Marketing. (in the window / menu that 'Add a standard form' opens)",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "FOL-B07"
-    },
-    {
-     "id": "dealer/forms.b.in-the-window-menu-that-add-a-standard-form-opens.media-release-marketing",
-     "label": "Media Release · Marketing",
-     "kind": "link",
-     "el": null,
-     "href": null,
-     "panel": "Forms Library · in the window / menu that 'Add a standard form' opens",
-     "about": "Media Release · Marketing. (in the window / menu that 'Add a standard form' opens)",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "FOL-B08"
-    },
-    {
-     "id": "dealer/forms.b.in-the-window-menu-that-upload-a-form-opens.close",
-     "label": "Close",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Upload a form · in the window / menu that 'Upload a form' opens",
-     "about": "Close. (in the window / menu that 'Upload a form' opens)",
-     "expect": "The window closes without saving anything.",
-     "status": "live",
-     "access": null,
-     "code": "FOL-B09"
-    },
-    {
-     "id": "dealer/forms.b.in-the-window-menu-that-upload-a-form-opens.cancel",
-     "label": "Cancel",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Upload a form · in the window / menu that 'Upload a form' opens",
-     "about": "Cancel. (in the window / menu that 'Upload a form' opens)",
-     "expect": "The window closes without saving anything.",
-     "status": "live",
-     "access": null,
-     "code": "FOL-B10"
-    },
-    {
-     "id": "dealer/forms.b.in-the-window-menu-that-upload-a-form-opens.upload",
-     "label": "Upload",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Upload a form · in the window / menu that 'Upload a form' opens",
-     "about": "Upload. (in the window / menu that 'Upload a form' opens)",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "FOL-B11"
-    }
-   ],
-   "fields": [
-    {
-     "label": "(no label)",
-     "kind": "input:file",
-     "panel": "Upload a form · in the window / menu that 'Upload a form' opens",
-     "tip": ""
-    },
-    {
-     "label": "e.g. Buyer's Order",
-     "kind": "input:text",
-     "panel": "Upload a form · in the window / menu that 'Upload a form' opens",
-     "tip": ""
-    }
-   ],
-   "panels": [
-    "Forms Library"
-   ],
-   "parts": [
-    {
-     "key": "dealer/forms::Add a standard form",
-     "via": "Button 'Add a standard form'",
-     "buttons": 6,
-     "fields": 0
-    },
-    {
-     "key": "dealer/forms::Upload a form",
-     "via": "Button 'Upload a form'",
-     "buttons": 3,
-     "fields": 2
-    }
-   ],
+   "buttons": [],
+   "fields": [],
+   "panels": [],
+   "parts": [],
    "code": "FOL"
   },
   {
@@ -10349,71 +9339,9 @@
      "code": "IPR-01"
     }
    ],
-   "buttons": [
-    {
-     "id": "dealer/ip-restriction.b.x.switch-blocking-on-autopulse",
-     "label": "Switch blocking on (AutoPulse)",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "IP restriction",
-     "about": "Switch blocking on (AutoPulse).",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "IPR-B01"
-    },
-    {
-     "id": "dealer/ip-restriction.b.x.add-a-network",
-     "label": "+ Add a network",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "IP restriction",
-     "about": "+ Add a network.",
-     "expect": "A form opens; required fields are checked; Save adds it and it shows in the list; Cancel adds nothing.",
-     "status": "live",
-     "access": null,
-     "code": "IPR-B02"
-    },
-    {
-     "id": "dealer/ip-restriction.b.x.save",
-     "label": "Save",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "IP restriction",
-     "about": "Save.",
-     "expect": "Saves; a success message shows and the value stays after a refresh; a wrong value is refused with a message.",
-     "status": "live",
-     "access": null,
-     "code": "IPR-B03"
-    },
-    {
-     "id": "dealer/ip-restriction.b.x.check",
-     "label": "Check",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "IP restriction",
-     "about": "Check.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "IPR-B04"
-    }
-   ],
-   "fields": [
-    {
-     "label": "IP to check",
-     "kind": "input:text",
-     "panel": "IP restriction",
-     "tip": ""
-    }
-   ],
-   "panels": [
-    "IP restriction"
-   ],
+   "buttons": [],
+   "fields": [],
+   "panels": [],
    "parts": [],
    "code": "IPR"
   },
@@ -10567,84 +9495,10 @@
      "code": "LSM-03"
     }
    ],
-   "buttons": [
-    {
-     "id": "dealer/lead-sources.b.x.edit-lead-sources",
-     "label": "Edit lead sources",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Lead source maintenance",
-     "about": "Edit lead sources.",
-     "expect": "The edit form opens with the current values; saving keeps the change after a refresh.",
-     "status": "live",
-     "access": null,
-     "code": "LSM-B01"
-    },
-    {
-     "id": "dealer/lead-sources.b.in-the-window-menu-that-edit-lead-sources-opens.close",
-     "label": "Close",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Lead sources and campaigns · in the window / menu that 'Edit lead sources' opens",
-     "about": "Close. (in the window / menu that 'Edit lead sources' opens)",
-     "expect": "The window closes without saving anything.",
-     "status": "live",
-     "access": null,
-     "code": "LSM-B02"
-    },
-    {
-     "id": "dealer/lead-sources.b.in-the-window-menu-that-edit-lead-sources-opens.add",
-     "label": "Add",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Lead sources and campaigns · in the window / menu that 'Edit lead sources' opens",
-     "about": "Add. (in the window / menu that 'Edit lead sources' opens)",
-     "expect": "A form opens; required fields are checked; Save adds it and it shows in the list; Cancel adds nothing.",
-     "status": "live",
-     "access": null,
-     "code": "LSM-B03"
-    }
-   ],
-   "fields": [
-    {
-     "label": "New source, e.g. Referral",
-     "kind": "input:text",
-     "panel": "Lead sources and campaigns · in the window / menu that 'Edit lead sources' opens",
-     "tip": ""
-    },
-    {
-     "label": "Campaign, e.g. Spring Sale",
-     "kind": "input:text",
-     "panel": "Campaigns and tracking codes · in the window / menu that 'Edit lead sources' opens",
-     "tip": ""
-    },
-    {
-     "label": "Tracking code",
-     "kind": "input:text",
-     "panel": "Campaigns and tracking codes · in the window / menu that 'Edit lead sources' opens",
-     "tip": ""
-    },
-    {
-     "label": "Source (optional)",
-     "kind": "input:text",
-     "panel": "Campaigns and tracking codes · in the window / menu that 'Edit lead sources' opens",
-     "tip": ""
-    }
-   ],
-   "panels": [
-    "Lead source maintenance"
-   ],
-   "parts": [
-    {
-     "key": "dealer/lead-sources::Edit lead sources",
-     "via": "Button 'Edit lead sources'",
-     "buttons": 3,
-     "fields": 4
-    }
-   ],
+   "buttons": [],
+   "fields": [],
+   "panels": [],
+   "parts": [],
    "code": "LSM"
   },
   {
@@ -10674,10 +9528,10 @@
    ],
    "buttons": [
     {
-     "id": "dealer/subscribe.b.x.react-aria9669964472-r-2-tab-currentplan",
+     "id": "dealer/subscribe.b.x.react-aria4579523988-r-2-tab-currentplan",
      "label": "My Current Plan",
      "kind": "tab",
-     "el": "#react-aria9669964472-_r_2_-tab-currentplan",
+     "el": "#react-aria4579523988-_r_2_-tab-currentplan",
      "href": null,
      "panel": "My Subscription",
      "about": "Tab: shows the 'My Current Plan' part of My subscription.",
@@ -10687,10 +9541,10 @@
      "code": "MYS-B01"
     },
     {
-     "id": "dealer/subscribe.b.x.react-aria9669964472-r-2-tab-subscriptionplan",
+     "id": "dealer/subscribe.b.x.react-aria4579523988-r-2-tab-subscriptionplan",
      "label": "Subscription Plans",
      "kind": "tab",
-     "el": "#react-aria9669964472-_r_2_-tab-subscriptionplan",
+     "el": "#react-aria4579523988-_r_2_-tab-subscriptionplan",
      "href": null,
      "panel": "My Subscription",
      "about": "Tab: shows the 'Subscription Plans' part of My subscription.",
@@ -11872,10 +10726,10 @@
      "code": "AAI-B19"
     },
     {
-     "id": "admin/ai-studio.b.x.react-aria3970110091-r-1-tab-edit",
+     "id": "admin/ai-studio.b.x.react-aria657190493-r-1-tab-edit",
      "label": "Edit",
      "kind": "tab",
-     "el": "#react-aria3970110091-_r_1_-tab-edit",
+     "el": "#react-aria657190493-_r_1_-tab-edit",
      "href": null,
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "about": "Tab: shows the 'Edit' part of AI Studio.",
@@ -11885,10 +10739,10 @@
      "code": "AAI-B20"
     },
     {
-     "id": "admin/ai-studio.b.x.react-aria3970110091-r-1-tab-live",
+     "id": "admin/ai-studio.b.x.react-aria657190493-r-1-tab-live",
      "label": "Live (v1)",
      "kind": "tab",
-     "el": "#react-aria3970110091-_r_1_-tab-live",
+     "el": "#react-aria657190493-_r_1_-tab-live",
      "href": null,
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "about": "Tab: shows the 'Live (v1)' part of AI Studio.",
@@ -11898,10 +10752,10 @@
      "code": "AAI-B21"
     },
     {
-     "id": "admin/ai-studio.b.x.react-aria3970110091-r-1-tab-history",
+     "id": "admin/ai-studio.b.x.react-aria657190493-r-1-tab-history",
      "label": "History (1)",
      "kind": "tab",
-     "el": "#react-aria3970110091-_r_1_-tab-history",
+     "el": "#react-aria657190493-_r_1_-tab-history",
      "href": null,
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "about": "Tab: shows the 'History (1)' part of AI Studio.",
@@ -14405,10 +13259,10 @@
      "code": "APA-B05"
     },
     {
-     "id": "admin/package.b.in-the-window-menu-that-add-package-opens.react-aria1709024534-r-1-tab-general",
+     "id": "admin/package.b.in-the-window-menu-that-add-package-opens.react-aria2921760932-r-1-tab-general",
      "label": "General",
      "kind": "tab",
-     "el": "#react-aria1709024534-_r_1_-tab-general",
+     "el": "#react-aria2921760932-_r_1_-tab-general",
      "href": null,
      "panel": "Add Package · in the window / menu that 'Add Package' opens",
      "about": "Tab: shows the 'General' part of Packages. (in the window / menu that 'Add Package' opens)",
@@ -14418,10 +13272,10 @@
      "code": "APA-B06"
     },
     {
-     "id": "admin/package.b.in-the-window-menu-that-add-package-opens.react-aria1709024534-r-1-tab-features",
+     "id": "admin/package.b.in-the-window-menu-that-add-package-opens.react-aria2921760932-r-1-tab-features",
      "label": "Features",
      "kind": "tab",
-     "el": "#react-aria1709024534-_r_1_-tab-features",
+     "el": "#react-aria2921760932-_r_1_-tab-features",
      "href": null,
      "panel": "Add Package · in the window / menu that 'Add Package' opens",
      "about": "Tab: shows the 'Features' part of Packages. (in the window / menu that 'Add Package' opens)",
