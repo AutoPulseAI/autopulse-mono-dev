@@ -148,6 +148,22 @@ async function removeShot(body) {
   return view(d);
 }
 
+// Cancel (the user, 28 Nov 2026): a tester takes back their result on a row as if they never tested it - no Pass, no
+// Fail, no note, no screenshots, no issue. Refused once someone else has acted on the issue it opened (a fix, a
+// verify or a comment), so a developer's work is never thrown away; then the tester re-tests instead.
+async function cancelResult(body) {
+  const row = rowId(body.id), tester = testerName(body.tester), id = docId(row, tester);
+  const gone = { id: row, tester, status: null, note: "", at: null, shots: [], history: [], issue: null, cancelled: true };
+  const d = docs[id];
+  if (!d) return gone;
+  const othersActed = (d.issue?.log || []).some((e) => e.by && testerKey(e.by) !== testerKey(tester));
+  if (othersActed) throw bad("Someone already worked on the issue this opened - re-test it (Pass / Fail) instead of cancelling");
+  for (const sh of d.shots || []) fs.rmSync(path.join(SHOTS_DIR, sh.file), { force: true });
+  delete docs[id];
+  await persist();
+  return gone;
+}
+
 // ---------- http ----------
 const HEAD = { "X-Robots-Tag": "noindex, nofollow", "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY" };
 const send = (res, status, body, type = "application/json; charset=utf-8", extra = {}) => {
@@ -163,7 +179,7 @@ function readBody(req) {
     req.on("error", reject);
   });
 }
-const POSTS = { "results": saveResult, "results/shot": addShot, "results/shot/remove": removeShot, "results/issue": setIssue };
+const POSTS = { "results": saveResult, "results/shot": addShot, "results/shot/remove": removeShot, "results/issue": setIssue, "results/cancel": cancelResult };
 
 http.createServer(async (req, res) => {
   try {

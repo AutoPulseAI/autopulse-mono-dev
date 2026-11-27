@@ -73,6 +73,46 @@ function upsertResult(r) {
   if (!state.byRow.has(r.id)) state.byRow.set(r.id, new Map());
   state.byRow.get(r.id).set(keyOf(r.tester), r);
 }
+function dropResult(r) {
+  state.results = state.results.filter((x) => !(x.id === r.id && keyOf(x.tester) === keyOf(r.tester)));
+  state.byRow.get(r.id)?.delete(keyOf(r.tester));
+}
+// Screenshots by paste, drag-and-drop or choosing a file (the user, 28 Nov 2026: "copy paste, drag, drop - easy for
+// the testers"). Images only; each one goes through the same checks as a chosen file.
+function imagesFrom(list) {
+  const out = [];
+  for (const it of list || []) {
+    const f = it instanceof File ? it : it?.kind === "file" ? it.getAsFile() : null;
+    if (!f || !/^image\//.test(f.type)) continue;
+    const ext = (f.type.split("/")[1] || "png").replace("jpeg", "jpg");
+    out.push(f.name && f.name !== "image.png" ? f : new File([f], `pasted-${Date.now()}-${out.length}.${ext}`, { type: f.type }));
+  }
+  return out;
+}
+function dropZone(onFiles, { label = "Paste (Ctrl+V), drop or click to add screenshots" } = {}) {
+  const input = h("input", { type: "file", accept: "image/png,image/jpeg,image/webp", hidden: true });
+  input.multiple = true;
+  const zone = h("div", { class: "dropzone", tabindex: "0", role: "button", "aria-label": label },
+    h("span", { class: "dz-ico", "aria-hidden": "true", text: "\u{1F4CB}" }), h("span", { text: label }), input);
+  const take = (files) => { const list = imagesFrom(files); if (list.length) onFiles(list); else toast("Paste or drop an image (PNG, JPEG or WebP)", true); };
+  zone.addEventListener("click", (e) => { if (e.target !== input) input.click(); });
+  zone.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); } });
+  input.addEventListener("change", () => { take([...(input.files || [])]); input.value = ""; });
+  zone.addEventListener("paste", (e) => { const items = [...(e.clipboardData?.items || [])]; if (items.some((i) => i.kind === "file")) { e.preventDefault(); take(items); } });
+  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("over"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("over"));
+  zone.addEventListener("drop", (e) => { e.preventDefault(); zone.classList.remove("over"); take([...(e.dataTransfer?.files || [])]); });
+  return zone;
+}
+// Pasting or dropping an image while typing a note attaches it too; pasting text still pastes text.
+function pasteImagesInto(el, onFiles) {
+  el.addEventListener("paste", (e) => {
+    const list = imagesFrom([...(e.clipboardData?.items || [])]);
+    if (list.length) { e.preventDefault(); onFiles(list); }
+  });
+  el.addEventListener("dragover", (e) => { if ([...(e.dataTransfer?.items || [])].some((i) => i.kind === "file")) e.preventDefault(); });
+  el.addEventListener("drop", (e) => { const list = imagesFrom([...(e.dataTransfer?.files || [])]); if (list.length) { e.preventDefault(); onFiles(list); } });
+}
 const mine = (rowId) => state.byRow.get(rowId)?.get(keyOf(me())) || null;
 const others = (rowId) => [...(state.byRow.get(rowId)?.values() || [])].filter((r) => keyOf(r.tester) !== keyOf(me()) && (r.status || r.shots?.length));
 
@@ -114,9 +154,7 @@ function reportCard(r) {
   const st = r.issue?.state || "open";
   const card = h("article", { class: `report st-${st}` });
   const paint = (editing = false) => {
-    const files = h("input", { type: "file", multiple: true, accept: "image/png,image/jpeg,image/webp", "aria-label": "Add screenshots" });
-    files.addEventListener("change", async () => {
-      const list = [...(files.files || [])];
+    const addShots = async (list) => {
       if (!list.length) return;
       try {
         const res = await uploadAll(r.id, list, me());
@@ -124,7 +162,7 @@ function reportCard(r) {
         toast(`${list.length} screenshot${list.length > 1 ? "s" : ""} added`);
         refreshReports(reportSec(r.id).id);
       } catch (e) { toast(e.message, true); }
-    });
+    };
     const dk = `qa-report-edit|${r.id}`;
     const edit = h("textarea", { maxlength: "4000", "aria-label": "Edit the description" });
     edit.value = store.get(dk, null) ?? (r.note || "");
@@ -145,7 +183,7 @@ function reportCard(r) {
           ? [h("button", { type: "button", class: "btn small primary", text: "Save", onclick: async () => {
               try { const { result } = await api("results", { id: r.id, status: "fail", note: edit.value, tester: me() }); upsertResult(result); store.del(dk); toast("Saved"); refreshReports(reportSec(r.id).id); } catch (e) { toast(e.message, true); }
             } }), h("button", { type: "button", class: "btn small", text: "Cancel", onclick: () => { store.del(dk); paint(false); } })]
-          : [h("button", { type: "button", class: "btn small", text: "Edit description", onclick: () => paint(true) }), h("span", { class: "btn small file-btn" }, "Add screenshots", files)]) : null,
+          : [h("button", { type: "button", class: "btn small", text: "Edit description", onclick: () => paint(true) }), dropZone(addShots)]) : null,
     ].filter(Boolean));
   };
   paint(store.get(`qa-report-edit|${r.id}`, null) != null && own);
@@ -165,15 +203,24 @@ function reportForm(sec, host, onDone) {
   const note = h("textarea", { placeholder: "What went wrong? Where exactly, the error message, steps to repeat…", maxlength: "4000", "aria-label": "Describe the problem" });
   note.value = store.get(dk(), "") || "";
   note.addEventListener("input", () => (note.value ? store.set(dk(), note.value) : store.del(dk())));
-  const file = h("input", { type: "file", multiple: true, accept: "image/png,image/jpeg,image/webp", "aria-label": "Screenshots" });
+  let pending = [];
   const fileName = h("span", { class: "muted small" });
-  file.addEventListener("change", () => { const n = file.files?.length || 0; fileName.textContent = n ? `${n} screenshot${n > 1 ? "s" : ""} chosen` : ""; });
+  const showPending = () => {
+    fileName.replaceChildren(...(pending.length ? [`${pending.length} screenshot${pending.length > 1 ? "s" : ""} ready `,
+      h("button", { type: "button", class: "link", text: "clear", onclick: () => { pending = []; showPending(); } })] : []));
+  };
+  const addPending = (list) => {
+    pending = [...pending, ...list].slice(0, 10);
+    showPending();
+    toast(`${list.length} screenshot${list.length > 1 ? "s" : ""} added - press Report problem`);
+  };
+  pasteImagesInto(note, addPending);
   const send = h("button", { type: "button", class: "btn primary", text: "Report problem" });
   send.addEventListener("click", async () => {
     const name = needName();
     if (!name) return;
     if (!note.value.trim()) { toast("Describe the problem first", true); note.focus(); return; }
-    const files = [...(file.files || [])];
+    const files = [...pending];
     if (files.length > 10) { toast("Up to 10 screenshots per problem", true); return; }
     send.disabled = true;
     try {
@@ -195,7 +242,7 @@ function reportForm(sec, host, onDone) {
     h("b", { text: `General problem on: ${sec.title}` }),
     h("p", { class: "muted small", text: "For a problem on this screen that is not one of the tests listed. Report each problem separately; each becomes its own issue. You can add several screenshots now and more later. Your text is kept if you refresh." }),
     note,
-    h("div", { class: "tools" }, h("span", { class: "btn small file-btn" }, "Add screenshots", file), fileName),
+    h("div", { class: "tools" }, dropZone(addPending), fileName),
     h("div", { class: "tools" }, send, h("button", { type: "button", class: "btn", text: "Cancel", onclick: () => { host.replaceChildren(); } }))));
   note.focus();
 }
@@ -274,16 +321,22 @@ function resultPanel(row) {
       if (note.value === (r?.note || "")) store.del(draftKey(row.id)); else store.set(draftKey(row.id), note.value);
       hint.hidden = note.value === (r?.note || "");
     });
-    const file = h("input", { type: "file", accept: "image/png,image/jpeg,image/webp", "aria-label": `Attach screenshot to ${row.code}`, onchange: (e) => upload(row, e.target.files?.[0], e.target) });
+    const addShots = async (list) => { for (const f of list) await upload(row, f, null); };
+    pasteImagesInto(note, addShots);
+    const hasMine = Boolean(r && (r.status || r.note || (r.shots || []).length || r.issue));
     const parts = [
-      h("div", { class: "choice", role: "group", "aria-label": `Your result for ${row.code}` },
+      h("div", { class: `choice${hasMine ? " with-cancel" : ""}`, role: "group", "aria-label": `Your result for ${row.code}` },
         ["pass", "fail", "blocked"].map((s) => h("button", { type: "button", class: `${s}${status === s ? " on" : ""}`, "aria-pressed": String(status === s), text: LABEL[s],
-          onclick: () => save(row, status === s ? "clear" : s, note.value) }))),
+          onclick: () => save(row, status === s ? "clear" : s, note.value) })),
+        // Cancel (the user, 28 Nov 2026): take the result back - nothing recorded for this row (no Pass / Fail, note,
+        // screenshots or issue), as if it was never tested.
+        hasMine ? h("button", { type: "button", class: "cancel", text: "Cancel", title: "Take back your result: nothing is recorded for this test",
+          onclick: () => cancelRow(row) }) : null),
       showNote ? note : h("button", { type: "button", class: "link", text: "+ Add a note or screenshot", onclick: () => { row.noteOpen = true; row.paint(); } }),
       showNote ? hint : null,
       showNote ? h("div", { class: "tools" },
         h("button", { type: "button", class: "btn small", text: "Save note", onclick: () => save(row, status || "fail", note.value) }),
-        h("span", { class: "btn small file-btn" }, "Add screenshot", file)) : null,
+        dropZone(addShots)) : null,
       (r?.shots || []).length ? h("div", { class: "shots" }, r.shots.map((s) => h("div", { class: "shot" },
         h("img", { src: `${ROOT}shots/${s.file}`, alt: "Screenshot", loading: "lazy", onclick: () => lightbox(`${ROOT}shots/${s.file}`) }),
         h("button", { type: "button", title: "Remove this screenshot", "aria-label": "Remove screenshot", text: "×", onclick: () => removeShot(row, s.file) })))) : null,
@@ -512,9 +565,10 @@ async function save(row, status, note) {
 }
 async function upload(row, file, input) {
   const name = needName();
-  if (!name || !file) { input.value = ""; return; }
-  if (!/^image\/(png|jpeg|webp)$/.test(file.type)) { toast("Attach a PNG, JPEG or WebP image", true); input.value = ""; return; }
-  if (file.size > 5 * 1024 * 1024) { toast("The image must be under 5 MB", true); input.value = ""; return; }
+  const reset = () => { if (input) input.value = ""; };
+  if (!name || !file) { reset(); return; }
+  if (!/^image\/(png|jpeg|webp)$/.test(file.type)) { toast("Attach a PNG, JPEG or WebP image", true); reset(); return; }
+  if (file.size > 5 * 1024 * 1024) { toast("The image must be under 5 MB", true); reset(); return; }
   const dataUrl = await new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = bad; r.readAsDataURL(file); });
   try {
     const { result } = await api("results/shot", { id: row.id, dataUrl, name: file.name, tester: name });
@@ -525,7 +579,25 @@ async function upload(row, file, input) {
   } catch (e) {
     toast(e.message, true);
   } finally {
-    input.value = "";
+    reset();
+  }
+}
+async function cancelRow(row) {
+  const name = needName();
+  if (!name) return;
+  const r = mine(row.id);
+  if ((r?.note || (r?.shots || []).length) && !confirm(`Cancel your result on ${row.code}? Your note and screenshots on it are removed too; nothing is recorded for this test.`)) return;
+  try {
+    await api("results/cancel", { id: row.id, tester: name });
+    if (r) dropResult(r);
+    store.del(draftKey(row.id));
+    row.noteOpen = false;
+    row.paint();
+    refreshCounts();
+    renderResults();
+    toast(`${row.code}: cancelled - nothing recorded`);
+  } catch (e) {
+    toast(e.message, true);
   }
 }
 async function removeShot(row, fileName) {
