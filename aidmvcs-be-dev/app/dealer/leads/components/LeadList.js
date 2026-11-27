@@ -18,6 +18,18 @@ import DeleteConfirmModal from "../../components/DeleteConfirmModal";
 import { BulkBar, BulkScope, BulkPanel, BulkNotice, undoBulk, exportBulk } from "./BulkAssign";
 import LeadDetailsPanel from "./LeadDetailsPanel";
 // Source type (24 Nov 2026: it listed the same names as Lead source): how the lead came in, as on each row.
+// Inbox time: today = the time, this week = the day, else the date (dealer time zone).
+function inboxTime(at, tz) {
+  if (!at) return "";
+  const d = new Date(at);
+  const opt = (o) => d.toLocaleString("en-US", { timeZone: tz || undefined, ...o });
+  const day = (x) => x.toLocaleDateString("en-US", { timeZone: tz || undefined });
+  const now = new Date();
+  if (day(d) === day(now)) return opt({ hour: "numeric", minute: "2-digit" });
+  if (now - d < 6 * 864e5) return opt({ weekday: "short" });
+  return opt({ month: "numeric", day: "numeric", year: "2-digit" });
+}
+
 const UP_TYPE_OPTIONS = [["up:internet", "Internet"], ["up:phone", "Phone-up"], ["up:walk_in", "Walk-in"], ["up:not_set", "Not set"]];
 const DEPT_TABS = [["", "All departments", "fa-layer-group"], ["sales", "Sales", "fa-car"], ["service", "Service", "fa-screwdriver-wrench"], ["parts", "Parts", "fa-gears"]];
 
@@ -66,7 +78,8 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
   // how it was made (all matching / this page / first N / pages / ticked one by one); `unticked` counts leads taken
   // out of a scope by hand.
   const [selectMode, setSelectMode] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false); // phones: the filters fold behind a button
+  // Phones: the filters fold behind a button. Beside the conversation (compact) they are shown; the button folds them.
+  const [filtersOpen, setFiltersOpen] = useState(compact);
   const shownOnce = useRef(false); // the list has been on screen once (later loads keep the filters mounted)
   const [selected, setSelected] = useState(() => new Map());
   const [scope, setScope] = useState("page");
@@ -265,7 +278,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       if (!silent) setLoading(true);
 
       // Build query parameters including page
-      let queryParams = `dealer_id=${activeEntity.id}&page=${page}&limit=${pagination.itemsPerPage}`;
+      let queryParams = `dealer_id=${activeEntity.id}&page=${page}&limit=${pagination.itemsPerPage}${compact ? '&preview=1' : ''}`;
 
       // Add assignment filter (only when not 'all')
       if (assignmentFilter && assignmentFilter !== 'all') {
@@ -1037,7 +1050,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       setLoading(true);
       
       // Build query parameters including page
-      let queryParams = `dealer_id=${activeEntity.id}&page=${page}&limit=${pagination.itemsPerPage}`;
+      let queryParams = `dealer_id=${activeEntity.id}&page=${page}&limit=${pagination.itemsPerPage}${compact ? '&preview=1' : ''}`;
       
       // Add assignment filter (only when not 'all')
       if (assignmentFilter && assignmentFilter !== 'all') {
@@ -1638,34 +1651,21 @@ useImperativeHandle(ref, () => ({
       {compact ? (
         <Row className="align-items-center g-0">
           <Col lg={12}>
-            {/* Filter Controls */}
-            <Row className="search_filters gx-1 gy-1">
-              <Col xxl={12} xl={12} lg={12} md={12}>
+            {/* Inbox list (27 Nov 2026): the search box stays; the other filters fold behind Filters so the list of
+                conversations gets the height. */}
+            <Row className={`search_filters gx-1 gy-1${filtersOpen ? "" : " inbox_filters_closed"}`}>
+              <Col xxl={12} xl={12} lg={12} md={12} className="d-flex gap-1">
+                <Button variant={filtersOpen ? "custom" : "outline-custom"} size="sm" aria-expanded={filtersOpen}
+                  onClick={() => setFiltersOpen(!filtersOpen)} title="Status, source, department, dates">
+                  <i className="fa-solid fa-filter" aria-hidden="true"></i>
+                  {filterChips.length > 0 && <span className="ms-1">{filterChips.length}</span>}
+                </Button>
                 <Form.Control
-                  type="text"
-                  placeholder="Name"
-                  name="name"
-                  value={inputValues.name}
-                  onChange={handleInputChange}
-                  size="sm"
-                />
-              </Col>
-              <Col xxl={12} xl={12} lg={12} md={12}>
-                <Form.Control
-                  type="text"
-                  placeholder="Email"
-                  name="email"
-                  value={inputValues.email}
-                  onChange={handleInputChange}
-                  size="sm"
-                />
-              </Col>
-              <Col xxl={7} xl={7} lg={7} md={7} xs={7}>
-                <Form.Control
-                  type="text"
-                  placeholder="Phone"
-                  name="phone"
-                  value={inputValues.phone}
+                  type="search"
+                  placeholder="Search name, phone, email or stock #"
+                  aria-label="Search name, phone, email or stock number"
+                  name="q"
+                  value={inputValues.q || ""}
                   onChange={handleInputChange}
                   size="sm"
                 />
@@ -1750,7 +1750,7 @@ useImperativeHandle(ref, () => ({
                   <Button
                     variant="secondary"
                     onClick={clearFilters}
-                    disabled={!inputValues.name && !inputValues.email && !inputValues.phone && !inputValues.status && !inputValues.lead_source && !inputValues.source && !filters.dateRange.startDate}
+                    disabled={!inputValues.q && !inputValues.name && !inputValues.email && !inputValues.phone && !inputValues.status && !inputValues.lead_source && !inputValues.source && !filters.dateRange.startDate}
                     size="sm"
                     className="w-50"
                   >
@@ -1998,58 +1998,55 @@ useImperativeHandle(ref, () => ({
                   {compact ? (
                     // ✅ Compact view (used in ViewConversations)
                     <div className="position-relative w-100">
-                      <p className="fw-semibold d-flex align-items-center">
-                        <span>{lead.name}</span>
-                        <Button variant="outline-secondary" size="xs" className="ms-auto"
-                          onClick={(e) => {
-                            e.stopPropagation(); // prevent triggering onLeadSelected
-                            setOpenLeadId(openLeadId === lead._id ? null : lead._id);
-                          }} >
-                          <i className="fa-regular fa-ellipsis-vertical lead_action_icon px-1"></i>
-                        </Button>
-                      </p>
+                      {/* Inbox row, like WhatsApp (the user, 27 Nov 2026): who, the last message, when, unread. */}
+                      <div className="inbox_row">
+                        <span className="inbox_avatar" aria-hidden="true">
+                          {String(lead.name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?"}
+                        </span>
+                        <span className="inbox_main">
+                          <span className="inbox_top">
+                            <span className={`inbox_title${lead.inbox?.unread ? " unread" : ""}`}>{lead.name || "No name"}</span>
+                            <span className="inbox_time">{inboxTime(lead.inbox?.last?.at || lead.createdAt, dealerTimezone)}</span>
+                          </span>
+                          <span className="inbox_bottom">
+                            <span className="inbox_snip">
+                              {lead.inbox?.last ? (
+                                <>
+                                  {lead.inbox.last.from === "ai" && <b>AI: </b>}
+                                  {lead.inbox.last.from === "staff" && <b>You: </b>}
+                                  {lead.inbox.last.failed && <i className="fa-solid fa-circle-exclamation text-danger me-1" aria-hidden="true"></i>}
+                                  {lead.inbox.last.channel === "email" && <i className="fa-regular fa-envelope me-1" aria-hidden="true"></i>}
+                                  {lead.inbox.last.text || "(no text)"}
+                                </>
+                              ) : <span className="text-muted">{statusLabel(lead.fe_lead_status) || "New lead"}</span>}
+                            </span>
+                            {lead.inbox?.unread > 0 && <span className="inbox_unread">{lead.inbox.unread}</span>}
+                          </span>
+                        </span>
+                      <button type="button" className="inbox_more" aria-label={`More for ${lead.name || "this lead"}`}
+                          aria-expanded={openLeadId === lead._id}
+                          onClick={(e) => { e.stopPropagation(); setOpenLeadId(openLeadId === lead._id ? null : lead._id); }}>
+                          <i className="fa-regular fa-ellipsis-vertical"></i>
+                        </button>
+                      </div>
                       {openLeadId === lead._id && (
-                      <div className="d-flex align-items-center justify-content-between w-100 mt-1 lead_action">
-                        <div className="w_card_list_box_label">
-                          <p className="label"><small>Assigned To:</small></p>
+                        // The lead's quick actions, under its row (27 Nov 2026: was squeezed and broken).
+                        <div className="inbox_actions" onClick={(e) => e.stopPropagation()}>
+                          <label className="inbox_actions_label" htmlFor={`assign-${lead._id}`}>Assigned to</label>
                           {canAssignLeads ? (
-                            <Form.Select
-                              size="sm"
-                              value={lead.assigned_to?._id || ''}
-                              onChange={(e) => handleAssignmentChange(lead._id, e.target.value)}
-                              onClick={(e) => e.stopPropagation()}
-                            >
+                            <Form.Select id={`assign-${lead._id}`} size="sm" value={lead.assigned_to?._id || ''}
+                              onChange={(e) => handleAssignmentChange(lead._id, e.target.value)}>
                               <option value="">Unassigned</option>
-                              {staffList.map(staff => (
-                                <option key={staff._id} value={staff._id}>
-                                  {staff.name}
-                                </option>
-                              ))}
+                              {staffList.map((staff) => <option key={staff._id} value={staff._id}>{staff.name}</option>)}
                             </Form.Select>
                           ) : (
-                            <div className="w_card_list_box_label">
-                              <p className="label"><small>Assigned:</small></p>
-                              <p className="text-truncate">{lead.assigned_to?.name || "Unassigned"}</p>
-                            </div>
+                            <span className="inbox_actions_value">{lead.assigned_to?.name || "Unassigned"}</span>
                           )}
-                        </div>
-                        <div className="d-flex gap-1 w_card_list_btns justify-content-end">
-                          {!compact && (
-                          <Button variant="custom" size="sm" onClick={(e) => {
-                            e.stopPropagation();
-                            handleLeadClick(lead);
-                          }}>
-                            <i className="fa-regular fa-envelope-open"></i>
-                          </Button>
-                          )}
-                          <Button variant="danger" size="sm" onClick={(e) => {
-                            e.stopPropagation();
-                            handleShowDeleteModal(lead);
-                          }}>
+                          <Button variant="outline-danger" size="sm" title="Delete lead" aria-label="Delete lead"
+                            onClick={() => handleShowDeleteModal(lead)}>
                             <i className="fa-regular fa-trash"></i>
                           </Button>
                         </div>
-                      </div>
                       )}
                     </div>
                   ) : (
@@ -2212,7 +2209,18 @@ useImperativeHandle(ref, () => ({
             )}
           </ListGroup>
 
-          {pagination.totalPages > 1 && (
+          {compact && pagination.totalPages > 1 && (
+            // Beside the conversation the list pages like an inbox: one line, Previous / page of pages / Next.
+            <div className="inbox_pager">
+              <Button variant="outline-custom" size="sm" aria-label="Previous page" disabled={pagination.currentPage === 1}
+                onClick={() => handlePageChange(pagination.currentPage - 1)}><i className="fa-solid fa-chevron-left"></i></Button>
+              <span>Page <strong>{pagination.currentPage.toLocaleString("en-US")}</strong> of {pagination.totalPages.toLocaleString("en-US")}
+                <small className="text-muted d-block">{(pagination.totalItems || 0).toLocaleString("en-US")} leads</small></span>
+              <Button variant="outline-custom" size="sm" aria-label="Next page" disabled={pagination.currentPage === pagination.totalPages}
+                onClick={() => handlePageChange(pagination.currentPage + 1)}><i className="fa-solid fa-chevron-right"></i></Button>
+            </div>
+          )}
+          {!compact && pagination.totalPages > 1 && (
             <div className={!compact ? "d-md-flex justify-content-center mt-3" : "justify-content-center mt-2"}>
               <Pagination className="mb-md-0 justify-content-center flex-wrap">
                 <Pagination.Prev

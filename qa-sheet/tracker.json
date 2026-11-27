@@ -1068,21 +1068,21 @@
   },
   "M25-16": {
    "feature": "Reply box in the conversation (chat style), customer left / ours right",
-   "status": "Open",
+   "status": "Partly done",
    "live": "No",
    "where": "Lead conversation",
    "order": "Meeting 25 Nov"
   },
   "M25-17": {
    "feature": "Attach vehicle: photos and facts",
-   "status": "Open",
+   "status": "Partly done",
    "live": "No",
    "where": "Reply window > Attach Vehicle",
    "order": "Meeting 25 Nov"
   },
   "M25-18": {
    "feature": "One-click dealer links (credit application...)",
-   "status": "Open",
+   "status": "Partly done",
    "live": "No",
    "where": "Reply window > Send a link",
    "order": "Meeting 25 Nov"
