@@ -35,7 +35,17 @@ function toast(text, err = false) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { t.hidden = true; }, err ? 5000 : 2200);
 }
+let busyCount = 0;
+function busy(on) {
+  busyCount = Math.max(0, busyCount + (on ? 1 : -1));
+  const bar = document.getElementById("busy-bar");
+  if (bar) bar.hidden = busyCount === 0;
+}
 async function api(path, body) {
+  busy(true);
+  try { return await apiCall(path, body); } finally { busy(false); }
+}
+async function apiCall(path, body) {
   const res = await fetch(ROOT + path, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {});
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || data.message || `Error ${res.status}`);
@@ -93,8 +103,16 @@ function dropZone(onFiles, { label = "Paste (Ctrl+V), drop or click to add scree
   const input = h("input", { type: "file", accept: "image/png,image/jpeg,image/webp", hidden: true });
   input.multiple = true;
   const zone = h("div", { class: "dropzone", tabindex: "0", role: "button", "aria-label": label },
-    h("span", { class: "dz-ico", "aria-hidden": "true", text: "\u{1F4CB}" }), h("span", { text: label }), input);
-  const take = (files) => { const list = imagesFrom(files); if (list.length) onFiles(list); else toast("Paste or drop an image (PNG, JPEG or WebP)", true); };
+    h("span", { class: "dz-ico", "aria-hidden": "true", text: "\u{1F4CB}" }), h("span", { class: "spinner", "aria-hidden": "true" }), h("span", { text: label }), input);
+  const text = zone.querySelector("span:not(.dz-ico)");
+  const take = async (files) => {
+    const list = imagesFrom(files);
+    if (!list.length) { toast("Paste or drop an image (PNG, JPEG or WebP)", true); return; }
+    if (zone.classList.contains("busy")) return;
+    zone.classList.add("busy");
+    text.textContent = `Adding ${list.length} screenshot${list.length > 1 ? "s" : ""}…`;
+    try { await onFiles(list); } finally { zone.classList.remove("busy"); text.textContent = label; }
+  };
   zone.addEventListener("click", (e) => { if (e.target !== input) input.click(); });
   zone.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); } });
   input.addEventListener("change", () => { take([...(input.files || [])]); input.value = ""; });
@@ -108,7 +126,7 @@ function dropZone(onFiles, { label = "Paste (Ctrl+V), drop or click to add scree
 function pasteImagesInto(el, onFiles) {
   el.addEventListener("paste", (e) => {
     const list = imagesFrom([...(e.clipboardData?.items || [])]);
-    if (list.length) { e.preventDefault(); onFiles(list); }
+    if (list.length) { e.preventDefault(); toast(`Adding ${list.length} screenshot${list.length > 1 ? "s" : ""}…`); onFiles(list); }
   });
   el.addEventListener("dragover", (e) => { if ([...(e.dataTransfer?.items || [])].some((i) => i.kind === "file")) e.preventDefault(); });
   el.addEventListener("drop", (e) => { const list = imagesFrom([...(e.dataTransfer?.files || [])]); if (list.length) { e.preventDefault(); onFiles(list); } });
@@ -223,6 +241,8 @@ function reportForm(sec, host, onDone) {
     const files = [...pending];
     if (files.length > 10) { toast("Up to 10 screenshots per problem", true); return; }
     send.disabled = true;
+    send.classList.add("busy");
+    send.textContent = files.length ? `Reporting and adding ${files.length} screenshot${files.length > 1 ? "s" : ""}…` : "Reporting…";
     try {
       for (const f of files) await readImage(f).then(() => null); // check them all before saving anything
       const id = `${sec.id}.x.${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -236,6 +256,8 @@ function reportForm(sec, host, onDone) {
       toast(e.message, true);
     } finally {
       send.disabled = false;
+      send.classList.remove("busy");
+      send.textContent = "Report problem";
     }
   });
   host.replaceChildren(h("div", { class: "report-form" },
@@ -332,11 +354,12 @@ function resultPanel(row) {
         // screenshots or issue), as if it was never tested.
         hasMine ? h("button", { type: "button", class: "cancel", text: "Cancel", title: "Take back your result: nothing is recorded for this test",
           onclick: () => cancelRow(row) }) : null),
-      showNote ? note : h("button", { type: "button", class: "link", text: "+ Add a note or screenshot", onclick: () => { row.noteOpen = true; row.paint(); } }),
+      showNote ? note : h("button", { type: "button", class: "link", text: "+ Add a note", onclick: () => { row.noteOpen = true; row.paint(); } }),
       showNote ? hint : null,
       showNote ? h("div", { class: "tools" },
-        h("button", { type: "button", class: "btn small", text: "Save note", onclick: () => save(row, status || "fail", note.value) }),
-        dropZone(addShots)) : null,
+        h("button", { type: "button", class: "btn small", text: "Save note", onclick: () => save(row, status || "fail", note.value) })) : null,
+      // Screenshots on every row, always in view (the user, 28 Nov 2026): paste, drag in or click to choose.
+      dropZone(addShots),
       (r?.shots || []).length ? h("div", { class: "shots" }, r.shots.map((s) => h("div", { class: "shot" },
         h("img", { src: `${ROOT}shots/${s.file}`, alt: "Screenshot", loading: "lazy", onclick: () => lightbox(`${ROOT}shots/${s.file}`) }),
         h("button", { type: "button", title: "Remove this screenshot", "aria-label": "Remove screenshot", text: "×", onclick: () => removeShot(row, s.file) })))) : null,
@@ -551,6 +574,8 @@ function applyFilters() {
 async function save(row, status, note) {
   const name = needName();
   if (!name) return;
+  if (row.el.classList.contains("saving")) return;
+  row.el.classList.add("saving");
   try {
     const { result } = await api("results", { id: row.id, status, note, tester: name });
     upsertResult(result);
@@ -561,6 +586,8 @@ async function save(row, status, note) {
     toast(status === "clear" ? `${row.code}: result cleared` : `${row.code}: ${LABEL[status]} saved`);
   } catch (e) {
     toast(e.message, true);
+  } finally {
+    row.el.classList.remove("saving");
   }
 }
 async function upload(row, file, input) {
@@ -587,6 +614,7 @@ async function cancelRow(row) {
   if (!name) return;
   const r = mine(row.id);
   if ((r?.note || (r?.shots || []).length) && !confirm(`Cancel your result on ${row.code}? Your note and screenshots on it are removed too; nothing is recorded for this test.`)) return;
+  row.el.classList.add("saving");
   try {
     await api("results/cancel", { id: row.id, tester: name });
     if (r) dropResult(r);
@@ -598,6 +626,8 @@ async function cancelRow(row) {
     toast(`${row.code}: cancelled - nothing recorded`);
   } catch (e) {
     toast(e.message, true);
+  } finally {
+    row.el.classList.remove("saving");
   }
 }
 async function removeShot(row, fileName) {
@@ -1044,11 +1074,22 @@ function switchTab(tab) {
 // ---------- start ----------
 async function init() {
   $("tester").value = store.get("qa-tester", "") || "";
-  const [data, auto, res] = await Promise.all([
-    fetch(`${ROOT}assets/features.json`).then((r) => r.json()),
-    fetch(`${ROOT}assets/automated.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
-    api("results").catch(() => ({ results: [] })),
-  ]);
+  let loaded;
+  try {
+    loaded = await Promise.all([
+      fetch(`${ROOT}assets/features.json`).then((r) => { if (!r.ok) throw new Error(`features.json ${r.status}`); return r.json(); }),
+      fetch(`${ROOT}assets/automated.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      apiCall("results").catch(() => ({ results: [] })),
+    ]);
+  } catch (e) {
+    const pl = $("page-loader");
+    pl.replaceChildren(h("div", { text: "The test sheet could not load. Refresh the page; if it keeps failing, tell the developer." }),
+      h("button", { type: "button", class: "btn primary", text: "Refresh", onclick: () => location.reload() }));
+    pl.classList.add("failed");
+    return;
+  }
+  const [data, auto, res] = loaded;
+  $("page-loader").hidden = true;
   state.data = data;
   state.auto = auto;
   indexResults(res.results || []);
