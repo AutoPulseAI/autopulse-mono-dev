@@ -3,36 +3,8 @@ import { useState, useEffect } from "react";
 import { Modal, Button, Form, Alert, Row, Col, Card, Badge, Spinner } from "react-bootstrap";
 import useFetch from "../../../hooks/useFetch";
 import WriteWithAIModal from "../../components/WriteWithAIModal";
-import VehicleCard from "./VehicleCard";
-import { useUser } from "../../context/UserContext";
-import { dealerLinksView, DEALER_LINKS } from "../../../lib/ai/dealerLinks";
-
-// The window around the reply form: a pop-up, or (inline) a box right under the conversation, like a chat (Betsy,
-// 25 Nov 2026: "why don't we just have a space where you can start typing right below the conversation?").
-function ReplyShell({ inline, onClose, communicationType, children }) {
-    if (inline) {
-        return (
-            <div className="w_card mt-2 conv_composer" data-testid="inline-composer">
-                <div className="small fw-semibold mb-2">
-                    <i className={`fa-regular ${communicationType === "sms" ? "fa-message-sms" : "fa-envelope"} me-1`} aria-hidden="true"></i>
-                    Reply by {communicationType === "sms" ? "text" : "email"}
-                </div>
-                {children}
-            </div>
-        );
-    }
-    return (
-        <Modal show={true} onHide={onClose} centered size={communicationType === "sms" ? "lg" : "xl"}>
-            <Modal.Header closeButton>
-                <Modal.Title>Reply via {communicationType.toUpperCase()}</Modal.Title>
-            </Modal.Header>
-            <Modal.Body className="bg_gray">{children}</Modal.Body>
-        </Modal>
-    );
-}
 
 export default function EmailReplyModal({
-    inline = false,
     dealer_id,
     onClose,
     selectedConversation,
@@ -43,7 +15,6 @@ export default function EmailReplyModal({
     lead = null
 }) {
     const [content, setContent] = useState("");
-    const [toolsOpen, setToolsOpen] = useState(false); // inline: templates, Write with AI, links and car fold away
     const [message, setMessage] = useState("");
     const [error, setError] = useState("");
     const [subject, setSubject] = useState("");
@@ -57,12 +28,6 @@ export default function EmailReplyModal({
     const [vehiclePage, setVehiclePage] = useState(1);
     const [vehicleTotalPages, setVehicleTotalPages] = useState(1);
     const { fetchData, loading } = useFetch();
-    // Photos of the picked car to send with the reply, and the dealership's links (credit application, trade
-    // estimate...) one click away (Betsy, 25 Nov 2026).
-    const [mediaUrls, setMediaUrls] = useState([]);
-    const { dealerParent } = useUser() || {};
-    const dealerLinks = DEALER_LINKS.map((l) => ({ ...l, url: dealerLinksView(dealerParent)[l.key] })).filter((l) => l.url);
-    const addLine = (text) => setContent((prev) => (prev.trim() ? `${prev.replace(/\s+$/, "")}\n${text}` : text));
     // SOW D, G-027: the dealership's approved templates (Message Template / campaign templates) for this channel.
     // Picking one fills the message; it is still checked like any staff message (opt-outs, the customer's language).
     const [templates, setTemplates] = useState([]);
@@ -133,16 +98,25 @@ export default function EmailReplyModal({
         searchVehicles(vehicleSearch, 1);
     };
 
-    // Picking a car shows its photos and details (VehicleCard); staff choose what goes in the message.
     const handleVehicleSelect = (vehicle) => {
         setSelectedVehicle(vehicle);
         setShowVdpSearch(false);
-        setMediaUrls([]);
+        
+        // Use shortUrl from database, fallback to generated URL if not available
+        const vdpLink = vehicle.shortUrl || ``;
+        
+        // Add VDP link to content
+        const vdpText = `\n\nVehicle Details:\n${vehicle.year} ${vehicle.make} ${vehicle.model}\nView: ${vdpLink}`;
+        setContent(prev => prev + vdpText);
     };
 
     const removeSelectedVehicle = () => {
         setSelectedVehicle(null);
-        setMediaUrls([]);
+        // Remove VDP link from content (basic removal)
+        if (selectedVehicle) {
+            const vdpLink = selectedVehicle.shortUrl || `${window.location.origin}/vehicle/${selectedVehicle._id}`;
+            setContent(prev => prev.replace(new RegExp(`\\n\\nVehicle Details:.*?${vdpLink.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g'), ''));
+        }
     };
 
     const handleSubmit = async (e) => {
@@ -173,8 +147,7 @@ export default function EmailReplyModal({
                 content: contentToSend,
                 communicationType,
                 recipient: selectedConversation.sender,
-                originalMessage: selectedConversation.mail_content || selectedConversation.sms_content,
-                ...(mediaUrls.length ? { media_urls: mediaUrls } : {}),
+                originalMessage: selectedConversation.mail_content || selectedConversation.sms_content
             };
 
             // Only add subject for emails
@@ -198,17 +171,10 @@ export default function EmailReplyModal({
             const data = await res.json();
             if (res.ok) {
                 setMessage(`${communicationType.toUpperCase()} sent successfully!`);
-                if (inline) {
-                    // The box stays under the conversation, empty and ready for the next message.
-                    setContent(""); setMediaUrls([]); setSelectedVehicle(null); setToolsOpen(false);
-                    onReplySuccess?.();
-                    setTimeout(() => setMessage(""), 3000);
-                } else {
-                    setTimeout(() => {
-                        onClose();
-                        onReplySuccess(); // Call the refresh callback
-                    }, 2000);
-                }
+                setTimeout(() => {
+                    onClose();
+                    onReplySuccess(); // Call the refresh callback
+                }, 2000);
             } else {
                 setError(data.message || "An error occurred while sending.");
             }
@@ -239,7 +205,11 @@ export default function EmailReplyModal({
 
     return (
     <>
-        <ReplyShell inline={inline} onClose={onClose} communicationType={communicationType}>
+        <Modal show={true} onHide={onClose} centered size={communicationType === "sms" ? "lg" : "xl"}>
+            <Modal.Header closeButton>
+                <Modal.Title>Reply via {communicationType.toUpperCase()}</Modal.Title>
+            </Modal.Header>
+            <Modal.Body className="bg_gray">
                 {message && <Alert variant="success">{message}</Alert>}
                 {error && <Alert variant="danger">{error}</Alert>}
 
@@ -251,15 +221,6 @@ export default function EmailReplyModal({
                 </div>
 
                 <Form onSubmit={handleSubmit}>
-                    {inline && (
-                        <Button size="sm" variant="outline-custom" className="mb-2" aria-expanded={toolsOpen}
-                            onClick={() => setToolsOpen(!toolsOpen)}>
-                            <i className="fa-regular fa-paperclip me-1" aria-hidden="true"></i>
-                            {toolsOpen ? "Hide templates, links and car" : "Templates, Write with AI, links, car photos"}
-                        </Button>
-                    )}
-                    {(!inline || toolsOpen) && (
-                    <>
                     {templates.length > 0 && (
                         <Form.Group className="mb-3">
                             <Form.Label>Template</Form.Label>
@@ -295,20 +256,6 @@ export default function EmailReplyModal({
                         </Button>
                     </div>
 
-                    {dealerLinks.length > 0 && (
-                        <div className="mb-3" data-testid="dealer-links">
-                            <Form.Label className="d-block">Send a link</Form.Label>
-                            <div className="d-flex flex-wrap gap-1">
-                                {dealerLinks.map((l) => (
-                                    <Button key={l.key} size="sm" variant="outline-custom" onClick={() => addLine(`${l.label}: ${l.url}`)}
-                                        title={l.url}>
-                                        <i className="fa-regular fa-link me-1" aria-hidden="true"></i>{l.label}
-                                    </Button>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
                     {/* VDP Attachment Section */}
                     <div className="mb-3">
                         <div className="d-flex justify-content-between align-items-center mb-2">
@@ -328,8 +275,21 @@ export default function EmailReplyModal({
                         </div>
                         
                         {selectedVehicle && (
-                            <VehicleCard vehicle={selectedVehicle} picked={mediaUrls} onPick={setMediaUrls}
-                                onAdd={addLine} onRemove={removeSelectedVehicle} channel={communicationType} />
+                            <Card className="mb-2">
+                                <Card.Body className="py-2">
+                                    <div className="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>{selectedVehicle.year} {selectedVehicle.make} {selectedVehicle.model}</strong>
+                                            {selectedVehicle.price && (
+                                                <Badge bg="success" className="ms-2">${selectedVehicle.price.toLocaleString()}</Badge>
+                                            )}
+                                        </div>
+                                        <Button variant="outline-danger" size="sm" onClick={removeSelectedVehicle}>
+                                            <i className="fa-solid fa-times"></i>
+                                        </Button>
+                                    </div>
+                                </Card.Body>
+                            </Card>
                         )}
 
                         {showVdpSearch && (
@@ -423,13 +383,11 @@ export default function EmailReplyModal({
                         )}
                     </div>
 
-                    </>
-                    )}
                     <Form.Group className="mb-3">
                         <Form.Label>{communicationType === "email" ? "Email Content" : "SMS Message"}</Form.Label>
                         <Form.Control
                             as="textarea"
-                            rows={inline ? 3 : communicationType === "sms" ? 4 : 6}
+                            rows={communicationType === "sms" ? 4 : 6}
                             value={content}
                             onChange={(e) => setContent(e.target.value)}
                             placeholder={`Enter your ${communicationType} content here...`}
@@ -447,14 +405,13 @@ export default function EmailReplyModal({
                         <Button variant="custom" type="submit" disabled={loading || translating}>
                             {translating ? "Translating..." : loading ? "Sending..." : `Send ${communicationType.toUpperCase()}`}
                         </Button>
-                        {!inline && (
-                            <Button variant="secondary" className="ms-2" onClick={onClose}>
-                                Cancel
-                            </Button>
-                        )}
+                        <Button variant="secondary" className="ms-2" onClick={onClose}>
+                            Cancel
+                        </Button>
                     </Form.Group>
                 </Form>
-        </ReplyShell>
+            </Modal.Body>
+        </Modal>
 
         {showWriteWithAI && selectedConversation?.lead_id && (
             <WriteWithAIModal

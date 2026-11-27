@@ -6,10 +6,7 @@ import { formatTimestamp } from "../../../utils/dateUtils";
 import useFetch from "../../../hooks/useFetch";
 import { Col, Row, Button, Spinner, Nav, Badge, Dropdown } from "react-bootstrap";
 import EmailReplyModal from "./EmailReplyModal";
-import ChatComposer from "./ChatComposer";
-import "./chat.css";
 import { DEPARTMENT_NAMES, canReplyInDepartment, leadDepartment } from "@lib/departmentNames";
-import { contactTypeLabel } from "@lib/leadContactType";
 import DateRangePickerComponent from "../../components/DateRangePicker";
 import StatusModal from "./StatusModal"; // Import StatusModal
 import LeadNotesModal from "./LeadNotesModal"; // Import LeadNotesModal
@@ -31,7 +28,7 @@ import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R:
 import MessagePhotos from "../../components/MessagePhotos"; // stream R: AI photos
 import { hasAiPhotos } from "../../../lib/ai/messagePhotos";
 import AdfLead, { looksLikeAdf } from "../../ai/components/AdfLead";
-import { messageAuthor, noteAuthor, AUTHOR_BADGE, isStatusNote, staffBookedTexts, messageStatusLabel, statusNoteParts } from "../../../lib/messageAuthor";
+import { messageAuthor, noteAuthor, AUTHOR_BADGE, isStatusNote, staffBookedTexts, messageStatusLabel } from "../../../lib/messageAuthor";
 import { aiFetch } from "../../ai/components/aiShared";
 
 // SMS is the default reply channel; email is only used when explicitly
@@ -110,14 +107,6 @@ export default function ViewConversations({
   const sidebarRef = useRef(null);
   const previousLeadIdRef = useRef(null);
   const [activeChannelTab, setActiveChannelTab] = useState("sms");
-  const threadRef = useRef(null); // the chat thread: kept scrolled to the newest message at the bottom
-  // Leads page (the user, 27 Nov 2026): one inbox - the lead's header on top with tabs (Conversation / Lead details /
-  // AI Assistant) instead of a middle column; the customer profile (embedded) keeps its own layout.
-  // (2) The user, 27 Nov 2026: the lead's information must stay on screen - it is a panel on the right of the
-  // conversation again (lead card, then the AI Assistant), which the Details button folds away.
-  const [showInfo, setShowInfo] = useState(true);
-  const leadTab = "conversation";
-  const tabbed = !embedded;
   // Channels this customer opted out of (the AI's consent record), re-read whenever the lead or its status changes.
   const [stoppedChannels, setStoppedChannels] = useState({});
   useEffect(() => {
@@ -197,12 +186,6 @@ export default function ViewConversations({
     [sortedEmails, leadEmailIds]
   );
   const activeChannelEmails = activeChannelTab === "sms" ? smsConversations : emailConversations;
-  // Open at the newest message (bottom), and follow new ones; loading older messages at the top doesn't jump.
-  const newestId = activeChannelEmails[0]?._id ? String(activeChannelEmails[0]._id) : "";
-  useEffect(() => {
-    const el = threadRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [lead?._id, activeChannelTab, newestId]);
 
     // 🔹 hold a ref to the LeadList so we can trigger pagination from here
   const leadListRef = useRef(null);
@@ -831,71 +814,8 @@ export default function ViewConversations({
       )}
 
         <Col xxl={embedded ? 12 : 9} lg={embedded ? 12 : 8} md={12} sm={12}>
-          {tabbed && (
-            <div className="inbox_head w_card mb-2" data-testid="lead-header">
-              {/* The lead's top band, like the customer profile (the user, 27 Nov 2026): who, the status, where the lead
-                  came from, and every action the old lead page had - one place, nothing hidden. */}
-              <div className="d-flex flex-wrap align-items-center gap-2">
-                <div className="me-auto d-flex align-items-center gap-2 flex-wrap">
-                  <span className="inbox_name">{lead?.name || "Lead"}</span>
-                  <button type="button" className="inbox_status" onClick={() => setShowStatusModal(true)} title="Change the status">
-                    {leadStatusLabel(lead) || lead?.fe_lead_status || "New Lead"} <i className="fa-solid fa-chevron-down ms-1"></i>
-                  </button>
-                </div>
-                <Button variant="outline-custom" size="sm" onClick={handlePrevLead} disabled={isNavigating} title="Previous lead">
-                  <i className="fa-solid fa-chevron-left me-1"></i>Prev
-                </Button>
-                <Button variant="outline-custom" size="sm" onClick={handleNextLead} disabled={isNavigating} title="Next lead">
-                  Next<i className="fa-solid fa-chevron-right ms-1"></i>
-                </Button>
-              </div>
-              <div className="inbox_band">
-                <span><small>UP TYPE</small>{contactTypeLabel(lead)}</span>
-                <span><small>DEPARTMENT</small>{DEPARTMENT_NAMES[leadDepartment(lead)]}</span>
-                <span><small>SOURCE</small>{lead?.lead_source || lead?.source || "Not set"}</span>
-                <span><small>SUB-SOURCE</small>{lead?.sub_source || "No sub-source"}</span>
-                <span><small>OWNER</small>{lead?.assigned_to?.name || "Unassigned"}</span>
-                <span><small>PHONE</small>{lead?.phone || "-"}</span>
-                <span><small>EMAIL</small>{lead?.email || "-"}</span>
-              </div>
-              <div className="inbox_actions_bar">
-                {[["sms", "fa-duotone fa-comment-sms", "Text", Boolean(lead?.phone) && !stoppedChannels.sms],
-                  ["email", "fa-duotone fa-envelope-open-text", "Email", Boolean(lead?.email) && !stoppedChannels.email]].map(([ch, icon, label, ok]) => (
-                  <button key={ch} type="button" className="inbox_act" disabled={!ok || !replyAllowed}
-                    title={ok ? `Write a ${ch === "sms" ? "text" : "email"} in the box under the conversation` : ch === "sms" ? "No phone, or texts stopped" : "No email, or emails stopped"}
-                    onClick={() => { setActiveChannelTab(ch); setTimeout(() => document.querySelector(".chat_textarea")?.focus(), 50); }}>
-                    <i className={icon}></i><span>{label}</span>
-                  </button>
-                ))}
-                {lead?.phone && (
-                  <span className="inbox_act inbox_act_call">
-                    <CallButton phone={lead.phone} leadId={lead._id} dealerId={lead.dealer_id} size="sm" variant="link" label="Call"
-                      icon="fa-duotone fa-phone-office" />
-                  </span>
-                )}
-                <button type="button" className="inbox_act" onClick={() => setShowNotesModal(true)}>
-                  <i className="fa-duotone fa-note-sticky"></i><span>Add note</span></button>
-                <button type="button" className="inbox_act" onClick={() => setShowStatusModal(true)}>
-                  <i className="fa-duotone fa-right-left"></i><span>Update status</span></button>
-                {showCheckIn && (
-                  <a className="inbox_act" href={`/dealer/desk-log?check_in=${lead._id}`}>
-                    <i className="fa-duotone fa-user-check"></i><span>Check in</span></a>
-                )}
-                {lead?.customer_id && (
-                  <a className="inbox_act" href={`/dealer/customers/${lead.customer_id}`}>
-                    <i className="fa-duotone fa-user"></i><span>Customer profile</span></a>
-                )}
-                <button type="button" className="inbox_act" onClick={handleClose}>
-                  <i className="fa-duotone fa-list"></i><span>Back to list</span></button>
-                <button type="button" className={`inbox_act ms-auto${showInfo ? " on" : ""}`} onClick={() => setShowInfo(!showInfo)}
-                  aria-pressed={showInfo} title="Lead details and AI Assistant on the right">
-                  <i className="fa-duotone fa-sidebar-flip"></i><span>{showInfo ? "Hide details" : "Show details"}</span></button>
-              </div>
-            </div>
-          )}
           <Row className="gx-3">
-            <Col xxl={4} lg={tabbed ? 4 : 5} md={tabbed ? 12 : 5}
-              className={tabbed ? (showInfo ? "order-lg-last inbox_info" : "d-none") : ""}>
+            <Col xxl={4} lg={5} md={5}>
               {/* Stays in view while the conversation scrolls (BB, 17 Nov 2026: "as the conversation gets long this
                   column shifts to the bottom"); scrolls on its own when taller than the screen. */}
               <div className="dealer_info position-sticky mb-3 lead_center_col">
@@ -956,7 +876,7 @@ export default function ViewConversations({
                   {/* Every action on the lead in one place (BB, 17 Nov 2026: "all call to action should be in one place").
                       On the customer profile they sit in the opportunity's own action row instead (Bibi, 25 Nov 2026:
                       "this way all communication is in one place") - actionsTarget is that row. */}
-                  {!tabbed && (() => { const actions = (
+                  {(() => { const actions = (
                   <div className={actionsTarget ? "lead_actions_row" : "lead_actions mt-2"}>
                     {selectedConversation && getReplyChannel(lead, activeChannelTab, stoppedChannels) && !replyAllowed && (
                       <span className="small text-muted align-self-center" title="Reply from the department's own staff">
@@ -976,8 +896,28 @@ export default function ViewConversations({
                         </Button>
                       );
                     })}
-                    {/* The reply is typed in the message box under the conversation (the user, 27 Nov 2026); the old Reply
-                        button is gone from the Leads page. */}
+                    {/* Leads page (26 Nov 2026): one "Reply" button; it asks SMS or Email, instead of a button whose name
+                        changes with the open tab. A channel with no phone / email, or that the customer opted out of, is
+                        shown but cannot be picked. */}
+                    {!actionsTarget && selectedConversation && getReplyChannel(lead, activeChannelTab, stoppedChannels) && replyAllowed && (
+                      <Dropdown className="d-inline-block">
+                        <Dropdown.Toggle variant="custom" size="sm" className="act_sms" id={`reply-${lead?._id}`}>
+                          <i className="fa-regular fa-reply me-1"></i>Reply
+                        </Dropdown.Toggle>
+                        <Dropdown.Menu>
+                          {["sms", "email"].map((ch) => {
+                            const has = ch === "sms" ? lead?.phone : lead?.email;
+                            const why = !has ? (ch === "sms" ? "no phone" : "no email") : stoppedChannels[ch] ? "opted out" : "";
+                            return (
+                              <Dropdown.Item key={ch} disabled={!!why} onClick={() => { setReplyChannel(ch); setShowReplyModal(true); }}>
+                                <i className={`fa-solid ${ch === "sms" ? "fa-comment-sms" : "fa-envelope"} me-2`}></i>
+                                {ch === "sms" ? "SMS reply" : "Email reply"}{why && <small className="text-muted ms-1">({why})</small>}
+                              </Dropdown.Item>
+                            );
+                          })}
+                        </Dropdown.Menu>
+                      </Dropdown>
+                    )}
                     {lead?.phone && <CallButton phone={lead.phone} leadId={lead._id} dealerId={lead.dealer_id} size="sm"
                       className={actionsTarget ? "act_call" : ""} icon={actionsTarget ? "fa-duotone fa-phone-office" : null} />}
                     <Button variant="outline-warning" size="sm" className="text-nowrap act_note" onClick={() => setShowNotesModal(true)}>
@@ -1007,9 +947,8 @@ export default function ViewConversations({
                   ); return actionsTarget ? createPortal(actions, actionsTarget) : actions; })()}
                 </div>
                 {/* What the AI is doing with this lead (stage, next touch, call task, consent; on/off) */}
-                {lead?._id && (
-                  <AiLeadPanel key={`${lead._id}-${lead.fe_lead_status || lead.status || ""}`} leadId={lead._id} />)}
-                {!embedded && !tabbed && (
+                {lead?._id && <AiLeadPanel key={`${lead._id}-${lead.fe_lead_status || lead.status || ""}`} leadId={lead._id} />}
+                {!embedded && (
                 <div className="d-flex align-items-center justify-content-between gap-2">
                   <Button
                     variant="outline-custom"
@@ -1048,9 +987,8 @@ export default function ViewConversations({
               </div>
             </Col>
 
-            <Col xxl={tabbed && !showInfo ? 12 : 8} lg={tabbed ? (showInfo ? 8 : 12) : 7} md={tabbed ? 12 : 7}
-              className={tabbed ? "inbox_chat" : ""}>
-              <div className="position-relative mb-2">
+            <Col xxl={8} lg={7} md={7}>
+              <div className="position-relative mb-xl-3 mb-2">
                 {isNavigating && (
                   <div 
                     style={{
@@ -1124,17 +1062,7 @@ export default function ViewConversations({
               </div>
 
               {activeChannelEmails.length > 0 ? (
-                <div className="conversation-list chat_thread" ref={threadRef} data-testid="chat-thread">
-                  {/* Chat order (the user, 27 Nov 2026): oldest at the top, newest at the bottom next to the message box;
-                      older messages load at the top. */}
-                  {hasOlderConversations && (
-                    <div className="d-flex justify-content-center">
-                      <Button variant="outline-secondary" size="sm" onClick={loadOlderConversations} disabled={loadingOlderConversations}>
-                        {loadingOlderConversations ? <><Spinner animation="border" size="sm" className="me-2" />Loading older messages...</>
-                          : "Load older messages"}
-                      </Button>
-                    </div>
-                  )}
+                <div className="conversation-list">
                   {showTranslation && (
                   <div className="w_card mb-2">
                     <Row className="align-items-center gx-2">
@@ -1207,7 +1135,7 @@ export default function ViewConversations({
                       ))}
                     </details>
                   )}
-                  {[...activeChannelEmails].reverse().map((email, idx, ordered) => {
+                  {activeChannelEmails.map((email) => {
                       const cleaned = cleanEmailContent(email.mail_content || "");
                       const originalText = getMessageTextForTranslation(email);
                       const translationKey = getTranslationKey(email, agentViewLanguage, originalText);
@@ -1216,78 +1144,91 @@ export default function ViewConversations({
                       const author = messageAuthor(email, lead, dealerParent?.dealer_account_information?.ai_bot_name);
                   const bookedBy = staffBooked[String(email._id)];
                       const isNote = email.is_note || email.status === 'note';
-                      // A day chip when the day changes, like WhatsApp (dealer's time zone).
-                      const dayOf = (m) => (m?.timestamp ? new Date(m.timestamp).toLocaleDateString("en-US",
-                        { timeZone: dealerTimezone || undefined, weekday: "short", month: "short", day: "numeric", year: "numeric" }) : "");
-                      const day = dayOf(email);
-                      const dayChip = day && day !== dayOf(ordered[idx - 1])
-                        ? <div className="chat_day" key={`day-${email._id}`}>{day}</div> : null;
-                      const clock = email.timestamp ? new Date(email.timestamp).toLocaleTimeString("en-US",
-                        { timeZone: dealerTimezone || undefined, hour: "numeric", minute: "2-digit" }) : "";
-                      // A status change is one quiet line in the middle (the user, 27 Nov 2026: "how can we arrange it
-                      // in a much better way") - the new status in bold, who and why in small grey.
-                      const sn = isNote && isStatusNote(email) ? statusNoteParts(cleaned.content) : null;
-                      if (sn) {
-                        return [dayChip, (
-                          <div key={email._id} className="chat_system" title={cleaned.content}>
-                            <i className="fa-solid fa-arrow-right-arrow-left" aria-hidden="true"></i>
-                            <span>
-                              {sn.from ? <>{sn.from} <i className="fa-solid fa-arrow-right mx-1" aria-hidden="true"></i></> : "Status: "}
-                              <strong>{sn.to}</strong>
-                              <span className="chat_system_by"> · {sn.by === "AI" ? "by the AI" : `by ${sn.by}`}{sn.why ? ` · ${sn.why}` : ""} · {clock}</span>
-                            </span>
-                          </div>
-                        )];
-                      }
-                      const st = String(email.status || "").toLowerCase();
-                      const tick = ["received", "incoming"].includes(st) ? null
-                        : ["failed", "undelivered", "bounced", "error"].includes(st)
-                          ? <span className="chat_tick failed" title={messageStatusLabel(email)}><i className="fa-solid fa-circle-exclamation me-1"></i>{messageStatusLabel(email)}</span>
-                          : st === "delivered" || /deliver|read|open/i.test(messageStatusLabel(email))
-                            ? <span className="chat_tick read" title={messageStatusLabel(email)}><i className="fa-solid fa-check-double"></i></span>
-                            : <span className="chat_tick" title={messageStatusLabel(email)}><i className="fa-solid fa-check"></i></span>;
-
-                      return [dayChip, (
+                      
+                      return (
                         <div
                           key={email._id}
-                          className={`w_card conversation-item ${
+                          className={`w_card mb-2 conversation-item ${
                             selectedConversation?._id === email._id ? 'selected-conversation' : ''
-                          } ${isNote ? 'note-item' : ["received", "incoming"].includes(email.status) ? 'chat_in'
-                            : `chat_out ${author.kind === 'ai' ? 'chat_ai' : 'chat_staff'}${["failed", "undelivered", "bounced", "error"].includes(email.status) ? ' chat_failed' : ''}`}`}
+                          } ${isNote ? 'note-item' : ''}`}
                           onClick={() => setSelectedConversation(email)}
-                          style={undefined}
+                          style={isNote ? (isAiNote(email) ? {
+                            borderLeft: '4px solid #2196f3',
+                            backgroundColor: '#e3f2fd',
+                            border: '1px solid #2196f3'
+                          } : {
+                            borderLeft: '4px solid #ffc107',
+                            backgroundColor: '#fff8e1',
+                            border: '1px solid #ffc107'
+                          }) : {}}
                         >
-                          {/* Who wrote it on top; the time and the delivery ticks at the bottom, like WhatsApp
-                              (From / To / language on hover). */}
-                          <div className="chat_meta" title={isNote ? `User language: ${msgUserLanguageLabel}`
-                            : `From: ${email.sender || "-"}\nTo: ${email.recipient || "-"}\nUser language: ${msgUserLanguageLabel}`}>
-                            {isNote ? (
-                              <span className="chat_note_head">
-                                <i className="fa-solid fa-note-sticky me-1" aria-hidden="true"></i>
-                                {email.internal_use === true ? "Internal note" : "Lead note"} · {noteAuthor(email, isAiNote(email))}
-                              </span>
-                            ) : (
-                              <span className={`chat_who ${author.kind}`}>{author.label}</span>
-                            )}
-                            {bookedBy && <span className="badge bg-warning text-dark">Appointment set by staff: {bookedBy}</span>}
-                            {isNote && (
-                              <button type="button" className="chat_note_edit ms-auto" aria-label="Edit note" title="Edit note"
-                                onClick={(e) => { e.stopPropagation(); handleEditNote(email); }}>
-                                <i className="fa-regular fa-pen-to-square"></i>
-                              </button>
-                            )}
-                          </div>
-                          {/* Click a message for its details (From / To / language), as the old screen showed them. */}
-                          {!isNote && selectedConversation?._id === email._id && (
-                            <div className="chat_details">
-                              <div><strong>From:</strong> {email.sender || "-"}</div>
-                              <div><strong>To:</strong> {email.recipient || "-"}</div>
-                              <div><strong>User language:</strong> {msgUserLanguageLabel}</div>
+                          <div className="conversation-header d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                              <h6 className="w_card_title mb-1 fw-bold">
+                                {isNote ? (
+                                  <>
+                                    <i className={`fa-solid fa-sticky-note me-2 ${email.internal_use === true ? 'text-info' : 'text-warning'}`}></i>
+                                    {isStatusNote(email) ? 'Status change' : email.internal_use === true ? 'Note for Internal Use Only' : 'Lead Note'}
+                                  </>
+                                ) : (
+                                  email.subject || 'No Subject'
+                                )}
+                              </h6>
+                              {!isNote ? (
+                                <div className="text-muted small">
+                                  <div><strong>From:</strong> {email.sender}</div>
+                                  <div><strong>To:</strong> {email.recipient}</div>
+                                  <div>
+                                    <strong>User language:</strong> {msgUserLanguageLabel}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="text-muted small">
+                                  <div>
+                                    <strong>User language:</strong> {msgUserLanguageLabel}
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                          )}
-                          {!isNote && email.communication_type === "email" && email.subject && (
-                            <div className="chat_subject">{email.subject}</div>
-                          )}
+                            <div className="text-end">
+                              <div className="d-flex align-items-center gap-1 justify-content-end">
+                                {isNote && (
+                                  <Button
+                                    variant={email.internal_use === true ? "outline-info" : "outline-warning"}
+                                    size="xs"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleEditNote(email);
+                                    }}
+                                    className="text-nowrap"
+                                  >
+                                    <i className="fa-regular fa-pen-to-square me-1"></i>
+                                    Edit
+                                  </Button>
+                                )}
+                                <span className={`badge ${
+                                  isNote ? (isAiNote(email) ? "bg-info" : "bg-warning") :
+                                  // Client, 13 Oct 2026 (Betsy / Bibi): the customer's messages green, ours red, failed gray.
+                                  ["received", "incoming"].includes(email.status) ? "bg-success" :
+                                  ["failed", "undelivered", "bounced", "error"].includes(email.status) ? "bg-secondary" :
+                                  "bg-danger"
+                                }`}>
+                                  {isNote ? "Note" : messageStatusLabel(email)}
+                                </span>
+                              </div>
+                              <div className="d-lg-flex align-items-center gap-1 justify-content-end">
+                                <div className="text-muted small mt-1">
+                                  <i className="fa-light fa-calendar-days me-1"></i>
+                                  {formatTimestamp(email.timestamp, dealerTimezone)}
+                                </div>
+                                <div className="text-muted small mt-1">
+                                  <i className="fa-light fa-user me-1"></i>
+                                  <span className={`badge ${isNote ? (isAiNote(email) || email.ai_generated ? "bg-primary" : "bg-warning text-dark") : AUTHOR_BADGE[author.kind]}`}>{isNote ? noteAuthor(email, isAiNote(email)) : author.label}</span>
+                                {bookedBy && <span className="badge bg-warning text-dark ms-1">Appointment set by staff: {bookedBy}</span>}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
                           <div className={`conversation-content ${
                             cleaned.type === "html" ? 'html-content' : 'text-content'
                           }`}>
@@ -1402,13 +1343,8 @@ export default function ViewConversations({
                               </div>
                             );
                           })} 
-                          {/* Time and delivery, bottom right of the bubble (WhatsApp style). */}
-                          <div className="chat_foot">
-                            {!isNote && email.ai_generated && <span className="chat_foot_tag">AI</span>}
-                            <span>{clock}</span>{!isNote && tick}
-                          </div>
                         </div>
-                      )];
+                      );
                     })}
                 </div>
               ) : (
@@ -1419,28 +1355,24 @@ export default function ViewConversations({
                   </p>
                 </div>
               )}
-              {/* The message box under the conversation, like a chat app; + holds everything else (the user, 27 Nov 2026). */}
-              {lead && (
-                <ChatComposer
-                  key={lead._id}
-                  lead={lead}
-                  channel={activeChannelTab}
-                  onChannel={setActiveChannelTab}
-                  canText={Boolean(lead.phone) && !stoppedChannels.sms}
-                  canEmail={Boolean(lead.email) && !stoppedChannels.email}
-                  latestOf={latestOn}
-                  onSent={handleReplySuccess}
-                  thread={emails}
-                  leadUserLanguage={latestConversationUserLanguageLabel}
-                  // One place for each action: on the Leads page they are in the box's + menu; on the customer profile
-                  // they stay in the opportunity's action row (so not in the + menu there).
-                  showCall={false}
-                  onAddNote={null}
-                  onUpdateStatus={null}
-                  onCheckIn={null}
-                  disabledReason={!replyAllowed ? `${DEPARTMENT_NAMES[leadDepartment(lead)]} lead - ${DEPARTMENT_NAMES[leadDepartment(lead)]} staff reply`
-                    : lead.fe_lead_status === "Opted Out" && lead.status_source === "staff" ? "Opted Out by staff - nothing is sent" : null}
-                />
+              {hasOlderConversations && (
+                <div className="d-flex justify-content-center mt-3">
+                  <Button
+                    variant="outline-secondary"
+                    size="sm"
+                    onClick={loadOlderConversations}
+                    disabled={loadingOlderConversations}
+                  >
+                    {loadingOlderConversations ? (
+                      <>
+                        <Spinner animation="border" size="sm" className="me-2" />
+                        Loading older messages...
+                      </>
+                    ) : (
+                      "Load older messages"
+                    )}
+                  </Button>
+                </div>
               )}
             </Col>
           </Row>
