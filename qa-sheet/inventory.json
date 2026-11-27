@@ -1,5 +1,5 @@
 {
- "crawledAt": "2026-11-26T23:10:13.832Z",
+ "crawledAt": "2026-11-26T23:47:45.000Z",
  "app": "http://127.0.0.1:3137",
  "screens": {
   "admin/ai-studio": {
@@ -157,21 +157,21 @@
     },
     {
      "label": "Edit",
-     "id": "react-aria2406124904-_r_1_-tab-edit",
+     "id": "react-aria3970110091-_r_1_-tab-edit",
      "kind": "tab",
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "href": null
     },
     {
      "label": "Live (v1)",
-     "id": "react-aria2406124904-_r_1_-tab-live",
+     "id": "react-aria3970110091-_r_1_-tab-live",
      "kind": "tab",
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "href": null
     },
     {
      "label": "History (1)",
-     "id": "react-aria2406124904-_r_1_-tab-history",
+     "id": "react-aria3970110091-_r_1_-tab-history",
      "kind": "tab",
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "href": null
@@ -2258,14 +2258,14 @@
     },
     {
      "label": "General",
-     "id": "react-aria3786344362-_r_1_-tab-general",
+     "id": "react-aria1709024534-_r_1_-tab-general",
      "kind": "tab",
      "panel": "Add Package",
      "href": null
     },
     {
      "label": "Features",
-     "id": "react-aria3786344362-_r_1_-tab-features",
+     "id": "react-aria1709024534-_r_1_-tab-features",
      "kind": "tab",
      "panel": "Add Package",
      "href": null
@@ -3501,14 +3501,14 @@
     },
     {
      "label": "Switch store",
-     "id": "react-aria2099658323-_r_2_",
+     "id": "react-aria1954031804-_r_2_",
      "kind": "button",
      "panel": "",
      "href": null
     },
     {
      "label": "Notifications",
-     "id": "react-aria2099658323-_r_0_",
+     "id": "react-aria1954031804-_r_0_",
      "kind": "button",
      "panel": "",
      "href": null
@@ -4184,7 +4184,7 @@
      "href": null
     },
     {
-     "label": "CR Carla Reyes 5 minutes ago You: Composer test from the new box 1 3 +1217555804",
+     "label": "CR Carla Reyes 43 minutes ago You: Composer test from the new box 1 3 +121755580",
      "id": null,
      "kind": "button",
      "panel": "AI Messages",
@@ -5102,7 +5102,7 @@
     },
     {
      "label": "Download report",
-     "id": "react-aria8625817914-_r_3_",
+     "id": "react-aria3846846543-_r_5_",
      "kind": "button",
      "panel": "Leads Dashboard",
      "href": null
@@ -5348,7 +5348,7 @@
     },
     {
      "label": "Download",
-     "id": "react-aria1514569663-_r_6_",
+     "id": "react-aria3434872396-_r_6_",
      "kind": "button",
      "panel": "Where leads come from",
      "href": null
@@ -5958,7 +5958,7 @@
     },
     {
      "label": "More: check in, today's appointments, settings",
-     "id": "react-aria1372473780-_r_2_",
+     "id": "react-aria8843040948-_r_2_",
      "kind": "button",
      "panel": "Desk Log",
      "href": null
@@ -6282,7 +6282,7 @@
    "buttons": [
     {
      "label": "Add a standard form",
-     "id": "react-aria9062675390-_r_3_",
+     "id": "react-aria4700236167-_r_3_",
      "kind": "button",
      "panel": "Forms Library",
      "href": null
@@ -7044,7 +7044,7 @@
     },
     {
      "label": "Download report",
-     "id": "react-aria771796955-_r_3_",
+     "id": "react-aria5676538120-_r_3_",
      "kind": "button",
      "panel": "Leads Dashboard",
      "href": null
@@ -8043,14 +8043,14 @@
    "buttons": [
     {
      "label": "My Current Plan",
-     "id": "react-aria7347045918-_r_2_-tab-currentplan",
+     "id": "react-aria9669964472-_r_2_-tab-currentplan",
      "kind": "tab",
      "panel": "My Subscription",
      "href": null
     },
     {
      "label": "Subscription Plans",
-     "id": "react-aria7347045918-_r_2_-tab-subscriptionplan",
+     "id": "react-aria9669964472-_r_2_-tab-subscriptionplan",
      "kind": "tab",
      "panel": "My Subscription",
      "href": null
@@ -9474,7 +9474,7 @@
     },
     {
      "label": "Forms",
-     "id": "react-aria1827596901-_r_5_",
+     "id": "react-aria536487848-_r_3_",
      "kind": "button",
      "panel": "Customer Details",
      "href": null
