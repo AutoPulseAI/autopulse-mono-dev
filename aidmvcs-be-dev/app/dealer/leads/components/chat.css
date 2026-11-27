@@ -261,3 +261,12 @@
 .chat_glance_summary { flex: none; white-space: normal; }
 .chat_glance:has(.chat_glance_summary) { flex-wrap: wrap; }
 .chat_glance:has(.chat_glance_summary) .chat_glance_summary { flex-basis: 100%; }
+
+/* Inbox list rows behave like buttons (the user, 28 Nov 2026: hovering selected text): pointer cursor, a hover tint,
+   no text selection on click or drag; the ⋮ shows a focus ring only for keyboard use. */
+.inbox_side .lead-item { cursor: pointer; user-select: none; -webkit-user-select: none; transition: background-color 0.12s ease; }
+.inbox_side .lead-item:hover:not(.active-lead) { background: #f5f8fc; }
+.inbox_side .lead-item:active { background: #eef3fa; }
+.inbox_side .lead-item .inbox_actions { cursor: default; user-select: text; -webkit-user-select: text; }
+.inbox_more:focus { outline: none; box-shadow: none; }
+.inbox_more:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 1px; }

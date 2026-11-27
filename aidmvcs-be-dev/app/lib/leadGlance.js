@@ -10,7 +10,8 @@ const yes = (v) => v === true || /^(yes|true)$/i.test(String(v));
 /** facts: { path: value } -> [{ key, label, text }] in reading order. */
 export function glanceChips(f) {
   const out = [];
-  const add = (key, label, text) => { if (text) out.push({ key, label, text: String(text) }); };
+  // Stored slot values can be codes (this_week, pre_owned): shown as words.
+  const add = (key, label, text) => { if (text) out.push({ key, label, text: String(text).replace(/_/g, ' ') }); };
   add('lead_type', 'Here for', { sales: 'Buying', trade_in: 'Trading in', service: 'Service' }[f['interest.lead_type']] || f['interest.lead_type']);
   add('want', 'Wants', [f['interest.new_or_used'], f['interest.model'], f['interest.body_type'], f['interest.color']].filter(Boolean).join(' '));
   if (f['interest.monthly_payment']) add('monthly', 'Monthly', `${money(f['interest.monthly_payment'])}/mo`);

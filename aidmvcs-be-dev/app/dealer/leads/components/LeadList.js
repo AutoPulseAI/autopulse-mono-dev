@@ -199,6 +199,27 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
     hasNextPage: false,
     hasPreviousPage: false
   });
+  // The side list fills its column (the user, 28 Nov 2026: "a lot of gap above the pager - 3 to 4 more leads fit"):
+  // beside the conversation on a desktop, a page holds as many leads as the screen has room for (5-50).
+  const listBoxRef = useRef(null);
+  useEffect(() => {
+    if (!compact || typeof ResizeObserver === "undefined") return undefined;
+    const box = listBoxRef.current?.querySelector(".list-group");
+    if (!box) return undefined;
+    let timer = null;
+    const fit = () => {
+      if (window.innerWidth < 993) return; // tablet / phone: the list slides in and scrolls; 10 a page
+      const rows = box.querySelectorAll(":scope > .lead-item");
+      if (rows.length < 2) return;
+      const pitch = rows[1].getBoundingClientRect().top - rows[0].getBoundingClientRect().top;
+      if (!(pitch > 20)) return;
+      const n = Math.max(5, Math.min(50, Math.floor((box.clientHeight + 2) / pitch)));
+      setPagination((p) => (p.itemsPerPage === n ? p : { ...p, itemsPerPage: n }));
+    };
+    const ro = new ResizeObserver(() => { clearTimeout(timer); timer = setTimeout(fit, 250); });
+    ro.observe(box);
+    return () => { clearTimeout(timer); ro.disconnect(); };
+  }, [compact, leads.length > 1]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [inputValues, setInputValues] = useState({
     q: filters.q,
@@ -1962,7 +1983,7 @@ useImperativeHandle(ref, () => ({
         )}
 
         {loading && <div className="text-muted small mt-2" role="status">Loading leads...</div>}
-        <div className="w_card_list mt-3" style={loading ? { opacity: 0.5 } : undefined}>
+        <div className="w_card_list mt-3" ref={listBoxRef} style={loading ? { opacity: 0.5 } : undefined}>
           <ListGroup as="ul" variant="flush">
             {!compact && (
             <ListGroup.Item as="li" className={`w_card_list_head lead_list_head border-bottom-0${selectMode ? ' d-flex align-items-center' : ''}`}>

@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-27T02:25:56.729Z",
+ "generatedAt": "2026-11-27T12:52:33.752Z",
  "app": {
   "name": "AutoPulse CRM",
   "url": "https://www.autopulse.ai",
@@ -40,7 +40,7 @@
    "title": "Sign-in & public pages"
   }
  ],
- "inventoryAt": "2026-11-27T02:25:49.006Z",
+ "inventoryAt": "2026-11-27T12:52:24.883Z",
  "totals": {
   "sections": 81,
   "features": 223,
@@ -181,10 +181,10 @@
      "code": "DMA-B01"
     },
     {
-     "id": "dealer/_menu.b.x.react-aria2044341902-r-2",
+     "id": "dealer/_menu.b.x.react-aria7970780242-r-2",
      "label": "Switch store",
      "kind": "button",
-     "el": "#react-aria2044341902-_r_2_",
+     "el": "#react-aria7970780242-_r_2_",
      "href": null,
      "panel": "",
      "about": "Switch store.",
@@ -194,10 +194,10 @@
      "code": "DMA-B02"
     },
     {
-     "id": "dealer/_menu.b.x.react-aria2044341902-r-0",
+     "id": "dealer/_menu.b.x.react-aria7970780242-r-0",
      "label": "Notifications",
      "kind": "button",
-     "el": "#react-aria2044341902-_r_0_",
+     "el": "#react-aria7970780242-_r_0_",
      "href": null,
      "panel": "",
      "about": "Opens the notifications list.",
@@ -1294,10 +1294,10 @@
      "code": "DAS-B01"
     },
     {
-     "id": "dealer/dashboard.b.x.react-aria9582763294-r-3",
+     "id": "dealer/dashboard.b.x.react-aria3974277518-r-5",
      "label": "Download report",
      "kind": "button",
-     "el": "#react-aria9582763294-_r_3_",
+     "el": "#react-aria3974277518-_r_5_",
      "href": null,
      "panel": "Leads Dashboard",
      "about": "Download report.",
@@ -1338,7 +1338,7 @@
      "kind": "link",
      "el": null,
      "href": "/dealer/leads?messages=sent&startDate=:date&endDate=:date",
-     "panel": "1",
+     "panel": "0",
      "about": "Goes to /dealer/leads?messages=sent&startDate=:date&endDate=:date.",
      "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
      "status": "live",
@@ -1416,7 +1416,7 @@
      "kind": "link",
      "el": null,
      "href": "/dealer/leads?status=Contacted&reply_age=new&startDate=:date&endDate=:date",
-     "panel": "CUSTOMER REPLIES BY LEAD AGE0 + 1 = 1 customer replied",
+     "panel": "CUSTOMER REPLIES BY LEAD AGE0 + 0 = 0 customer replied",
      "about": "Goes to /dealer/leads?status=Contacted&reply_age=new&startDate=:date&endDate=:date.",
      "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
      "status": "live",
@@ -1442,7 +1442,7 @@
      "kind": "link",
      "el": null,
      "href": "/dealer/leads?status=Contacted&reply_age=d1_7&startDate=:date&endDate=:date",
-     "panel": "1",
+     "panel": "0",
      "about": "Goes to /dealer/leads?status=Contacted&reply_age=d1_7&startDate=:date&endDate=:date.",
      "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
      "status": "live",
@@ -1481,7 +1481,7 @@
      "kind": "link",
      "el": null,
      "href": "/dealer/leads?status=Contacted&reply_age=d31_60&startDate=:date&endDate=:date",
-     "panel": "1",
+     "panel": "0",
      "about": "Goes to /dealer/leads?status=Contacted&reply_age=d31_60&startDate=:date&endDate=:date.",
      "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
      "status": "live",
@@ -1710,10 +1710,10 @@
      "code": "DAS-B33"
     },
     {
-     "id": "dealer/dashboard.b.after-pressing-lead-sources.react-aria6261571160-r-4",
+     "id": "dealer/dashboard.b.after-pressing-lead-sources.react-aria6625443543-r-4",
      "label": "Download",
      "kind": "button",
-     "el": "#react-aria6261571160-_r_4_",
+     "el": "#react-aria6625443543-_r_4_",
      "href": null,
      "panel": "Where leads come from · after pressing 'Lead sources'",
      "about": "Download. (after pressing 'Lead sources')",
@@ -2367,7 +2367,7 @@
    ],
    "panels": [
     "Leads Dashboard",
-    "CUSTOMER REPLIES BY LEAD AGE0 + 1 = 1 customer replied",
+    "CUSTOMER REPLIES BY LEAD AGE0 + 0 = 0 customer replied",
     "Lead Sources",
     "Lead Status",
     "Lead Received",
@@ -2525,7 +2525,7 @@
       "Press a lead's ⋮.",
       "Use the page arrows at the bottom of the list."
      ],
-     "expect": "The filters (status, lead source, department, source type, dates, Search / Clear) are hidden until the filter button is pressed (it shows how many are on); each lead has a coloured round icon with its initials (a green robot dot when the AI wrote last, an orange dot when the customer did), and the open lead is highlighted; each lead shows initials, name, the last message (AI: / You: when it was ours, an envelope for email, a red mark when it failed), its time and a green count of unread customer messages; ⋮ opens a small box under the row with Assigned to and Delete; the bottom always shows ‹ Page N of M › with the number of leads (also when there is only one page); a lead the customer is waiting on (customer wrote last, 5+ minutes unanswered) shows an orange ⏳ badge with how long (e.g. 8m, 2h, 1d); a lead marked hot shows 🔥 next to the name.",
+     "expect": "The filters (status, lead source, department, source type, dates, Search / Clear) are hidden until the filter button is pressed (it shows how many are on); each lead has a coloured round icon with its initials (a green robot dot when the AI wrote last, an orange dot when the customer did), and the open lead is highlighted; each lead shows initials, name, the last message (AI: / You: when it was ours, an envelope for email, a red mark when it failed), its time and a green count of unread customer messages; ⋮ opens a small box under the row with Assigned to and Delete; the bottom always shows ‹ Page N of M › with the number of leads (also when there is only one page); on a desktop or laptop the list fills its column down to the pager - a page holds as many leads as fit (fewer on a small laptop, more on a big screen; no big empty gap above the pager); hovering a row shows a hand cursor and a light tint, and clicking or dragging over rows never selects their text; a lead the customer is waiting on (customer wrote last, 5+ minutes unanswered) shows an orange ⏳ badge with how long (e.g. 8m, 2h, 1d); a lead marked hot shows 🔥 next to the name.",
      "status": "live",
      "auto": [],
      "access": null,
@@ -2557,7 +2557,7 @@
       "Press AI summary, then Hide summary.",
       "Open a brand-new lead with no conversation."
      ],
-     "expect": "Chips show what is known: Here for, Wants, Monthly, Budget, Timeline, Service, Trade-in (with miles), Payoff, Drives, Appointment, Best time, Prefers - the same values as Vehicle wanted on the top band; AI summary shows the AI's summary of a long conversation; a lead with nothing known shows no strip.",
+     "expect": "Chips show what is known, in plain words (this week, not this_week): Here for, Wants, Monthly, Budget, Timeline, Service, Trade-in (with miles), Payoff, Drives, Appointment, Best time, Prefers - the same values as Vehicle wanted on the top band; AI summary shows the AI's summary of a long conversation; a lead with nothing known shows no strip.",
      "status": "live",
      "auto": [],
      "access": null,
@@ -4499,10 +4499,10 @@
      "code": "CUP-B23"
     },
     {
-     "id": "dealer/customers/[id].b.x.react-aria8360362428-r-3",
+     "id": "dealer/customers/[id].b.x.react-aria7876639863-r-3",
      "label": "Forms",
      "kind": "button",
-     "el": "#react-aria8360362428-_r_3_",
+     "el": "#react-aria7876639863-_r_3_",
      "href": null,
      "panel": "Customer Details",
      "about": "Forms.",
@@ -6024,10 +6024,10 @@
      "code": "DEL-B03"
     },
     {
-     "id": "dealer/desk-log.b.x.react-aria1956464170-r-2",
+     "id": "dealer/desk-log.b.x.react-aria2668345978-r-2",
      "label": "More: check in, today's appointments, settings",
      "kind": "button",
-     "el": "#react-aria1956464170-_r_2_",
+     "el": "#react-aria2668345978-_r_2_",
      "href": null,
      "panel": "Desk Log",
      "about": "Filter: More: check in, today's appointments, settings.",
@@ -6934,13 +6934,13 @@
      "code": "AIM-B01"
     },
     {
-     "id": "dealer/ai/messages.b.x.cr-carla-reyes-32-minutes-ago-around-11am-works-for-me-2-5-1",
-     "label": "CR Carla Reyes 32 minutes ago Around 11am works for me 2 5 +12175558045",
+     "id": "dealer/ai/messages.b.x.cr-carla-reyes-11-hours-ago-around-11am-works-for-me-2-5-121",
+     "label": "CR Carla Reyes 11 hours ago Around 11am works for me 2 5 +12175558045",
      "kind": "button",
      "el": null,
      "href": null,
      "panel": "AI Messages",
-     "about": "CR Carla Reyes 32 minutes ago Around 11am works for me 2 5 +12175558045.",
+     "about": "CR Carla Reyes 11 hours ago Around 11am works for me 2 5 +12175558045.",
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
@@ -6960,39 +6960,39 @@
      "code": "AIM-B03"
     },
     {
-     "id": "dealer/ai/messages.b.x.vs-victor-stone-17-days-ago-my-camry-needs-its-30k-service-c",
-     "label": "VS Victor Stone 17 days ago My Camry needs its 30k service, can I book it? 1 +12",
+     "id": "dealer/ai/messages.b.x.vs-victor-stone-18-days-ago-my-camry-needs-its-30k-service-c",
+     "label": "VS Victor Stone 18 days ago My Camry needs its 30k service, can I book it? 1 +12",
      "kind": "button",
      "el": null,
      "href": null,
      "panel": "AI Messages",
-     "about": "Filter: VS Victor Stone 17 days ago My Camry needs its 30k service, can I book it? 1 +12.",
+     "about": "Filter: VS Victor Stone 18 days ago My Camry needs its 30k service, can I book it? 1 +12.",
      "expect": "The list / numbers narrow to it; the active choice is highlighted; refresh keeps it.",
      "status": "live",
      "access": null,
      "code": "AIM-B04"
     },
     {
-     "id": "dealer/ai/messages.b.x.lc-lily-chen-17-days-ago-looking-for-a-family-minivan-under-",
-     "label": "LC Lily Chen 17 days ago Looking for a family minivan under $32k. 1 +12175553844",
+     "id": "dealer/ai/messages.b.x.lc-lily-chen-18-days-ago-looking-for-a-family-minivan-under-",
+     "label": "LC Lily Chen 18 days ago Looking for a family minivan under $32k. 1 +12175553844",
      "kind": "button",
      "el": null,
      "href": null,
      "panel": "AI Messages",
-     "about": "LC Lily Chen 17 days ago Looking for a family minivan under $32k. 1 +12175553844.",
+     "about": "LC Lily Chen 18 days ago Looking for a family minivan under $32k. 1 +12175553844.",
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
      "code": "AIM-B05"
     },
     {
-     "id": "dealer/ai/messages.b.x.gk-grace-kim-17-days-ago-is-the-2023-tacoma-sr5-still-availa",
-     "label": "GK Grace Kim 17 days ago Is the 2023 Tacoma SR5 still available? 1 +12175554343",
+     "id": "dealer/ai/messages.b.x.gk-grace-kim-18-days-ago-is-the-2023-tacoma-sr5-still-availa",
+     "label": "GK Grace Kim 18 days ago Is the 2023 Tacoma SR5 still available? 1 +12175554343",
      "kind": "button",
      "el": null,
      "href": null,
      "panel": "AI Messages",
-     "about": "GK Grace Kim 17 days ago Is the 2023 Tacoma SR5 still available? 1 +12175554343.",
+     "about": "GK Grace Kim 18 days ago Is the 2023 Tacoma SR5 still available? 1 +12175554343.",
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
@@ -7699,10 +7699,10 @@
      "code": "REP-B01"
     },
     {
-     "id": "dealer/reports.b.x.react-aria2869994027-r-3",
+     "id": "dealer/reports.b.x.react-aria4424570103-r-3",
      "label": "Download report",
      "kind": "button",
-     "el": "#react-aria2869994027-_r_3_",
+     "el": "#react-aria4424570103-_r_3_",
      "href": null,
      "panel": "Leads Dashboard",
      "about": "Download report.",
@@ -7743,7 +7743,7 @@
      "kind": "link",
      "el": null,
      "href": "/dealer/leads?messages=sent&startDate=:date&endDate=:date",
-     "panel": "1",
+     "panel": "0",
      "about": "Goes to /dealer/leads?messages=sent&startDate=:date&endDate=:date.",
      "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
      "status": "live",
@@ -7821,7 +7821,7 @@
      "kind": "link",
      "el": null,
      "href": "/dealer/leads?status=Contacted&reply_age=new&startDate=:date&endDate=:date",
-     "panel": "CUSTOMER REPLIES BY LEAD AGE0 + 1 = 1 customer replied",
+     "panel": "CUSTOMER REPLIES BY LEAD AGE0 + 0 = 0 customer replied",
      "about": "Goes to /dealer/leads?status=Contacted&reply_age=new&startDate=:date&endDate=:date.",
      "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
      "status": "live",
@@ -7847,7 +7847,7 @@
      "kind": "link",
      "el": null,
      "href": "/dealer/leads?status=Contacted&reply_age=d1_7&startDate=:date&endDate=:date",
-     "panel": "1",
+     "panel": "0",
      "about": "Goes to /dealer/leads?status=Contacted&reply_age=d1_7&startDate=:date&endDate=:date.",
      "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
      "status": "live",
@@ -7886,7 +7886,7 @@
      "kind": "link",
      "el": null,
      "href": "/dealer/leads?status=Contacted&reply_age=d31_60&startDate=:date&endDate=:date",
-     "panel": "1",
+     "panel": "0",
      "about": "Goes to /dealer/leads?status=Contacted&reply_age=d31_60&startDate=:date&endDate=:date.",
      "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
      "status": "live",
@@ -8358,7 +8358,7 @@
    ],
    "panels": [
     "Leads Dashboard",
-    "CUSTOMER REPLIES BY LEAD AGE0 + 1 = 1 customer replied",
+    "CUSTOMER REPLIES BY LEAD AGE0 + 0 = 0 customer replied",
     "How each number is counted",
     "Lead Sources",
     "Lead Status",
@@ -9691,10 +9691,10 @@
    ],
    "buttons": [
     {
-     "id": "dealer/forms.b.x.react-aria6654779491-r-3",
+     "id": "dealer/forms.b.x.react-aria3024104987-r-3",
      "label": "Add a standard form",
      "kind": "button",
-     "el": "#react-aria6654779491-_r_3_",
+     "el": "#react-aria3024104987-_r_3_",
      "href": null,
      "panel": "Forms Library",
      "about": "Add a standard form.",
@@ -10814,10 +10814,10 @@
    ],
    "buttons": [
     {
-     "id": "dealer/subscribe.b.x.react-aria1700727277-r-2-tab-currentplan",
+     "id": "dealer/subscribe.b.x.react-aria4311678344-r-2-tab-currentplan",
      "label": "My Current Plan",
      "kind": "tab",
-     "el": "#react-aria1700727277-_r_2_-tab-currentplan",
+     "el": "#react-aria4311678344-_r_2_-tab-currentplan",
      "href": null,
      "panel": "My Subscription",
      "about": "Tab: shows the 'My Current Plan' part of My subscription.",
@@ -10827,10 +10827,10 @@
      "code": "MYS-B01"
     },
     {
-     "id": "dealer/subscribe.b.x.react-aria1700727277-r-2-tab-subscriptionplan",
+     "id": "dealer/subscribe.b.x.react-aria4311678344-r-2-tab-subscriptionplan",
      "label": "Subscription Plans",
      "kind": "tab",
-     "el": "#react-aria1700727277-_r_2_-tab-subscriptionplan",
+     "el": "#react-aria4311678344-_r_2_-tab-subscriptionplan",
      "href": null,
      "panel": "My Subscription",
      "about": "Tab: shows the 'Subscription Plans' part of My subscription.",
@@ -12012,10 +12012,10 @@
      "code": "AAI-B19"
     },
     {
-     "id": "admin/ai-studio.b.x.react-aria2457122468-r-1-tab-edit",
+     "id": "admin/ai-studio.b.x.react-aria5196107085-r-1-tab-edit",
      "label": "Edit",
      "kind": "tab",
-     "el": "#react-aria2457122468-_r_1_-tab-edit",
+     "el": "#react-aria5196107085-_r_1_-tab-edit",
      "href": null,
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "about": "Tab: shows the 'Edit' part of AI Studio.",
@@ -12025,10 +12025,10 @@
      "code": "AAI-B20"
     },
     {
-     "id": "admin/ai-studio.b.x.react-aria2457122468-r-1-tab-live",
+     "id": "admin/ai-studio.b.x.react-aria5196107085-r-1-tab-live",
      "label": "Live (v1)",
      "kind": "tab",
-     "el": "#react-aria2457122468-_r_1_-tab-live",
+     "el": "#react-aria5196107085-_r_1_-tab-live",
      "href": null,
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "about": "Tab: shows the 'Live (v1)' part of AI Studio.",
@@ -12038,10 +12038,10 @@
      "code": "AAI-B21"
     },
     {
-     "id": "admin/ai-studio.b.x.react-aria2457122468-r-1-tab-history",
+     "id": "admin/ai-studio.b.x.react-aria5196107085-r-1-tab-history",
      "label": "History (1)",
      "kind": "tab",
-     "el": "#react-aria2457122468-_r_1_-tab-history",
+     "el": "#react-aria5196107085-_r_1_-tab-history",
      "href": null,
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "about": "Tab: shows the 'History (1)' part of AI Studio.",
@@ -14545,10 +14545,10 @@
      "code": "APA-B05"
     },
     {
-     "id": "admin/package.b.in-the-window-menu-that-add-package-opens.react-aria8851638534-r-1-tab-general",
+     "id": "admin/package.b.in-the-window-menu-that-add-package-opens.react-aria4449317401-r-1-tab-general",
      "label": "General",
      "kind": "tab",
-     "el": "#react-aria8851638534-_r_1_-tab-general",
+     "el": "#react-aria4449317401-_r_1_-tab-general",
      "href": null,
      "panel": "Add Package · in the window / menu that 'Add Package' opens",
      "about": "Tab: shows the 'General' part of Packages. (in the window / menu that 'Add Package' opens)",
@@ -14558,10 +14558,10 @@
      "code": "APA-B06"
     },
     {
-     "id": "admin/package.b.in-the-window-menu-that-add-package-opens.react-aria8851638534-r-1-tab-features",
+     "id": "admin/package.b.in-the-window-menu-that-add-package-opens.react-aria4449317401-r-1-tab-features",
      "label": "Features",
      "kind": "tab",
-     "el": "#react-aria8851638534-_r_1_-tab-features",
+     "el": "#react-aria4449317401-_r_1_-tab-features",
      "href": null,
      "panel": "Add Package · in the window / menu that 'Add Package' opens",
      "about": "Tab: shows the 'Features' part of Packages. (in the window / menu that 'Add Package' opens)",
