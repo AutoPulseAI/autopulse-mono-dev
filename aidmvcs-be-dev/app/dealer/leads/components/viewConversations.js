@@ -115,7 +115,9 @@ export default function ViewConversations({
   // AI Assistant) instead of a middle column; the customer profile (embedded) keeps its own layout.
   // (2) The user, 27 Nov 2026: the lead's information must stay on screen - it is a panel on the right of the
   // conversation again (lead card, then the AI Assistant), which the Details button folds away.
-  const [showInfo, setShowInfo] = useState(true);
+  // (3) The user, 27 Nov 2026: two columns only - the lead list and the inbox; the lead's profile (card, journey, lead
+  // type, source, booking, AI Assistant) slides out from the right with the Lead profile button.
+  const [showInfo, setShowInfo] = useState(false);
   const leadTab = "conversation";
   const tabbed = !embedded;
   // Channels this customer opted out of (the AI's consent record), re-read whenever the lead or its status changes.
@@ -888,14 +890,22 @@ export default function ViewConversations({
                 <button type="button" className="inbox_act" onClick={handleClose}>
                   <i className="fa-duotone fa-list"></i><span>Back to list</span></button>
                 <button type="button" className={`inbox_act ms-auto${showInfo ? " on" : ""}`} onClick={() => setShowInfo(!showInfo)}
-                  aria-pressed={showInfo} title="Lead details and AI Assistant on the right">
-                  <i className="fa-duotone fa-sidebar-flip"></i><span>{showInfo ? "Hide details" : "Show details"}</span></button>
+                  aria-pressed={showInfo} title="The lead's card, journey, lead type, source, booking and AI Assistant">
+                  <i className="fa-duotone fa-id-card"></i><span>Lead profile</span></button>
               </div>
             </div>
           )}
           <Row className="gx-3">
+            {tabbed && showInfo && <div className="inbox_drawer_backdrop" onClick={() => setShowInfo(false)} aria-hidden="true" />}
             <Col xxl={4} lg={tabbed ? 4 : 5} md={tabbed ? 12 : 5}
-              className={tabbed ? (showInfo ? "order-lg-last inbox_info" : "d-none") : ""}>
+              className={tabbed ? `inbox_drawer${showInfo ? " open" : ""}` : ""} aria-hidden={tabbed && !showInfo}>
+              {tabbed && (
+                <div className="inbox_drawer_head">
+                  <strong><i className="fa-duotone fa-id-card me-2"></i>Lead profile</strong>
+                  <Button variant="outline-secondary" size="sm" onClick={() => setShowInfo(false)} aria-label="Close the lead profile">
+                    <i className="fa-solid fa-xmark"></i></Button>
+                </div>
+              )}
               {/* Stays in view while the conversation scrolls (BB, 17 Nov 2026: "as the conversation gets long this
                   column shifts to the bottom"); scrolls on its own when taller than the screen. */}
               <div className="dealer_info position-sticky mb-3 lead_center_col">
@@ -1048,7 +1058,7 @@ export default function ViewConversations({
               </div>
             </Col>
 
-            <Col xxl={tabbed && !showInfo ? 12 : 8} lg={tabbed ? (showInfo ? 8 : 12) : 7} md={tabbed ? 12 : 7}
+            <Col xxl={tabbed ? 12 : 8} lg={tabbed ? 12 : 7} md={tabbed ? 12 : 7}
               className={tabbed ? "inbox_chat" : ""}>
               <div className="position-relative mb-2">
                 {isNavigating && (

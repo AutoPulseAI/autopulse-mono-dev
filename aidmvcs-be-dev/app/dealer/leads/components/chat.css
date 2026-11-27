@@ -154,3 +154,12 @@
 .inbox_act_call .btn i { font-size: 1.15rem; color: #1d4ed8; margin: 0 !important; }
 .chat_details { font-size: 0.75rem; color: #475569; background: rgba(255,255,255,0.6); border-radius: 6px; padding: 4px 8px;
   margin-bottom: 4px; }
+/* (3) Lead profile slide-out from the right (the user, 27 Nov 2026: list + inbox only, details in a pop-out). */
+.inbox_drawer { position: fixed !important; top: 0; right: 0; height: 100vh; width: min(440px, 100vw) !important;
+  max-width: none !important; flex: none !important; z-index: 1045; background: #f5f7fb; overflow-y: auto;
+  box-shadow: -8px 0 24px rgba(15, 23, 42, 0.18); transform: translateX(105%); transition: transform 0.2s ease;
+  padding: 12px !important; visibility: hidden; }
+.inbox_drawer.open { transform: translateX(0); visibility: visible; }
+.inbox_drawer .lead_center_col { position: static !important; max-height: none; overflow: visible; }
+.inbox_drawer_head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.inbox_drawer_backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.25); z-index: 1044; }
