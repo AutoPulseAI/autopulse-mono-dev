@@ -33,8 +33,10 @@ export async function leadGlance(lead, { db = mongoose.connection.db } = {}) {
   const cid = lead.customer_id ? String(lead.customer_id) : null;
   const lid = String(lead._id);
   const who = cid ? [cid, ...(mongoose.isValidObjectId(cid) ? [new mongoose.Types.ObjectId(cid)] : [])] : [];
-  const facts = who.length ? await db.collection('qualification_facts').find({ customer_id: { $in: who }, valid_to: null,
-    lead_id: { $in: [null, lid] } }, { projection: { path: 1, value: 1, lead_id: 1 } }).toArray() : [];
+  // Same filter as the lead card (app/lib/actionQueues.js leadCardFacts): this dealership, current, not pending.
+  const facts = who.length ? await db.collection('qualification_facts').find({ dealer_id: String(lead.dealer_id),
+    customer_id: { $in: who }, valid_to: null, lead_id: { $in: [null, lid] }, pending: { $ne: true } },
+  { projection: { path: 1, value: 1, lead_id: 1 } }).toArray() : [];
   const f = {};
   // A lead's own value wins over the customer-wide one.
   for (const x of facts.sort((a, b) => (a.lead_id ? 1 : 0) - (b.lead_id ? 1 : 0))) f[x.path] = x.value;
