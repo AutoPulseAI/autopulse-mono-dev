@@ -27,7 +27,7 @@ const apply = typeof APPLY !== 'undefined' && String(APPLY) === '1';
 const undo = typeof UNDO !== 'undefined' && String(UNDO) === '1';
 const copies = typeof COPIES !== 'undefined' ? Math.max(0, Math.min(10, Number(COPIES) || 0)) : 3;
 
-const dealer = db.users.findOne({ email }, { name: 1, type: 1, parent_id: 1, ai_mode: 1, dealer_account_information: 1 });
+const dealer = db.users.findOne({ email }, { name: 1, type: 1, parent_id: 1, ai_mode: 1, dealer_account_information: 1, package_expiry: 1 });
 if (!dealer) { print(`No account with email ${email}.`); quit(1); }
 if (dealer.type !== 'dealer' || dealer.parent_id) { print(`${email} is not a dealership account. Stopping.`); quit(1); }
 if ((dealer.ai_mode || 'off') !== 'off') { print(`${dealer.name}: AI is "${dealer.ai_mode}" - turn it off first. Stopping.`); quit(1); }
@@ -43,6 +43,28 @@ if (undo) {
   print(`  leads ${db.leads.deleteMany(mine).deletedCount}`);
   print(`  customers ${db.customers.deleteMany(mine).deletedCount}`);
   quit(0);
+}
+// A test subscription so the store can use everything (the user, 28 Nov 2026): a manual, free, one-year subscription
+// on the same package a real store uses - the same record the super admin's "Assign package" makes. Kept on UNDO.
+{
+  const expiry = dealer.package_expiry ? new Date(dealer.package_expiry) : null;
+  const active = expiry && expiry > new Date();
+  if (active) print(`Subscription: already active until ${expiry.toISOString().slice(0, 10)}.`);
+  else {
+    const ref = db.users.find({ type: 'dealer', parent_id: null, current_subscription: { $ne: null }, package_expiry: { $gt: new Date() } },
+      { current_subscription: 1, name: 1 }).toArray()
+      .map((u) => db.subscriptions.findOne({ _id: u.current_subscription, status: 'active' }, { package_id: 1 })).find(Boolean);
+    const pkg = ref ? db.packages.findOne({ _id: ref.package_id }) : db.packages.findOne({ for_user_type: 'dealer' });
+    if (!pkg) print('Subscription: no dealer package found - assign one by hand.');
+    else if (!apply) print(`Subscription: would add a free manual one-year "${pkg.name || pkg.title || pkg._id}" subscription.`);
+    else {
+      const start = new Date(), end = new Date(); end.setFullYear(end.getFullYear() + 1);
+      const sid = db.subscriptions.insertOne({ user_id: dealer._id, package_id: pkg._id, status: 'active', start_date: start, end_date: end,
+        is_manual: true, is_auto_renew: false, price: 0, test_seed: MARK, createdAt: start, updatedAt: start }).insertedId;
+      db.users.updateOne({ _id: dealer._id }, { $set: { current_subscription: sid, package_expiry: end } });
+      print(`Subscription: added "${pkg.name || pkg.title || pkg._id}", active until ${end.toISOString().slice(0, 10)}.`);
+    }
+  }
 }
 if (db.leads.countDocuments(mine)) { print(`${dealer.name} already has its test leads (${db.leads.countDocuments(mine)}). Nothing to do; use UNDO=1 first to redo.`); quit(0); }
 
@@ -132,7 +154,7 @@ if (source && copies) {
   for (const l of realLeads) {
     const phone = testPhone(), mail = testEmail(l.name);
     const cid = new ObjectId(), lid = new ObjectId();
-    const { _id, customer_id, assigned_to, ...rest } = l;
+    const { _id, customer_id, assigned_to, pending_auto_reply_job_id, ...rest } = l;
     const customer = { _id: cid, dealer_id: did, name: l.name, emails: [{ value: mail, is_primary: true, source: 'test seed', added_at: l.createdAt }],
       phones: [{ value: phone.slice(2), is_primary: true, source: 'test seed', sms_opt_in: true, added_at: l.createdAt }],
       preferred_communication_mode: 'sms', inbound_lead: true, manual_entry: false, assigned_to: null, assignment_history: [],
@@ -143,8 +165,11 @@ if (source && copies) {
       test_seed: MARK, copied_from: { dealer: String(source._id), lead: String(_id) } };
     const oldPhone = l.phone ? String(l.phone) : null, oldEmail = l.email ? String(l.email).toLowerCase() : null;
     const swap = (v) => (v == null ? v : String(v).toLowerCase() === oldEmail ? mail : (oldPhone && String(v).replace(/\D/g, '').endsWith(oldPhone.replace(/\D/g, '').slice(-10)) ? phone : v));
-    const messages = db.emails.find({ lead_id: _id }).sort({ timestamp: 1 }).limit(60).toArray().map((m) => {
-      const { _id: mid, ...mr } = m;
+    // Copied messages: only ones already sent / received (never a queued or draft one a sender could pick up), and
+    // without the AI's unique send keys (28 Nov 2026: the first live run stopped on ai_idempotency_key).
+    const messages = db.emails.find({ lead_id: _id, status: { $nin: ['pending', 'draft'] } }).sort({ timestamp: 1 }).limit(60).toArray().map((m) => {
+      const { _id: mid, ai_idempotency_key, ...mr } = m;
+      for (const k of Object.keys(mr)) if (/idempotency/i.test(k)) delete mr[k];
       return { ...mr, dealer_id: did, lead_id: lid, sender: swap(m.sender), recipient: swap(m.recipient),
         message_id: `test-seed-copy-${mid}`, test_seed: MARK };
     });
