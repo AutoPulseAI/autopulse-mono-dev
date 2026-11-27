@@ -833,7 +833,7 @@ export default function ViewConversations({
 
       {/* Fixed Sidebar - not applicable when embedded (no all-dealer lead list to browse) */}
       {!embedded && (
-        <Col xxl={3} lg={4} md={5} sm={12} className={`dealer-sidebar ${isOpen ? "sidebar-open" : "sidebar-closed"}`} ref={sidebarRef}>
+        <Col xxl={3} lg={4} md={5} sm={12} className={`dealer-sidebar inbox_side ${isOpen ? "sidebar-open" : "sidebar-closed"}`} ref={sidebarRef}>
           <div className="dealer_info position-sticky">
               {isMobile && (
             <div className="d-flex justify-content-between align-items-center mb-2">
@@ -852,7 +852,7 @@ export default function ViewConversations({
         </Col>
       )}
 
-        <Col xxl={embedded ? 12 : 9} lg={embedded ? 12 : 8} md={12} sm={12}>
+        <Col xxl={embedded ? 12 : 9} lg={embedded ? 12 : 8} md={12} sm={12} className={tabbed ? "inbox_col" : undefined}>
           {tabbed && (
             <div className="inbox_head w_card mb-2" data-testid="lead-header">
               {/* The lead's top band, like the customer profile (the user, 27 Nov 2026): who, the status, where the lead

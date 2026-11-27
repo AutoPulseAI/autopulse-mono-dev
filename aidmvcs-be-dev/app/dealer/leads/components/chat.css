@@ -167,7 +167,7 @@
 .lead_next_row .lead_next { margin: 0; }
 .lead_next_fact { color: #334155; }
 .lead_next_fact i { color: #4f46e5; }
-.inbox_journey { flex: 0 1 520px; min-width: 220px; margin: 0 8px 0 auto; }
+.inbox_journey { flex: 1 1 180px; max-width: 520px; min-width: 180px; margin: 0 8px 0 auto; }
 
 /* (4) More life (the user, 27 Nov 2026: "something crazy ... ChatGPT vibe"): a colour per person, live badges, soft
    depth and a highlighted open conversation. */
@@ -224,3 +224,40 @@
 .inbox_tick { flex: none; display: flex; align-items: center; margin-right: 2px; }
 .inbox_bulk { font-size: 0.8rem; }
 .inbox_bulk .btn { font-size: 0.75rem; }
+
+/* Responsive (the user, 27 Nov 2026: "a lot of space at the bottom"): on a desktop the lead list and the inbox fill the
+   screen height - the list scrolls inside with its pager pinned at the bottom, the chat grows to the message box. On
+   tablets and phones the list is the slide-in panel and the inbox flows down the page. */
+@media (min-width: 993px) {
+  .inbox_side > .dealer_info { height: calc(100vh - var(--header-height) - 84px); max-height: none; overflow: hidden;
+    display: flex; flex-direction: column; }
+  .inbox_side > .dealer_info > .w_card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; margin-bottom: 0; }
+  .inbox_side .w_card_list { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .inbox_side .w_card_list > .list-group { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .inbox_side .inbox_pager { flex: none; }
+  /* Never squeeze the chat on a short laptop screen: below ~720px tall the page scrolls instead. */
+  .inbox_col { height: max(calc(100vh - var(--header-height) - 84px), 720px); display: flex; flex-direction: column; }
+  .inbox_col > .inbox_head { flex: none; }
+  .inbox_col > .row { flex: 1 1 auto; min-height: 0; }
+  .inbox_col > .row > .inbox_chat { height: 100%; min-height: 0; margin-bottom: 0; }
+}
+@media (max-width: 992px) {
+  .inbox_chat { height: auto; min-height: 0; }
+  .inbox_chat > .chat_thread { min-height: 300px; max-height: 65vh; }
+  .inbox_journey { flex: 1 1 100%; max-width: none; margin: 6px 0 0; order: 10; }
+}
+@media (max-width: 576px) {
+  .inbox_head { padding: 8px 10px !important; }
+  .inbox_band { gap: 6px 12px; }
+  .inbox_band span { min-width: calc(50% - 6px); }
+  .inbox_act { min-width: 60px; font-size: 0.72rem; }
+  .inbox_actions_bar > :not(.inbox_journey) { flex: 1 0 auto; }
+}
+/* "What we know" on one line at every size (saves height); swipe / scroll sideways, AI summary stays at the end. */
+.chat_glance { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; flex: none; }
+.chat_glance::-webkit-scrollbar { display: none; }
+.chat_glance_chip, .chat_glance_title { flex: none; }
+.chat_glance_more { flex: none; position: sticky; right: 0; box-shadow: -14px 0 10px #eef7ff; }
+.chat_glance_summary { flex: none; white-space: normal; }
+.chat_glance:has(.chat_glance_summary) { flex-wrap: wrap; }
+.chat_glance:has(.chat_glance_summary) .chat_glance_summary { flex-basis: 100%; }
