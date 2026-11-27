@@ -9,6 +9,7 @@ import EmailReplyModal from "./EmailReplyModal";
 import ChatComposer from "./ChatComposer";
 import "./chat.css";
 import { DEPARTMENT_NAMES, canReplyInDepartment, leadDepartment } from "@lib/departmentNames";
+import { contactTypeLabel } from "@lib/leadContactType";
 import DateRangePickerComponent from "../../components/DateRangePicker";
 import StatusModal from "./StatusModal"; // Import StatusModal
 import LeadNotesModal from "./LeadNotesModal"; // Import LeadNotesModal
@@ -831,33 +832,64 @@ export default function ViewConversations({
 
         <Col xxl={embedded ? 12 : 9} lg={embedded ? 12 : 8} md={12} sm={12}>
           {tabbed && (
-            <div className="inbox_head w_card mb-2" data-testid="lead-tabs">
+            <div className="inbox_head w_card mb-2" data-testid="lead-header">
+              {/* The lead's top band, like the customer profile (the user, 27 Nov 2026): who, the status, where the lead
+                  came from, and every action the old lead page had - one place, nothing hidden. */}
               <div className="d-flex flex-wrap align-items-center gap-2">
-                <div className="me-auto">
-                  <div className="inbox_name">{lead?.name || "Lead"}</div>
-                  <div className="small text-muted">
-                    {leadStatusLabel(lead) || lead?.fe_lead_status || "New Lead"}
-                    {lead?.phone ? ` · ${lead.phone}` : ""}{lead?.email ? ` · ${lead.email}` : ""}
-                  </div>
+                <div className="me-auto d-flex align-items-center gap-2 flex-wrap">
+                  <span className="inbox_name">{lead?.name || "Lead"}</span>
+                  <button type="button" className="inbox_status" onClick={() => setShowStatusModal(true)} title="Change the status">
+                    {leadStatusLabel(lead) || lead?.fe_lead_status || "New Lead"} <i className="fa-solid fa-chevron-down ms-1"></i>
+                  </button>
                 </div>
-                <Button variant="outline-custom" size="sm" onClick={handlePrevLead} disabled={isNavigating} aria-label="Previous lead">
-                  <i className="fa-solid fa-chevron-left"></i>
+                <Button variant="outline-custom" size="sm" onClick={handlePrevLead} disabled={isNavigating} title="Previous lead">
+                  <i className="fa-solid fa-chevron-left me-1"></i>Prev
                 </Button>
-                <Button variant="outline-custom" size="sm" onClick={handleNextLead} disabled={isNavigating} aria-label="Next lead">
-                  <i className="fa-solid fa-chevron-right"></i>
+                <Button variant="outline-custom" size="sm" onClick={handleNextLead} disabled={isNavigating} title="Next lead">
+                  Next<i className="fa-solid fa-chevron-right ms-1"></i>
                 </Button>
-                {lead?.customer_id && (
-                  <Button variant="outline-secondary" size="sm" href={`/dealer/customers/${lead.customer_id}`}>
-                    <i className="fa-regular fa-user me-1"></i>Customer profile
-                  </Button>
+              </div>
+              <div className="inbox_band">
+                <span><small>UP TYPE</small>{contactTypeLabel(lead)}</span>
+                <span><small>DEPARTMENT</small>{DEPARTMENT_NAMES[leadDepartment(lead)]}</span>
+                <span><small>SOURCE</small>{lead?.lead_source || lead?.source || "Not set"}</span>
+                <span><small>SUB-SOURCE</small>{lead?.sub_source || "No sub-source"}</span>
+                <span><small>OWNER</small>{lead?.assigned_to?.name || "Unassigned"}</span>
+                <span><small>PHONE</small>{lead?.phone || "-"}</span>
+                <span><small>EMAIL</small>{lead?.email || "-"}</span>
+              </div>
+              <div className="inbox_actions_bar">
+                {[["sms", "fa-duotone fa-comment-sms", "Text", Boolean(lead?.phone) && !stoppedChannels.sms],
+                  ["email", "fa-duotone fa-envelope-open-text", "Email", Boolean(lead?.email) && !stoppedChannels.email]].map(([ch, icon, label, ok]) => (
+                  <button key={ch} type="button" className="inbox_act" disabled={!ok || !replyAllowed}
+                    title={ok ? `Write a ${ch === "sms" ? "text" : "email"} in the box under the conversation` : ch === "sms" ? "No phone, or texts stopped" : "No email, or emails stopped"}
+                    onClick={() => { setActiveChannelTab(ch); setTimeout(() => document.querySelector(".chat_textarea")?.focus(), 50); }}>
+                    <i className={icon}></i><span>{label}</span>
+                  </button>
+                ))}
+                {lead?.phone && (
+                  <span className="inbox_act inbox_act_call">
+                    <CallButton phone={lead.phone} leadId={lead._id} dealerId={lead.dealer_id} size="sm" variant="link" label="Call"
+                      icon="fa-duotone fa-phone-office" />
+                  </span>
                 )}
-                <Button variant="outline-secondary" size="sm" onClick={handleClose}>
-                  <i className="fa-solid fa-arrow-left me-1"></i>Back to list
-                </Button>
-                <Button variant={showInfo ? "custom" : "outline-custom"} size="sm" aria-pressed={showInfo}
-                  onClick={() => setShowInfo(!showInfo)} title="Lead details and AI Assistant">
-                  <i className="fa-regular fa-sidebar-flip me-1"></i>Details
-                </Button>
+                <button type="button" className="inbox_act" onClick={() => setShowNotesModal(true)}>
+                  <i className="fa-duotone fa-note-sticky"></i><span>Add note</span></button>
+                <button type="button" className="inbox_act" onClick={() => setShowStatusModal(true)}>
+                  <i className="fa-duotone fa-right-left"></i><span>Update status</span></button>
+                {showCheckIn && (
+                  <a className="inbox_act" href={`/dealer/desk-log?check_in=${lead._id}`}>
+                    <i className="fa-duotone fa-user-check"></i><span>Check in</span></a>
+                )}
+                {lead?.customer_id && (
+                  <a className="inbox_act" href={`/dealer/customers/${lead.customer_id}`}>
+                    <i className="fa-duotone fa-user"></i><span>Customer profile</span></a>
+                )}
+                <button type="button" className="inbox_act" onClick={handleClose}>
+                  <i className="fa-duotone fa-list"></i><span>Back to list</span></button>
+                <button type="button" className={`inbox_act ms-auto${showInfo ? " on" : ""}`} onClick={() => setShowInfo(!showInfo)}
+                  aria-pressed={showInfo} title="Lead details and AI Assistant on the right">
+                  <i className="fa-duotone fa-sidebar-flip"></i><span>{showInfo ? "Hide details" : "Show details"}</span></button>
               </div>
             </div>
           )}
@@ -1245,6 +1277,14 @@ export default function ViewConversations({
                               </button>
                             )}
                           </div>
+                          {/* Click a message for its details (From / To / language), as the old screen showed them. */}
+                          {!isNote && selectedConversation?._id === email._id && (
+                            <div className="chat_details">
+                              <div><strong>From:</strong> {email.sender || "-"}</div>
+                              <div><strong>To:</strong> {email.recipient || "-"}</div>
+                              <div><strong>User language:</strong> {msgUserLanguageLabel}</div>
+                            </div>
+                          )}
                           {!isNote && email.communication_type === "email" && email.subject && (
                             <div className="chat_subject">{email.subject}</div>
                           )}
@@ -1394,10 +1434,10 @@ export default function ViewConversations({
                   leadUserLanguage={latestConversationUserLanguageLabel}
                   // One place for each action: on the Leads page they are in the box's + menu; on the customer profile
                   // they stay in the opportunity's action row (so not in the + menu there).
-                  showCall={tabbed}
-                  onAddNote={tabbed ? () => setShowNotesModal(true) : null}
-                  onUpdateStatus={tabbed ? () => setShowStatusModal(true) : null}
-                  onCheckIn={tabbed && showCheckIn ? () => { window.location.href = `/dealer/desk-log?check_in=${lead._id}`; } : null}
+                  showCall={false}
+                  onAddNote={null}
+                  onUpdateStatus={null}
+                  onCheckIn={null}
                   disabledReason={!replyAllowed ? `${DEPARTMENT_NAMES[leadDepartment(lead)]} lead - ${DEPARTMENT_NAMES[leadDepartment(lead)]} staff reply`
                     : lead.fe_lead_status === "Opted Out" && lead.status_source === "staff" ? "Opted Out by staff - nothing is sent" : null}
                 />
