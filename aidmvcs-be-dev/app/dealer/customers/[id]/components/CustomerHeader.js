@@ -9,11 +9,11 @@
 //   - postal addresses: add, remove, make main.
 // Every change goes on the customer's timeline. After a save the profile reloads (onChanged).
 import { useEffect, useState } from "react";
-import { Alert, Badge, Button, Form, Spinner } from "react-bootstrap";
+import { createPortal } from "react-dom";
+import { Alert, Badge, Button, Dropdown, Form, Spinner } from "react-bootstrap";
 import { formatTimestamp } from "../../../../utils/dateUtils";
 import { formatCurrency } from "../../../../utils/formatCurrency";
 import { useCan } from "../../../../hooks/PermissionsContext";
-import CallButton from "../../../components/CallButton";
 import ExportFormButton from "./ExportFormButton";
 import MergeFinder from "./MergeFinder";
 import { LeadFacts } from "../../../leads/components/LeadInfoCard";
@@ -298,7 +298,7 @@ function AddressList({ entries, send }) {
   );
 }
 
-const FOLD_KEY = "customerProfileFolds";
+const FOLD_KEY = "customerProfileFolds2"; // 28 Nov 2026: on the Profile section the cards start open
 
 // A section title that opens / folds its section; folded, it shows the summary beside it.
 function FoldTitle({ id, icon, label, open, onToggle, summary }) {
@@ -313,37 +313,8 @@ function FoldTitle({ id, icon, label, open, onToggle, summary }) {
   );
 }
 
-export default function CustomerHeader({ customer, valueSnapshot, onSendMessage, staffList, onAssignmentChange, callLeadId,
-  dealerId, onChanged, onOpenTab, counts, latestLead, dmsPerson, activeTab = "overview" }) {
-  const primaryEmail = primaryContact(customer.emails);
-  const primaryPhone = primaryContact(customer.phones);
-  const primaryAddress = primaryContact(customer.addresses);
-  // Same phone-priority reuse of getReplyChannel()'s rule (viewConversations.js:21-33):
-  // SMS whenever a phone is on file, otherwise email, otherwise no button at all.
-  const sendLabel = primaryPhone ? "Send SMS" : primaryEmail ? "Send Mail" : null;
-  // Reuses the leads permission - assigning a customer cascades to all of
-  // their leads, so it belongs to the same permission as assigning a lead.
-  const canAssignLeads = useCan("Assign Leads");
-  // Merge (Bibi, 26 Nov 2026): the same permission as Customers > Possible duplicates (the merge API checks it too).
-  const canMerge = useCan("Manage Leads");
-  const [merging, setMerging] = useState(false);
-  const [notice, setNotice] = useState(null);
-  const [formMessage, setFormMessage] = useState(null); // { variant, text } from Export to form
-  // "More details" starts folded; a click opens it (19 Nov 2026: keeps the profile short).
-  const [showDetails, setShowDetails] = useState(false);
-  // Contact, Preferences and Customer value fold like More details (25 Nov 2026): folded they show one summary line;
-  // open / folded is remembered in this browser.
-  const [fold, setFold] = useState({ contact: false, prefs: false, value: false });
-  useEffect(() => {
-    try { const kept = JSON.parse(localStorage.getItem(FOLD_KEY) || "null"); if (kept) setFold((f) => ({ ...f, ...kept })); } catch { /* folded */ }
-  }, []);
-  const toggleFold = (id) => setFold((f) => {
-    const next = { ...f, [id]: !f[id] };
-    try { localStorage.setItem(FOLD_KEY, JSON.stringify(next)); } catch { /* not kept */ }
-    return next;
-  });
-  const detailsFilled = DETAILS.filter(([key]) => customer.details?.[key]).length;
-
+// Saving the customer from the header (name) and from the Overview's cards (contact, preferences, details).
+function useCustomerSave(customer, dealerId, onChanged, setNotice) {
   const putCustomer = async (body) => {
     const res = await fetch(`/api/customers/${customer._id}`, { method: "PUT", headers: auth(),
       body: JSON.stringify({ dealer_id: dealerId, ...body }) });
@@ -360,14 +331,98 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
     setNotice(`Saved${out.leads_updated ? ` · ${out.leads_updated} open lead(s) now use it` : ""}`);
     onChanged?.();
   };
+  return { putCustomer, sendContact };
+}
 
-  const initials = String(customer.name || "?").trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
-  const go = (tab) => () => onOpenTab?.(tab);
-  const count = (n) => (n ? <span className="cp_tool_count">{n}</span> : null);
+// The customer's sections, as one bar at the top of the right side (the user, 28 Nov 2026). The leads are also listed
+// under the customer in the list on the left.
+export const PROFILE_TABS = [
+  // Profile first, then Leads (the user, 28 Nov 2026).
+  // Each section has its own icon colour (customerProfile.css .k_<key>), not all blue (the user, 28 Nov 2026).
+  ["profile", "Profile", "fa-solid fa-id-card"],
+  ["leads", "Leads", "fa-solid fa-comments"],
+  ["activity", "Activity", "fa-solid fa-clock-rotate-left"],
+  ["tasks", "Tasks", "fa-solid fa-list-check"],
+  ["appointments", "Appts", "fa-solid fa-calendar-days"],
+  ["sales", "Sales", "fa-solid fa-key"],
+  ["service", "Service", "fa-solid fa-screwdriver-wrench"],
+  ["vehicles", "Vehicles", "fa-solid fa-car-side"],
+  ["tradeins", "Trade-in", "fa-solid fa-right-left"],
+];
+
+// The bar: the sections, then Forms and Actions (Print, Merge, search the web) on the right.
+// toolsTarget: where Export to form and Actions are shown (the page head); without it they sit at the end of the bar.
+export default function CustomerHeader({ customer, dealerId, onChanged, onOpenTab, counts, activeTab = null, tasksLate = 0, toolsTarget = null }) {
+  const primaryAddress = primaryContact(customer.addresses);
+  // Merge (Bibi, 26 Nov 2026): the same permission as Customers > Possible duplicates (the merge API checks it too).
+  const canMerge = useCan("Manage Leads");
+  const [merging, setMerging] = useState(false);
+  const [formMessage, setFormMessage] = useState(null); // { variant, text } from Export to form
+  const searchFor = encodeURIComponent([customer.name, primaryAddress?.city].filter(Boolean).join(" "));
 
   return (
+    <div className="cp_bar w_card mb-2">
+      <nav className="cp_nav" role="tablist" aria-label="Customer sections">
+        {PROFILE_TABS.map(([key, label, icon]) => {
+          const n = counts?.[key];
+          const late = key === "tasks" && tasksLate > 0;
+          return (
+            <button key={key} type="button" role="tab" aria-selected={activeTab === key}
+              className={`cp_nav_item k_${key}${activeTab === key ? " on" : ""}`} onClick={() => onOpenTab?.(key)}
+              title={late ? `${tasksLate} overdue` : undefined}>
+              <i className={icon} aria-hidden="true" />{label}
+              {n ? <span className={`cp_nav_count${late ? " late" : ""}`}>{n}</span> : null}
+            </button>
+          );
+        })}
+      </nav>
+      {(() => { const tools = (
+      <div className="cp_bar_tools">
+        {/* The dealership's forms with this customer's data filled in (Forms Library). */}
+        <ExportFormButton customerId={String(customer._id)} dealerId={dealerId} onMessage={setFormMessage} />
+        <Dropdown align="end">
+          <Dropdown.Toggle size="sm" variant="outline-custom" id="customer-actions">
+            <i className="fa-solid fa-bolt me-1" />Actions
+          </Dropdown.Toggle>
+          <Dropdown.Menu>
+            {/* SOW G-056: a print-friendly summary of the profile as it is open now (styles.css @media print). */}
+            <Dropdown.Item onClick={() => window.print()}><i className="fa-solid fa-print fa-fw me-2" />Print</Dropdown.Item>
+            {canMerge && (
+              <Dropdown.Item onClick={() => setMerging(true)} title="Find customers that may be the same person and merge them">
+                <i className="fa-solid fa-code-merge fa-fw me-2" />Merge
+              </Dropdown.Item>
+            )}
+            <Dropdown.Divider />
+            <Dropdown.Header>Search the web for this customer</Dropdown.Header>
+            {/* 13 Nov 2026 meeting (10.3, DealerSocket "Search"): opens a new tab. */}
+            {[["Google", "fa-brands fa-google", `https://www.google.com/search?q=${searchFor}`],
+              ["Facebook", "fa-brands fa-facebook-f", `https://www.facebook.com/search/top?q=${searchFor}`],
+              ["LinkedIn", "fa-brands fa-linkedin-in", `https://www.linkedin.com/search/results/all/?keywords=${searchFor}`]]
+              .map(([label, icon, url]) => (
+                <Dropdown.Item key={label} href={url} target="_blank" rel="noopener noreferrer">
+                  <i className={`${icon} fa-fw me-2`} />{label}
+                </Dropdown.Item>
+              ))}
+          </Dropdown.Menu>
+        </Dropdown>
+      </div>
+      ); return toolsTarget ? createPortal(tools, toolsTarget) : tools; })()}
+      {canMerge && <MergeFinder show={merging} customerId={String(customer._id)} dealerId={dealerId}
+        onHide={() => setMerging(false)} onMerged={() => { setMerging(false); onChanged?.(); }} />}
+      {formMessage && <Alert variant={formMessage.variant} className="py-1 small mb-0 mt-2 w-100" dismissible onClose={() => setFormMessage(null)}>{formMessage.text}</Alert>}
+    </div>
+  );
+}
+
+// Profile: who the customer is (name, where they came from, since when, last activity, who looks after them), then
+// the cards below (CustomerInfoCards).
+export function CustomerIdentity({ customer, valueSnapshot, dmsPerson, dealerId, onChanged, staffList, onAssignmentChange }) {
+  const canAssignLeads = useCan("Assign Leads");
+  const [notice, setNotice] = useState(null);
+  const { putCustomer } = useCustomerSave(customer, dealerId, onChanged, setNotice);
+  const initials = String(customer.name || "?").trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+  return (
     <div className="cp_card mb-3">
-      {/* Blue band: who the customer is, where they came from, who looks after them. */}
       <div className="print_only small text-muted mb-1">Customer summary · printed {new Date().toLocaleString("en-US")}</div>
       <div className="cp_band">
         <div className="cp_avatar" aria-hidden="true">{initials}</div>
@@ -383,86 +438,52 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
             <span><i className="fa-regular fa-clock me-1" />Last activity {valueSnapshot.last_activity_at ? formatTimestamp(valueSnapshot.last_activity_at) : "N/A"}</span>
           </div>
         </div>
-        {canAssignLeads && (
-          <label className="cp_assign">
-            <span><i className="fa-solid fa-user-tie me-1" />Assigned to</span>
+        <label className="cp_assign">
+          <span><i className="fa-solid fa-user-tie me-1" />Assigned to</span>
+          {canAssignLeads ? (
+            // Reuses the leads permission - assigning a customer cascades to all of their leads.
             <Form.Select size="sm" value={customer.assigned_to || ""} onChange={(e) => onAssignmentChange(e.target.value)}
               aria-label="Assigned to">
               <option value="">Unassigned</option>
               {staffList?.map((staff) => <option key={staff._id} value={staff._id}>{staff.name}</option>)}
             </Form.Select>
-          </label>
-        )}
+          ) : (
+            <strong>{staffList?.find((s) => String(s._id) === String(customer.assigned_to))?.name || customer.assigned_to_name || "Unassigned"}</strong>
+          )}
+        </label>
       </div>
-
-      {/* Icon toolbar: every action on one row, grouped. Only actions the profile already had, plus jumps to its tabs. */}
-      {/* The newest lead, each fact in its own labelled field (approved 24 Nov 2026). */}
-      {latestLead && <div className="p-2 bg-white"><LeadFacts lead={latestLead} /></div>}
-      <div className="cp_toolbar">
-        <div className="cp_group">
-          <span className="cp_group_label">Connect</span>
-          <div className="cp_tools">
-            {primaryPhone ? <CallButton phone={primaryPhone.value} leadId={callLeadId} dealerId={dealerId} variant="link" className="cp_tool act_call" icon="fa-duotone fa-phone-office" />
-              : <button type="button" className="cp_tool act_call" disabled title="No phone on file"><i className="fa-duotone fa-phone-office" />Call</button>}
-            <button type="button" className="cp_tool act_sms" onClick={onSendMessage} disabled={!sendLabel}
-              title={sendLabel || "No phone or email on file"}>
-              <i className={`fa-duotone ${primaryPhone || !primaryEmail ? "fa-comment-sms" : "fa-envelope-open-text"}`} />{primaryPhone || !primaryEmail ? "Text" : "Email"}
-            </button>
-          </div>
-        </div>
-        <div className="cp_group">
-          <span className="cp_group_label">Documents</span>
-          <div className="cp_tools">
-            {/* The dealership's forms with this customer's data filled in (Forms Library). */}
-            <ExportFormButton customerId={String(customer._id)} dealerId={dealerId} asTool onMessage={setFormMessage} />
-            {/* SOW G-056: a print-friendly summary of the profile as it is open now (styles.css @media print). */}
-            <button type="button" className="cp_tool act_print" onClick={() => window.print()} title="Print this customer's summary">
-              <i className="fa-duotone fa-print" />Print</button>
-            {canMerge && (
-              <button type="button" className="cp_tool act_status" onClick={() => setMerging(true)}
-                title="Find customers that may be the same person and merge them">
-                <i className="fa-duotone fa-code-merge" />Merge</button>
-            )}
-          </div>
-        </div>
-        {/* 13 Nov 2026 meeting (10.3, DealerSocket "Search"): look the customer up on the web (opens a new tab). */}
-        <div className="cp_group">
-          <span className="cp_group_label">Search</span>
-          <div className="cp_tools">
-            {[["Google", "fa-brands fa-google", (q) => `https://www.google.com/search?q=${q}`],
-              ["Facebook", "fa-brands fa-facebook-f", (q) => `https://www.facebook.com/search/top?q=${q}`],
-              ["LinkedIn", "fa-brands fa-linkedin-in", (q) => `https://www.linkedin.com/search/results/all/?keywords=${q}`]]
-              .map(([label, icon, url]) => (
-                <a key={label} className={`cp_tool brand_${label.toLowerCase()}`} target="_blank" rel="noopener noreferrer" title={`Search ${label} for this customer`}
-                  href={url(encodeURIComponent([customer.name, primaryAddress?.city].filter(Boolean).join(" ")))}>
-                  <i className={icon} />{label}</a>
-              ))}
-          </div>
-        </div>
-        <div className="cp_group">
-          <span className="cp_group_label">Open</span>
-          {/* 25 Nov 2026: these buttons are the profile's only navigation (no tab row below); the one on screen is lit. */}
-          <div className="cp_tools" role="tablist" aria-label="Show">
-            {[["overview", "Overview", "fa-duotone fa-clock-rotate-left", "act_task", null],
-              ["leads", "Leads", "fa-duotone fa-comments", "act_leads", counts?.leads],
-              ["appointments", "Appts", "fa-duotone fa-calendar-days", "act_appt", counts?.appointments],
-              ["sales", "Sales", "fa-duotone fa-key", "act_sold", counts?.sales],
-              ["service", "Service", "fa-duotone fa-screwdriver-wrench", "act_service", counts?.service],
-              ["vehicles", "Vehicles", "fa-duotone fa-car-side", "act_call", counts?.vehicles],
-              ["tradeins", "Trade-in", "fa-duotone fa-right-left", "act_status", null]].map(([key, label, icon, tone, n]) => (
-              <button key={key} type="button" role="tab" aria-selected={activeTab === key}
-                className={`cp_tool ${tone}${activeTab === key ? " on" : ""}`} onClick={go(key)}>
-                <i className={icon} />{label}{count(n)}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-      {canMerge && <MergeFinder show={merging} customerId={String(customer._id)} dealerId={dealerId}
-        onHide={() => setMerging(false)} onMerged={() => { setMerging(false); onChanged?.(); }} />}
-      {formMessage && <Alert variant={formMessage.variant} className="py-1 small cp_notice" dismissible onClose={() => setFormMessage(null)}>{formMessage.text}</Alert>}
       {notice && <Alert variant="success" className="py-1 small cp_notice" dismissible onClose={() => setNotice(null)}>{notice}</Alert>}
+    </div>
+  );
+}
 
+// The Overview's cards: contact (phones, emails, addresses), preferences and more details, customer value. Each
+// detail is still edited where it is shown; the cards fold as before (remembered in this browser).
+export function CustomerInfoCards({ customer, valueSnapshot, dealerId, onChanged, latestLead }) {
+  const primaryEmail = primaryContact(customer.emails);
+  const primaryPhone = primaryContact(customer.phones);
+  const [notice, setNotice] = useState(null);
+  const { putCustomer, sendContact } = useCustomerSave(customer, dealerId, onChanged, setNotice);
+  // "More details" starts folded; a click opens it (19 Nov 2026: keeps the profile short).
+  const [showDetails, setShowDetails] = useState(false);
+  // Contact, Preferences and Customer value fold like More details (25 Nov 2026): folded they show one summary line;
+  // open / folded is remembered in this browser.
+  const [fold, setFold] = useState({ contact: true, prefs: true, value: true });
+  useEffect(() => {
+    try { const kept = JSON.parse(localStorage.getItem(FOLD_KEY) || "null"); if (kept) setFold((f) => ({ ...f, ...kept })); } catch { /* folded */ }
+  }, []);
+  const toggleFold = (id) => setFold((f) => {
+    const next = { ...f, [id]: !f[id] };
+    try { localStorage.setItem(FOLD_KEY, JSON.stringify(next)); } catch { /* not kept */ }
+    return next;
+  });
+  const detailsFilled = DETAILS.filter(([key]) => customer.details?.[key]).length;
+
+  return (
+    <div className="cp_card mb-3">
+      {/* The newest lead, each fact in its own labelled field (approved 24 Nov 2026). */}
+      {latestLead && <div className="p-2 bg-white"><div className="cp_section_title small mb-1"><i className="fa-solid fa-bolt me-1" />Newest lead</div><LeadFacts lead={latestLead} /></div>}
+      {notice && <Alert variant="success" className="py-1 small cp_notice" dismissible onClose={() => setNotice(null)}>{notice}</Alert>}
       <div className="cp_body">
         <section className="cp_section cp_contact">
           <FoldTitle id="contact" icon="fa-address-card" label="Contact" open={fold.contact} onToggle={toggleFold}

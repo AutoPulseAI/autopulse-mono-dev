@@ -1,0 +1,202 @@
+/* Customer profile (28 Nov 2026): on the right of the customer list, a bar of sections (Profile, Activity, Tasks...)
+   with Forms and Actions; under it either one lead (the Leads page screen) or the section picked. */
+
+/* The customer's navigation bar (28 Nov 2026): a real tab bar - each section with its own icon colour, the open one
+   filled in its colour with a bar under it; same font as the rest of the page. */
+.cp_bar { display: flex; flex-wrap: wrap; align-items: stretch; gap: 6px 10px; padding: 6px !important; }
+.cp_bar_tools { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.cp_nav { display: flex; flex-wrap: nowrap; gap: 1px; min-width: 0; flex: 1 1 auto; overflow-x: auto; overflow-y: hidden; padding-bottom: 6px; margin-bottom: -6px; scrollbar-width: thin; }
+.cp_nav_item { --k: #475569; --k-soft: #f1f5f9; position: relative; display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 5px; border: 0; border-radius: 8px; background: none; color: #334155; font: inherit; font-size: 0.88rem;
+  font-weight: 600; white-space: nowrap; transition: background-color 0.12s ease, color 0.12s ease; }
+.cp_nav_item i { width: 1.15em; text-align: center; font-size: 1.05rem; color: var(--k); }
+.cp_nav_item:hover { background: var(--k-soft); color: #0f172a; }
+.cp_nav_item.on { background: var(--k-soft); color: var(--k); }
+.cp_nav_item.on::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: -6px; height: 3px; border-radius: 3px; background: var(--k); }
+.cp_nav_item:focus-visible { outline: 2px solid var(--k); outline-offset: 1px; }
+.cp_nav_count { min-width: 22px; padding: 0 7px; border-radius: 11px; background: #e2e8f0; color: #334155;
+  font-size: 0.75rem; font-weight: 700; line-height: 21px; text-align: center; }
+.cp_nav_item.on .cp_nav_count { background: var(--k); color: #fff; }
+.cp_nav_count.late, .cp_nav_item.on .cp_nav_count.late { background: #dc2626; color: #fff; }
+.k_profile { --k: #4f46e5; --k-soft: #eef2ff; }
+.k_leads { --k: #2563eb; --k-soft: #eff6ff; }
+.k_activity { --k: #0d9488; --k-soft: #f0fdfa; }
+.k_tasks { --k: #ea580c; --k-soft: #fff7ed; }
+.k_appointments { --k: #16a34a; --k-soft: #f0fdf4; }
+.k_sales { --k: #ca8a04; --k-soft: #fefce8; }
+.k_service { --k: #64748b; --k-soft: #f1f5f9; }
+.k_vehicles { --k: #7c3aed; --k-soft: #f5f3ff; }
+.k_tradeins { --k: #db2777; --k-soft: #fdf2f8; }
+
+/* The open lead (the Leads page screen) on the profile. */
+.inbox_opp_slot { display: contents; }
+.cp_opp_panel { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #dbe3ee; }
+.cp_opp_panel .opp_box { padding: 0; }
+
+@media (max-width: 991.98px) {
+  .cp_bar_tools { margin-left: 0; }
+}
+.inbox_opp_slot a.inbox_act, .inbox_opp_slot a.inbox_act:hover { color: #1f2937; text-decoration: none; }
+
+/* Leads in the bar (28 Nov 2026): the customer's leads as cards; over an open lead, the way back and Lead 1 / 2 / 3. */
+.cp_lead_cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+.cp_lead_card { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; text-align: left; background: #fff;
+  border: 1px solid #e5e7eb; border-left: 4px solid #6366f1; border-radius: 10px; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+  transition: box-shadow 0.12s ease, transform 0.12s ease; }
+.cp_lead_card:hover { box-shadow: 0 6px 18px rgba(15, 23, 42, 0.1); transform: translateY(-1px); }
+.cp_lead_card_top { display: flex; align-items: center; gap: 8px; }
+.cp_lead_card_no { background: #eef2ff; color: #4338ca; border-radius: 999px; padding: 1px 8px; font-size: 0.72rem; font-weight: 700; }
+.cp_lead_card_date { margin-left: auto; color: #6b7280; font-size: 0.75rem; white-space: nowrap; }
+.cp_lead_card_vehicle { font-weight: 600; color: #1f2937; }
+.cp_lead_card_facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; font-size: 0.82rem; }
+.cp_lead_card_facts span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp_lead_card_facts small { display: block; font-size: 0.65rem; color: #6b7280; letter-spacing: 0.04em; }
+.cp_lead_card_last { font-size: 0.8rem; color: #374151; background: #f8fafc; border-radius: 6px; padding: 5px 8px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp_lead_crumb { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin: 0 0 8px; }
+.cp_lead_chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.cp_lead_chip { display: inline-flex; align-items: baseline; gap: 6px; padding: 3px 10px; border: 1px solid #d6dbe6; border-radius: 999px;
+  background: #fff; font-size: 0.78rem; font-weight: 600; color: #374151; }
+.cp_lead_chip small { font-weight: 400; color: #6b7280; }
+.cp_lead_chip:hover { background: #f5f8fc; }
+.cp_lead_chip.on { background: #6366f1; border-color: #6366f1; color: #fff; }
+.cp_lead_chip.on small { color: #e0e7ff; }
+
+/* The customer's open lead, cleaner (28 Nov 2026): one opportunity line, one milestone track, the rest under Details. */
+.cp_opp_panel .cp_opp { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 6px 10px; margin: 0 0 8px;
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 0.85rem; }
+.opp_details_btn { display: inline-flex; align-items: center; gap: 10px; padding: 3px 10px; border: 1px solid #cbd5e1; border-radius: 999px;
+  background: #fff; color: #334155; font: inherit; font-size: 0.8rem; font-weight: 600; }
+.opp_details_btn span { display: inline-flex; align-items: center; gap: 4px; font-weight: 500; color: #64748b; }
+.opp_details_btn span i { font-size: 0.75rem; }
+.opp_details_btn:hover, .opp_details_btn.on { border-color: #6366f1; color: #4338ca; background: #eef2ff; }
+.opp_track { display: flex; margin: 0 0 4px; padding: 0; list-style: none; }
+.opp_step { position: relative; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; text-align: center;
+  padding-top: 2px; }
+.opp_step::before { content: ""; position: absolute; top: 7px; left: -50%; width: 100%; height: 2px; background: #e2e8f0; }
+.opp_step:first-child::before { display: none; }
+.opp_step.done::before { background: #6366f1; }
+.opp_step_dot { position: relative; z-index: 1; width: 12px; height: 12px; border-radius: 50%; background: #fff; border: 2px solid #cbd5e1; }
+.opp_step.done .opp_step_dot { background: #6366f1; border-color: #6366f1; }
+.opp_step.lost .opp_step_dot { background: #dc2626; border-color: #dc2626; }
+.opp_step_label { margin-top: 4px; font-size: 0.72rem; font-weight: 600; color: #475569; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; max-width: 100%; }
+.opp_step_when { font-size: 0.7rem; color: #94a3b8; white-space: nowrap; }
+.opp_step.done .opp_step_when { color: #334155; }
+.opp_details { margin-top: 8px; padding: 10px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; }
+.opp_details + .opp_box:not(:empty) { margin-top: -8px; padding: 0 12px 10px !important; background: #f8fafc; border: 1px solid #e2e8f0;
+  border-top: 0; border-radius: 0 0 8px 8px; }
+.inbox_more_menu { display: inline-flex; }
+.inbox_more_menu > .inbox_act::after { display: none; }
+
+/* The customer's open lead (28 Nov 2026, round 3): facts as tags; the opportunity in its own slide-out. */
+.inbox_tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.ltag { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 0.8rem; font-weight: 600;
+  background: #f1f5f9; color: #334155; border: 1px solid #e2e8f0; }
+.ltag i { font-size: 0.72rem; opacity: 0.85; }
+.ltag.t_up { background: #eef2ff; color: #4338ca; border-color: #c7d2fe; }
+.ltag.t_dept { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+.ltag.t_src { background: #fff7ed; color: #c2410c; border-color: #fed7aa; }
+.ltag.t_sub { background: #fefce8; color: #a16207; border-color: #fde68a; }
+.ltag.t_owner { background: #f8fafc; color: #475569; }
+.opp_drawer .cp_opp_panel { margin-top: 0; padding-top: 0; border-top: 0; }
+.opp_drawer .cp_opp { background: #fff; }
+.opp_drawer .opp_track { flex-wrap: wrap; row-gap: 10px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 4px; }
+.opp_drawer .opp_step { flex: 1 0 33%; }
+.opp_drawer .opp_step::before { display: none; }
+.opp_drawer .opp_details { background: #fff; }
+.opp_drawer .opp_box { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px !important; margin-top: 8px; }
+.opp_drawer .opp_box:empty { display: none; }
+.lead_contact_card { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px !important; }
+.ltag small { font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.75; }
+.ltag.t_ai { background: #f5f3ff; color: #6d28d9; border-color: #ddd6fe; }
+.ltag.t_car { background: #f0f9ff; color: #0369a1; border-color: #bae6fd; }
+.journey_next { display: flex; align-items: flex-start; gap: 6px; margin-top: 4px; font-size: 0.78rem; color: #1e3a8a;
+  background: #eff6ff; border-radius: 6px; padding: 3px 8px; }
+.journey_next.none { color: #b91c1c; background: #fef2f2; }
+.journey_next i { margin-top: 2px; }
+
+/* Activity as a timeline (28 Nov 2026). */
+.tl_card { padding: 16px !important; }
+.tl_toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+.tl_search { position: relative; flex: 1 1 220px; min-width: 180px; }
+.tl_search i { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 0.8rem; color: #94a3b8; }
+.tl_search .form-control { padding-left: 30px; }
+.tl_select { width: auto; flex: none; }
+.tl_who { display: inline-flex; padding: 3px; gap: 2px; background: #f1f5f9; border-radius: 9px; }
+.tl_who button { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; padding: 4px 11px; border-radius: 7px;
+  font: inherit; font-size: 0.82rem; font-weight: 600; color: #475569; }
+.tl_who button i { font-size: 0.75rem; }
+.tl_who button.on { background: #fff; color: #0f172a; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12); }
+.tl_kinds { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 12px; margin-bottom: 4px; border-bottom: 1px solid #eef2f6; }
+.tl_kinds button { --c: #475569; display: inline-flex; align-items: center; gap: 6px; padding: 3px 11px; border: 1px solid #e2e8f0; border-radius: 999px;
+  background: #fff; font: inherit; font-size: 0.8rem; font-weight: 600; color: #334155; }
+.tl_kinds button i { color: var(--c); font-size: 0.78rem; }
+.tl_kinds button b { color: #64748b; font-weight: 700; }
+.tl_kinds button.on { background: var(--c); border-color: var(--c); color: #fff; }
+.tl_kinds button.on i, .tl_kinds button.on b { color: #fff; }
+.tl_list { list-style: none; margin: 0; padding: 0; }
+.tl_day { position: sticky; top: calc(var(--header-height, 0px) + 4px); z-index: 2; display: flex; align-items: center; gap: 10px; margin: 14px 0 8px; }
+.tl_day::after { content: ""; flex: 1; height: 1px; background: #e2e8f0; }
+.tl_day span { padding: 3px 12px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 0.78rem; font-weight: 700; }
+.tl_item { --c: #64748b; position: relative; display: flex; gap: 12px; padding-bottom: 10px; }
+.tl_item::before { content: ""; position: absolute; left: 15px; top: 32px; bottom: 0; width: 2px; background: #e2e8f0; }
+.tl_item_wrap:last-child .tl_item::before { display: none; }
+.tl_dot { flex: none; position: relative; z-index: 1; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center;
+  justify-content: center; background: color-mix(in srgb, var(--c) 14%, #fff); color: var(--c); border: 2px solid color-mix(in srgb, var(--c) 35%, #fff);
+  font-size: 0.8rem; }
+.tl_body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 9px 12px; text-align: left; font: inherit;
+  background: #fff; border: 1px solid #e8edf3; border-radius: 10px; transition: border-color 0.12s ease, box-shadow 0.12s ease; }
+.tl_body:hover { border-color: color-mix(in srgb, var(--c) 45%, #fff); box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06); }
+.tl_body.on { border-color: var(--c); box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08); }
+.tl_top { display: flex; align-items: baseline; gap: 10px; }
+.tl_title { font-size: 0.9rem; color: #0f172a; }
+.tl_time { margin-left: auto; flex: none; font-size: 0.75rem; color: #64748b; }
+.tl_text { font-size: 0.85rem; color: #475569; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.tl_text.full { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tl_meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.tl_tag { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border-radius: 999px; background: #f1f5f9; color: #475569;
+  font-size: 0.72rem; font-weight: 600; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl_tag i { font-size: 0.68rem; }
+.tl_tag.who_ai { background: #eef2ff; color: #4338ca; }
+.tl_tag.who_customer { background: #ecfdf5; color: #047857; }
+.tl_tag.who_staff { background: #fff7ed; color: #c2410c; }
+.tl_chev { margin-left: auto; font-size: 0.7rem; color: #94a3b8; }
+.inbox_head .opp_track { margin: 10px 0 0; padding-top: 10px; border-top: 1px dashed #dbe3ee; }
+/* Milestones as step tiles (28 Nov 2026, round 2): own icon and colour per step, time taken between steps. */
+.ms_row { display: flex; align-items: stretch; margin: 10px 0 0; padding: 12px 0 0; list-style: none; border-top: 1px dashed #dbe3ee; }
+.ms_cell { position: relative; display: flex; align-items: center; flex: 1 1 0; min-width: 0; }
+.ms_gap { position: relative; flex: none; width: 18px; display: flex; justify-content: center; color: #cbd5e1; font-size: 0.75rem; }
+.ms_gap small { position: absolute; bottom: 100%; left: 50%; transform: translate(-50%, -3px); z-index: 1; padding: 0 6px; border-radius: 999px;
+  background: #f1f5f9; border: 1px solid #e2e8f0; font-size: 0.62rem; font-weight: 700; color: #334155; white-space: nowrap; }
+.ms_gap.on { color: #64748b; }
+.ms_tile { --c: #64748b; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 5px 8px 6px;
+  border-radius: 8px; border: 1px dashed #d5dce5; background: #fafbfc; color: #94a3b8; border-top-width: 3px; }
+.ms_tile > i { display: none; }
+.ms_text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.ms_text b { display: flex; align-items: center; gap: 5px; font-size: 0.74rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ms_text small { font-size: 0.7rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ms_tile.done { border: 1px solid color-mix(in srgb, var(--c) 30%, #fff); border-top: 3px solid var(--c);
+  background: color-mix(in srgb, var(--c) 6%, #fff); color: #0f172a; }
+.ms_tile.done .ms_text b { color: color-mix(in srgb, var(--c) 80%, #000); }
+.ms_tile.done .ms_text small { color: #334155; }
+@media (max-width: 1200px) { .ms_row { flex-wrap: wrap; row-gap: 14px; } .ms_cell { flex: 1 1 30%; } }
+
+/* The conversation fits the screen like the Leads page (the user, 28 Nov 2026): header on top, only the thread
+   scrolls inside (older messages load as it reaches the top). */
+@media (min-width: 993px) {
+  .inbox_col.in_profile { height: max(calc(100vh - var(--header-height, 60px) - 150px), 640px) !important; display: flex !important;
+    flex-direction: column; }
+  .inbox_col.in_profile > .inbox_head { flex: none; }
+  .inbox_col.in_profile > .row { flex: 1 1 auto; min-height: 0; }
+  .inbox_col.in_profile > .row > .inbox_chat { height: 100% !important; min-height: 0 !important; margin-bottom: 0; }
+}
+
+/* The owner tag that reassigns. */
+.ltag_btn { cursor: pointer; font: inherit; font-size: 0.8rem; font-weight: 600; }
+.ltag_btn::after { display: none; }
+.ltag_btn:hover { border-color: #94a3b8; background: #fff; }
+.ltag_note { display: inline-flex; align-items: center; gap: 8px; padding: 2px 10px; border-radius: 999px; background: #ecfdf5; color: #047857;
+  font-size: 0.78rem; font-weight: 600; }
+.ltag_note button { border: 0; background: none; padding: 0; color: inherit; font: inherit; text-decoration: underline; }
+.ltag_note button:last-child { text-decoration: none; font-size: 1rem; line-height: 1; }

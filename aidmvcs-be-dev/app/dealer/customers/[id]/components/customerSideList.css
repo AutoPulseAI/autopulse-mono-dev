@@ -1,25 +1,26 @@
-/* Customer 360: the customer list on the left, the profile on the right. Below 992px the list is hidden so the
-   profile keeps the room; Previous / Next at the top still move through the list. */
-.cust_layout { display: flex; gap: 16px; align-items: flex-start; }
-.cust_layout_main { flex: 1 1 auto; min-width: 0; }
-.cust_side { flex: 0 0 260px; width: 260px; padding: 12px; position: sticky; top: 12px;
-  max-height: calc(100vh - 110px); display: flex; flex-direction: column; }
-.cust_side_head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.cust_side_head .p_bold { display: inline-flex; gap: 6px; align-items: center; }
-.cust_side_list { flex: 1 1 auto; overflow-y: auto; margin: 8px -4px 0; padding: 0 4px; }
-.cust_side_row { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: transparent;
-  border: 0; border-left: 3px solid transparent; border-bottom: 1px solid #eef0f3; padding: 8px 6px; }
-.cust_side_row:hover { background: #f5f7fa; }
-.cust_side_row.active { background: #eaf2ff; border-left-color: #1d4ed8; cursor: default; }
-.cust_side_text { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
-.cust_side_name { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cust_side_sub { font-size: 12px; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cust_side_sub i { margin-right: 4px; font-size: 11px; }
-.cust_side_leads { font-size: 12px; color: #374151; white-space: nowrap; }
-.cust_side_leads i { margin-right: 3px; }
-.cust_side_pager { display: flex; justify-content: space-between; align-items: center; padding-top: 8px; }
+/* Customer profile (28 Nov 2026): two columns like the Leads page - the customer list as an inbox on the left (the
+   open customer's leads under their row), the customer on the right. */
 .cust_nav { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
-@media (max-width: 991.98px) {
-  .cust_side { display: none; }
+/* The open customer's leads, nested under their row. */
+.cust_leads { display: flex; flex-direction: column; gap: 5px; margin: 8px 0 2px 20px; padding-left: 12px;
+  border-left: 2px solid #c7d2fe; cursor: default; }
+.cust_lead { display: flex; flex-direction: column; gap: 1px; width: 100%; padding: 6px 9px; text-align: left;
+  border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; font-size: 0.78rem; color: #1f2937;
+  transition: background-color 0.12s ease, border-color 0.12s ease; }
+.cust_lead:hover { background: #f5f8fc; }
+.cust_lead.on { border-color: #6366f1; background: #eef2ff; box-shadow: 0 1px 4px rgba(99, 102, 241, 0.18); }
+.cust_lead_top { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.cust_lead_dot { flex: none; width: 9px; height: 9px; border-radius: 50%; border: 2px solid #94a3b8; background: #fff; }
+.cust_lead_dot.on { border-color: #6366f1; background: #6366f1; }
+.cust_lead_status { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cust_lead_line { padding-left: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cust_lead_line b { font-weight: 600; }
+.cust_lead_new { align-self: flex-start; border: 0; background: none; padding: 2px 4px; color: #1d4ed8; font-size: 0.76rem; font-weight: 600; }
+.cust_lead_new:hover { text-decoration: underline; }
+
+@media (max-width: 992px) {
+  .cust_inbox .w_card_list > .list-group { max-height: 55vh; overflow-y: auto; }
 }
+.cust_tools_slot { display: contents; }
+.cust_inbox_head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }

@@ -27,6 +27,7 @@ import Permission from '@models/Permission';
 import moment from 'moment-timezone';
 import { isAuthorizedForDealer } from '@lib/customerListing';
 import { requireUser, requireDealerAccess } from '@lib/apiGuard';
+import { logActivity } from '@lib/activityLog';
 import { attachAiStages, attachAiAdminLabels } from '@lib/ai/aiStage';
 import { loadSettingsEditor } from '@lib/apiAuth';
 import { replyCohorts } from '@lib/reporting/replyCohorts';
@@ -1017,11 +1018,17 @@ export async function DELETE(req) {
         await dbConnect();
         const { id } = await req.json();
         if (!mongoose.isValidObjectId(id)) return NextResponse.json({ error: "Invalid lead id" }, { status: 400 });
-        const lead = await Lead.findById(id).select("dealer_id").lean();
+        const lead = await Lead.findById(id).select("dealer_id customer_id name lead_source source vehicle_year vehicle_make vehicle_model").lean();
         if (!lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
         const guard = await requireDealerAccess(req, String(lead.dealer_id));
         if (guard.response) return guard.response;
         await Lead.findByIdAndDelete(id);
+        // Who deleted which lead stays on the customer's timeline (the user, 28 Nov 2026: a track record of every change).
+        const by = guard.user || signedIn.user;
+        const car = [lead.vehicle_year, lead.vehicle_make, lead.vehicle_model].filter(Boolean).join(" ");
+        await logActivity({ dealer_id: lead.dealer_id, lead_id: lead._id, customer_id: lead.customer_id || null,
+          actor_type: "staff", actor_id: by?._id || null, actor_name: by?.name || null, action: "lead_deleted",
+          detail: [lead.name, lead.lead_source || lead.source, car].filter(Boolean).join(" · ") || null });
         return NextResponse.json({ message: "Lead deleted successfully" }, { status: 200 });
     } catch (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });

@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Alert, Button, Form, ListGroup, Modal, Pagination, Row, Col } from "react-bootstrap";
+import moment from "moment-timezone";
 import { useUser } from "../../context/UserContext";
+import { useCan } from "../../../hooks/PermissionsContext";
 import CustomerForm from "./CustomerForm";
 import { lastFirst } from "../../../lib/personName";
 import DateRangePickerComponent from "../../components/DateRangePicker";
 import AppIcon, { Avatar, IconLabel } from "../../components/AppIcon";
-import { rememberCustomerList } from "../[id]/components/CustomerSideList";
+import { rememberCustomerList } from "../[id]/components/customerListMemory";
 
 const defaultPagination = {
   currentPage: 1,
@@ -23,6 +25,18 @@ function primaryValue(items) {
   return items?.find((item) => item.is_primary)?.value || items?.[0]?.value || "";
 }
 
+// The one search box, read the same way as the list beside the profile (CustomerSideList.js): an @ means email,
+// only digits and phone signs (3+ digits) a phone number, anything else a name.
+function searchFields(text) {
+  const term = String(text || "").trim();
+  const out = { name: "", last_name: "", email: "", phone: "" };
+  if (!term) return out;
+  if (term.includes("@")) out.email = term;
+  else if (/^[\d\s()+.-]+$/.test(term) && term.replace(/\D/g, "").length >= 3) out.phone = term;
+  else out.name = term;
+  return out;
+}
+
 export default function CustomerList() {
   const { user, dealerParent, loadingParent } = useUser();
   const activeEntity = dealerParent || (user?.parent_id ? null : user);
@@ -35,9 +49,14 @@ export default function CustomerList() {
     email: "",
     phone: "",
     source: "",
+    assigned_to: "",
+    sort: "",
     dateRange: { startDate: null, endDate: null },
   });
-  const [inputValues, setInputValues] = useState({ name: "", last_name: "", email: "", phone: "" });
+  // The one search box; it fills name / email / phone (searchFields below).
+  const [searchText, setSearchText] = useState("");
+  const [staffList, setStaffList] = useState([]);
+  const canAssign = useCan("Assign Leads");
   const dealerTimezone = activeEntity?.dealer_account_information?.time_zone || "America/New_York";
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -85,6 +104,27 @@ export default function CustomerList() {
     fetchCustomers(1);
   }, [fetchCustomers]);
 
+  useEffect(() => {
+    if (!activeEntity?.id) return;
+    fetch(`/api/staff/list?dealer_id=${activeEntity.id}`, { headers: { Authorization: `Bearer ${localStorage.getItem("dealertoken")}` } })
+      .then((r) => (r.ok ? r.json() : null)).then((b) => setStaffList(b?.staff || [])).catch(() => {});
+  }, [activeEntity?.id]);
+
+  const handleAssignmentChange = async (customerId, assignedToId) => {
+    setError(null);
+    try {
+      const response = await fetch(`/api/customers/${customerId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("dealertoken")}` },
+        body: JSON.stringify({ dealer_id: activeEntity.id, assigned_to: assignedToId || null }),
+      });
+      if (!response.ok) throw new Error((await response.json().catch(() => ({}))).message || "Could not change the assignment");
+      setCustomers((list) => list.map((c) => (c._id === customerId ? { ...c, assigned_to: assignedToId || null } : c)));
+    } catch (assignError) {
+      setError(assignError.message);
+    }
+  };
+
   // Auto-filter as the user types, instead of requiring the Search button click.
   // Skips the initial mount so it doesn't re-fetch with the same (empty) filters
   // fetchCustomers(1) above already just requested.
@@ -96,10 +136,10 @@ export default function CustomerList() {
       return;
     }
     searchDebounceRef.current = setTimeout(() => {
-      setFilters((prev) => ({ ...prev, ...inputValues }));
+      setFilters((prev) => ({ ...prev, ...searchFields(searchText) }));
     }, 400);
     return () => clearTimeout(searchDebounceRef.current);
-  }, [inputValues]);
+  }, [searchText]);
 
   // The 360 profile shows this same list on its left (search, source, dates, page) - CustomerSideList.js.
   const openCustomer = (customerId) => {
@@ -118,7 +158,7 @@ export default function CustomerList() {
 
   const handleSearch = () => {
     clearTimeout(searchDebounceRef.current);
-    setFilters((prev) => ({ ...prev, ...inputValues }));
+    setFilters((prev) => ({ ...prev, ...searchFields(searchText) }));
   };
 
   // Source and date range apply immediately (no debounce) - each already
@@ -133,8 +173,8 @@ export default function CustomerList() {
 
   const clearFilters = () => {
     clearTimeout(searchDebounceRef.current);
-    setInputValues({ name: "", last_name: "", email: "", phone: "" });
-    setFilters({ name: "", last_name: "", email: "", phone: "", source: "", dateRange: { startDate: null, endDate: null } });
+    setSearchText("");
+    setFilters({ name: "", last_name: "", email: "", phone: "", source: "", assigned_to: "", sort: "", dateRange: { startDate: null, endDate: null } });
   };
 
   const handleCustomerPageChange = (page) => {
@@ -197,37 +237,63 @@ export default function CustomerList() {
     return items;
   };
 
-  if (loadingParent || (loading && customers.length === 0)) {
+  if (loadingParent || (loading && customers.length === 0 && !error)) {
     return <div className="w_card text-center py-4">Loading customers...</div>;
   }
+
+  const staffName = (id) => staffList.find((s) => String(s._id) === String(id))?.name;
 
   return (
     <>
     <div className="w_card">
       {error && <Alert variant="danger" dismissible onClose={() => setError(null)}>{error}</Alert>}
 
-      <Row className="search_filters gx-1 gy-1 mb-3">
-        <Col lg={3} md={4} sm={12}>
-          <Form.Control size="sm" placeholder="Name" value={inputValues.name} onChange={(event) => setInputValues({ ...inputValues, name: event.target.value })} />
-        </Col>
-        <Col lg={3} md={4} sm={12}>
-          {/* 19 Nov 2026: look a customer up by last name; the list is then in last-name order. */}
-          <Form.Control size="sm" placeholder="Last name" value={inputValues.last_name} onChange={(event) => setInputValues({ ...inputValues, last_name: event.target.value })} />
-        </Col>
-        <Col lg={3} md={4} sm={12}>
-          <Form.Control size="sm" placeholder="Email" value={inputValues.email} onChange={(event) => setInputValues({ ...inputValues, email: event.target.value })} />
-        </Col>
-        <Col lg={3} md={4} sm={12}>
-          <Form.Control size="sm" placeholder="Phone" value={inputValues.phone} onChange={(event) => setInputValues({ ...inputValues, phone: event.target.value })} />
-        </Col>
-        <Col lg={3} md={12}>
-          <div className="d-flex gap-1">
-            <Button size="sm" variant="custom" onClick={handleSearch} className="flex-grow-1"><i className="fa-solid fa-magnifying-glass me-1" />Search</Button>
-            <Button size="sm" variant="secondary" onClick={clearFilters} aria-label="Clear filters"><i className="fa-solid fa-xmark" /></Button>
+      {/* Laid out like the Leads list (27 Nov 2026): Sort, whose customers, one search box, the filters, then rows. */}
+      <div className="d-flex gap-2 mb-2 align-items-center">
+        <span className="small text-muted">Sort:</span>
+        <Form.Select size="sm" style={{ flex: "1 1 0", minWidth: 0, maxWidth: 240 }} value={filters.sort}
+          onChange={(e) => setFilters((prev) => ({ ...prev, sort: e.target.value }))} aria-label="Sort customers">
+          <option value="">Latest activity first</option>
+          <option value="created_desc">Customer since: newest first</option>
+          <option value="created_asc">Customer since: oldest first</option>
+          <option value="last_name">Last name A-Z</option>
+        </Form.Select>
+      </div>
+      <div className="btn-group mb-3 lead_fltr" role="group" aria-label="Whose customers">
+        {[["", "All", "fa-users", "All customers"], ["me", "Mine", "fa-user", "Customers assigned to me"],
+          ["none", "Unassigned", "fa-user-slash", "Customers nobody is assigned to"]].map(([key, label, icon, title]) => (
+          <Button key={key || "all"} size="sm" title={title} aria-pressed={filters.assigned_to === key}
+            variant={filters.assigned_to === key ? "custom" : "outline-custom"}
+            onClick={() => setFilters((prev) => ({ ...prev, assigned_to: key }))}>
+            <i className={`fa-regular ${icon} me-1`} />{label}
+          </Button>
+        ))}
+      </div>
+
+      <Row className="align-items-center g-0">
+        <Col>
+          <div className="d-flex flex-md-column mb-2">
+            <h3 className="w_card_title mb-0 me-2">Customer List</h3>
+            <small className="text-muted">({pagination.totalItems.toLocaleString()} {pagination.totalItems === 1 ? "customer" : "customers"})</small>
           </div>
         </Col>
-        <Col lg={3} md={4} sm={12}>
-          <Form.Select size="sm" value={filters.source} onChange={handleSourceChange}>
+        <Col xs="auto">
+          <Button variant="custom" size="sm" className="mb-2" onClick={() => setEditCustomer({})}>
+            <i className="fa-solid fa-plus me-1" />Add Customer
+          </Button>
+        </Col>
+      </Row>
+
+      <Row className="search_filters gx-1 gy-1">
+        <Col xl={4} md={6} xs={12}>
+          {/* One box (as on the Leads list and beside the profile): an @ means email, digits a phone number, anything
+              else a name (first, last or both). */}
+          <Form.Control type="search" size="sm" placeholder="Search name, phone or email" aria-label="Search name, phone or email"
+            value={searchText} onChange={(e) => setSearchText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleSearch(); }} />
+        </Col>
+        <Col xl={2} md={3} xs={6}>
+          <Form.Select size="sm" value={filters.source} onChange={handleSourceChange} aria-label="Source">
             <option value="">All Sources</option>
             <option value="inbound">Inbound Lead</option>
             <option value="internet">Internet</option>
@@ -239,59 +305,123 @@ export default function CustomerList() {
             <option value="unknown">Unknown</option>
           </Form.Select>
         </Col>
-        <Col lg={6} md={8} sm={12}>
-          <DateRangePickerComponent
-            onDateRangeChange={handleDateRangeChange}
-            dateRange={filters.dateRange}
-            timezone={dealerTimezone}
-            className="w-100"
-          />
+        <Col xl={2} md={3} xs={6}>
+          <Form.Select size="sm" value={filters.assigned_to} aria-label="Assigned to"
+            onChange={(e) => setFilters((prev) => ({ ...prev, assigned_to: e.target.value }))}>
+            <option value="">Anyone (assigned to)</option>
+            <option value="none">Unassigned</option>
+            {staffList.map((staff) => <option key={staff._id} value={staff._id}>{staff.name}</option>)}
+          </Form.Select>
+        </Col>
+        <Col xl={2} md={6} xs={12}>
+          <DateRangePickerComponent onDateRangeChange={handleDateRangeChange} dateRange={filters.dateRange}
+            timezone={dealerTimezone} className="w-100" />
+        </Col>
+        <Col xl={2} md={6} xs={12}>
+          <div className="d-flex gap-1">
+            <Button size="sm" variant="custom" className="w-50" onClick={handleSearch}>Search</Button>
+            <Button size="sm" variant="secondary" className="w-50" onClick={clearFilters}>Clear</Button>
+          </div>
         </Col>
       </Row>
 
-      <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-        <div className="d-flex align-items-center">
-          <h3 className="w_card_title mb-0">Customer List</h3>
-          <small className="text-muted ms-2">({pagination.totalItems.toLocaleString()} {pagination.totalItems === 1 ? "customer" : "customers"})</small>
-        </div>
-        <Button variant="custom" size="sm" onClick={() => setEditCustomer({})}>
-          <i className="fa-solid fa-plus me-1" />Add Customer
-        </Button>
-      </div>
-
-      <div className="w_card_list">
-        <ListGroup variant="flush">
-          <ListGroup.Item className="w_card_list_head border-bottom-0">
-            <Row className="align-items-center">
-              <Col md={3}><IconLabel name="customer">Name</IconLabel></Col>
-              <Col md={3}><IconLabel name="email">Primary Email</IconLabel></Col>
-              <Col md={3}><IconLabel name="phone">Primary Phone</IconLabel></Col>
-              <Col md={2}><IconLabel name="contactMethods">Contact Methods</IconLabel></Col>
-              <Col md={1} className="text-end"><IconLabel name="lead">Leads</IconLabel></Col>
+      <div className="w_card_list mt-3" style={loading ? { opacity: 0.5 } : undefined}>
+        <ListGroup as="ul" variant="flush">
+          <ListGroup.Item as="li" className="w_card_list_head lead_list_head border-bottom-0">
+            <Row className="align-items-center w-100 g-0">
+              <Col xl={10} lg={9} sm={9} xs={12} className="lead_main_col">
+                <Row className="align-items-center gx-2">
+                  <Col xl={3} lg={3} sm={3}><p className="label"><small><IconLabel name="customer">Name</IconLabel></small></p></Col>
+                  <Col xl={2} lg={2} sm={2}><p className="label"><small><IconLabel name="email">Email</IconLabel></small></p></Col>
+                  <Col xl={2} lg={2} sm={2}><p className="label"><small><IconLabel name="phone">Phone</IconLabel></small></p></Col>
+                  <Col xl={1} lg={1} sm={1}><p className="label"><small><IconLabel name="source">Source</IconLabel></small></p></Col>
+                  <Col xl={2} lg={2} sm={2}><p className="label"><small><IconLabel name="owner">Assigned To</IconLabel></small></p></Col>
+                  <Col xl={2} lg={2} sm={2}><p className="label"><small><IconLabel name="date">Customer since</IconLabel></small></p></Col>
+                </Row>
+              </Col>
+              <Col xl={1} lg={1} sm={1} xs={12} className="lead_status_col">
+                <p className="label"><small><IconLabel name="lead">Leads</IconLabel></small></p>
+              </Col>
+              <Col xl={1} lg={2} sm={2} xs={12} className="lead_action_col">
+                <p className="p_bold text-center"><small><IconLabel name="action">Action</IconLabel></small></p>
+              </Col>
             </Row>
           </ListGroup.Item>
 
           {customers.length === 0 ? <div className="text-center py-4">No customers found.</div> : customers.map((customer) => {
             const email = primaryValue(customer.emails);
             const phone = primaryValue(customer.phones);
-
+            const moreContacts = (customer.emails?.length || 0) + (customer.phones?.length || 0) - (email ? 1 : 0) - (phone ? 1 : 0);
+            const open = (e) => { if (e.target.closest("select, button, input")) return; openCustomer(customer._id); };
+            const since = customer.createdAt ? moment(customer.createdAt).tz(dealerTimezone) : null;
             return (
-              <ListGroup.Item key={customer._id} className="w_card_list_box p-0">
-                <button type="button" className="w-100 border-0 bg-transparent text-start px-3 py-3" onClick={() => openCustomer(customer._id)}>
-                  <Row className="align-items-center">
-                    <Col md={3} className="p_bold"><span className="ap_person"><i className="fa-solid fa-chevron-right" /><Avatar name={lastFirst(customer)} /><span>{lastFirst(customer) || "Unnamed customer"}</span></span></Col>
-                    <Col md={3}><span className="ap_field"><AppIcon name="email" /><span className="text-truncate">{email || "No email"}</span></span></Col>
-                    <Col md={3}><span className="ap_field"><AppIcon name="phone" /><span>{phone || "No phone"}</span></span></Col>
-                    <Col md={2}><span className="ap_field"><AppIcon name="contactMethods" /><span>{(customer.emails?.length || 0) + (customer.phones?.length || 0)}</span></span></Col>
-                    <Col md={1} className="text-end"><IconLabel name="lead">{customer.lead_count ?? 0}</IconLabel></Col>
-                  </Row>
-                </button>
+              <ListGroup.Item as="li" key={customer._id} className="lead-item w_card_list_box d-flex align-items-center"
+                style={{ cursor: "pointer" }} onClick={open}>
+                <Row className="align-items-center w-100 g-0">
+                  <Col xl={10} lg={9} sm={9} xs={12} className="lead_main_col">
+                    <Row className="align-items-center gx-2">
+                      <Col xl={3} lg={3} sm={3} xs={12} className="a_link">
+                        <p className="p_bold ap_person"><Avatar name={lastFirst(customer)} /><span>{lastFirst(customer) || "Unnamed customer"}</span></p>
+                      </Col>
+                      <Col xl={2} lg={2} sm={2} xs={12}>
+                        <div className="w_card_list_box_label">
+                          <p className="label"><small>Email:</small></p>
+                          <p className="ap_field"><AppIcon name="email" /><span className="text-truncate" title={email}>{email || "No email"}</span></p>
+                        </div>
+                      </Col>
+                      <Col xl={2} lg={2} sm={2} xs={12}>
+                        <div className="w_card_list_box_label">
+                          <p className="label"><small>Phone:</small></p>
+                          <p className="ap_field"><AppIcon name="phone" /><span>{phone || "No phone"}</span></p>
+                          {moreContacts > 0 && <small className="text-muted d-block" title="Other phone numbers and email addresses on file">
+                            <AppIcon name="contactMethods" />+{moreContacts} more</small>}
+                        </div>
+                      </Col>
+                      <Col xl={1} lg={1} sm={1} xs={12}>
+                        <div className="w_card_list_box_label">
+                          <p className="label"><small>Source:</small></p>
+                          <small className="badge bg-light text-dark border text-wrap text-start" title="Where this customer came from">
+                            {customer.origin_badge || "Unknown"}</small>
+                        </div>
+                      </Col>
+                      <Col xl={2} lg={2} sm={2} xs={12}>
+                        <div className="w_card_list_box_label">
+                          <p className="label"><small>Assigned To:</small></p>
+                          {canAssign ? (
+                            <Form.Select size="sm" value={customer.assigned_to || ""} aria-label="Assigned to"
+                              onChange={(e) => handleAssignmentChange(customer._id, e.target.value)}>
+                              <option value="">Unassigned</option>
+                              {staffList.map((staff) => <option key={staff._id} value={staff._id}>{staff.name}</option>)}
+                            </Form.Select>
+                          ) : (
+                            <p className="text-truncate">{staffName(customer.assigned_to) || customer.assigned_to_name || "Unassigned"}</p>
+                          )}
+                        </div>
+                      </Col>
+                      <Col xl={2} lg={2} sm={2} xs={12}>
+                        <div className="w_card_list_box_label">
+                          <p className="label"><small>Customer since:</small></p>
+                          <p className="ap_field ap_wrap"><AppIcon name="date" />
+                            <span>{since ? since.format("MMM D, YYYY") : "N/A"}{since && <small className="d-block text-muted">{since.format("h:mm A")}</small>}</span></p>
+                        </div>
+                      </Col>
+                    </Row>
+                  </Col>
+                  <Col xl={1} lg={1} sm={1} xs={12} className="lead_status_col">
+                    <span className="ap_field" title={`${customer.lead_count ?? 0} leads`}><AppIcon name="lead" />{customer.lead_count ?? 0}</span>
+                  </Col>
+                  <Col xl={1} lg={2} sm={2} xs={12} className="lead_action_col">
+                    <div className="d-flex justify-content-center gap-1">
+                      <Button size="sm" variant="custom" title="Open the customer's profile" aria-label="Open the customer's profile"
+                        onClick={() => openCustomer(customer._id)}><i className="fa-regular fa-eye" /></Button>
+                    </div>
+                  </Col>
+                </Row>
               </ListGroup.Item>
             );
           })}
         </ListGroup>
       </div>
-
       {pagination.totalPages > 1 && (
         <div className="d-md-flex justify-content-center mt-3">
           <Pagination className="mb-md-0 justify-content-center flex-wrap">
