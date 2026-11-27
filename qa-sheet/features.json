@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-27T12:52:33.752Z",
+ "generatedAt": "2026-11-27T13:30:18.811Z",
  "app": {
   "name": "AutoPulse CRM",
   "url": "https://www.autopulse.ai",
@@ -40,7 +40,7 @@
    "title": "Sign-in & public pages"
   }
  ],
- "inventoryAt": "2026-11-27T12:52:24.883Z",
+ "inventoryAt": "2026-11-27T13:30:18.740Z",
  "totals": {
   "sections": 81,
   "features": 223,
@@ -181,10 +181,10 @@
      "code": "DMA-B01"
     },
     {
-     "id": "dealer/_menu.b.x.react-aria7970780242-r-2",
+     "id": "dealer/_menu.b.x.react-aria6064960235-r-2",
      "label": "Switch store",
      "kind": "button",
-     "el": "#react-aria7970780242-_r_2_",
+     "el": "#react-aria6064960235-_r_2_",
      "href": null,
      "panel": "",
      "about": "Switch store.",
@@ -194,10 +194,10 @@
      "code": "DMA-B02"
     },
     {
-     "id": "dealer/_menu.b.x.react-aria7970780242-r-0",
+     "id": "dealer/_menu.b.x.react-aria6064960235-r-0",
      "label": "Notifications",
      "kind": "button",
-     "el": "#react-aria7970780242-_r_0_",
+     "el": "#react-aria6064960235-_r_0_",
      "href": null,
      "panel": "",
      "about": "Opens the notifications list.",
@@ -1294,10 +1294,10 @@
      "code": "DAS-B01"
     },
     {
-     "id": "dealer/dashboard.b.x.react-aria3974277518-r-5",
+     "id": "dealer/dashboard.b.x.react-aria4353062776-r-3",
      "label": "Download report",
      "kind": "button",
-     "el": "#react-aria3974277518-_r_5_",
+     "el": "#react-aria4353062776-_r_3_",
      "href": null,
      "panel": "Leads Dashboard",
      "about": "Download report.",
@@ -1710,10 +1710,10 @@
      "code": "DAS-B33"
     },
     {
-     "id": "dealer/dashboard.b.after-pressing-lead-sources.react-aria6625443543-r-4",
+     "id": "dealer/dashboard.b.after-pressing-lead-sources.react-aria3176300042-r-4",
      "label": "Download",
      "kind": "button",
-     "el": "#react-aria6625443543-_r_4_",
+     "el": "#react-aria3176300042-_r_4_",
      "href": null,
      "panel": "Where leads come from · after pressing 'Lead sources'",
      "about": "Download. (after pressing 'Lead sources')",
@@ -4499,10 +4499,10 @@
      "code": "CUP-B23"
     },
     {
-     "id": "dealer/customers/[id].b.x.react-aria7876639863-r-3",
+     "id": "dealer/customers/[id].b.x.react-aria9996607002-r-5",
      "label": "Forms",
      "kind": "button",
-     "el": "#react-aria7876639863-_r_3_",
+     "el": "#react-aria9996607002-_r_5_",
      "href": null,
      "panel": "Customer Details",
      "about": "Forms.",
@@ -6024,10 +6024,10 @@
      "code": "DEL-B03"
     },
     {
-     "id": "dealer/desk-log.b.x.react-aria2668345978-r-2",
+     "id": "dealer/desk-log.b.x.react-aria7860135920-r-2",
      "label": "More: check in, today's appointments, settings",
      "kind": "button",
-     "el": "#react-aria2668345978-_r_2_",
+     "el": "#react-aria7860135920-_r_2_",
      "href": null,
      "panel": "Desk Log",
      "about": "Filter: More: check in, today's appointments, settings.",
@@ -6934,13 +6934,13 @@
      "code": "AIM-B01"
     },
     {
-     "id": "dealer/ai/messages.b.x.cr-carla-reyes-11-hours-ago-around-11am-works-for-me-2-5-121",
-     "label": "CR Carla Reyes 11 hours ago Around 11am works for me 2 5 +12175558045",
+     "id": "dealer/ai/messages.b.x.cr-carla-reyes-12-hours-ago-around-11am-works-for-me-2-5-121",
+     "label": "CR Carla Reyes 12 hours ago Around 11am works for me 2 5 +12175558045",
      "kind": "button",
      "el": null,
      "href": null,
      "panel": "AI Messages",
-     "about": "CR Carla Reyes 11 hours ago Around 11am works for me 2 5 +12175558045.",
+     "about": "CR Carla Reyes 12 hours ago Around 11am works for me 2 5 +12175558045.",
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
@@ -7699,10 +7699,10 @@
      "code": "REP-B01"
     },
     {
-     "id": "dealer/reports.b.x.react-aria4424570103-r-3",
+     "id": "dealer/reports.b.x.react-aria6473581665-r-3",
      "label": "Download report",
      "kind": "button",
-     "el": "#react-aria4424570103-_r_3_",
+     "el": "#react-aria6473581665-_r_3_",
      "href": null,
      "panel": "Leads Dashboard",
      "about": "Download report.",
@@ -9691,10 +9691,10 @@
    ],
    "buttons": [
     {
-     "id": "dealer/forms.b.x.react-aria3024104987-r-3",
+     "id": "dealer/forms.b.x.react-aria7334771725-r-3",
      "label": "Add a standard form",
      "kind": "button",
-     "el": "#react-aria3024104987-_r_3_",
+     "el": "#react-aria7334771725-_r_3_",
      "href": null,
      "panel": "Forms Library",
      "about": "Add a standard form.",
@@ -10814,10 +10814,10 @@
    ],
    "buttons": [
     {
-     "id": "dealer/subscribe.b.x.react-aria4311678344-r-2-tab-currentplan",
+     "id": "dealer/subscribe.b.x.react-aria7206961540-r-2-tab-currentplan",
      "label": "My Current Plan",
      "kind": "tab",
-     "el": "#react-aria4311678344-_r_2_-tab-currentplan",
+     "el": "#react-aria7206961540-_r_2_-tab-currentplan",
      "href": null,
      "panel": "My Subscription",
      "about": "Tab: shows the 'My Current Plan' part of My subscription.",
@@ -10827,10 +10827,10 @@
      "code": "MYS-B01"
     },
     {
-     "id": "dealer/subscribe.b.x.react-aria4311678344-r-2-tab-subscriptionplan",
+     "id": "dealer/subscribe.b.x.react-aria7206961540-r-2-tab-subscriptionplan",
      "label": "Subscription Plans",
      "kind": "tab",
-     "el": "#react-aria4311678344-_r_2_-tab-subscriptionplan",
+     "el": "#react-aria7206961540-_r_2_-tab-subscriptionplan",
      "href": null,
      "panel": "My Subscription",
      "about": "Tab: shows the 'Subscription Plans' part of My subscription.",
@@ -12012,10 +12012,10 @@
      "code": "AAI-B19"
     },
     {
-     "id": "admin/ai-studio.b.x.react-aria5196107085-r-1-tab-edit",
+     "id": "admin/ai-studio.b.x.react-aria2947655062-r-1-tab-edit",
      "label": "Edit",
      "kind": "tab",
-     "el": "#react-aria5196107085-_r_1_-tab-edit",
+     "el": "#react-aria2947655062-_r_1_-tab-edit",
      "href": null,
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "about": "Tab: shows the 'Edit' part of AI Studio.",
@@ -12025,10 +12025,10 @@
      "code": "AAI-B20"
     },
     {
-     "id": "admin/ai-studio.b.x.react-aria5196107085-r-1-tab-live",
+     "id": "admin/ai-studio.b.x.react-aria2947655062-r-1-tab-live",
      "label": "Live (v1)",
      "kind": "tab",
-     "el": "#react-aria5196107085-_r_1_-tab-live",
+     "el": "#react-aria2947655062-_r_1_-tab-live",
      "href": null,
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "about": "Tab: shows the 'Live (v1)' part of AI Studio.",
@@ -12038,10 +12038,10 @@
      "code": "AAI-B21"
     },
     {
-     "id": "admin/ai-studio.b.x.react-aria5196107085-r-1-tab-history",
+     "id": "admin/ai-studio.b.x.react-aria2947655062-r-1-tab-history",
      "label": "History (1)",
      "kind": "tab",
-     "el": "#react-aria5196107085-_r_1_-tab-history",
+     "el": "#react-aria2947655062-_r_1_-tab-history",
      "href": null,
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "about": "Tab: shows the 'History (1)' part of AI Studio.",
@@ -14545,10 +14545,10 @@
      "code": "APA-B05"
     },
     {
-     "id": "admin/package.b.in-the-window-menu-that-add-package-opens.react-aria4449317401-r-1-tab-general",
+     "id": "admin/package.b.in-the-window-menu-that-add-package-opens.react-aria7683026599-r-1-tab-general",
      "label": "General",
      "kind": "tab",
-     "el": "#react-aria4449317401-_r_1_-tab-general",
+     "el": "#react-aria7683026599-_r_1_-tab-general",
      "href": null,
      "panel": "Add Package · in the window / menu that 'Add Package' opens",
      "about": "Tab: shows the 'General' part of Packages. (in the window / menu that 'Add Package' opens)",
@@ -14558,10 +14558,10 @@
      "code": "APA-B06"
     },
     {
-     "id": "admin/package.b.in-the-window-menu-that-add-package-opens.react-aria4449317401-r-1-tab-features",
+     "id": "admin/package.b.in-the-window-menu-that-add-package-opens.react-aria7683026599-r-1-tab-features",
      "label": "Features",
      "kind": "tab",
-     "el": "#react-aria4449317401-_r_1_-tab-features",
+     "el": "#react-aria7683026599-_r_1_-tab-features",
      "href": null,
      "panel": "Add Package · in the window / menu that 'Add Package' opens",
      "about": "Tab: shows the 'Features' part of Packages. (in the window / menu that 'Add Package' opens)",
