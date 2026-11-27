@@ -112,7 +112,10 @@ export default function ViewConversations({
   const threadRef = useRef(null); // the chat thread: kept scrolled to the newest message at the bottom
   // Leads page (the user, 27 Nov 2026): one inbox - the lead's header on top with tabs (Conversation / Lead details /
   // AI Assistant) instead of a middle column; the customer profile (embedded) keeps its own layout.
-  const [leadTab, setLeadTab] = useState("conversation");
+  // (2) The user, 27 Nov 2026: the lead's information must stay on screen - it is a panel on the right of the
+  // conversation again (lead card, then the AI Assistant), which the Details button folds away.
+  const [showInfo, setShowInfo] = useState(true);
+  const leadTab = "conversation";
   const tabbed = !embedded;
   // Channels this customer opted out of (the AI's consent record), re-read whenever the lead or its status changes.
   const [stoppedChannels, setStoppedChannels] = useState({});
@@ -851,21 +854,16 @@ export default function ViewConversations({
                 <Button variant="outline-secondary" size="sm" onClick={handleClose}>
                   <i className="fa-solid fa-arrow-left me-1"></i>Back to list
                 </Button>
-              </div>
-              <div className="inbox_tabs" role="tablist">
-                {[["conversation", "fa-messages", "Conversation"], ["details", "fa-id-card", "Lead details"],
-                  ["ai", "fa-message-bot", "AI Assistant"]].map(([key, icon, label]) => (
-                  <button key={key} type="button" role="tab" aria-selected={leadTab === key}
-                    className={leadTab === key ? "on" : ""} onClick={() => setLeadTab(key)}>
-                    <i className={`fa-regular ${icon} me-1`} aria-hidden="true"></i>{label}
-                  </button>
-                ))}
+                <Button variant={showInfo ? "custom" : "outline-custom"} size="sm" aria-pressed={showInfo}
+                  onClick={() => setShowInfo(!showInfo)} title="Lead details and AI Assistant">
+                  <i className="fa-regular fa-sidebar-flip me-1"></i>Details
+                </Button>
               </div>
             </div>
           )}
           <Row className="gx-3">
-            <Col xxl={tabbed ? 12 : 4} lg={tabbed ? 12 : 5} md={tabbed ? 12 : 5}
-              className={tabbed && leadTab === "conversation" ? "d-none" : ""}>
+            <Col xxl={4} lg={tabbed ? 4 : 5} md={tabbed ? 12 : 5}
+              className={tabbed ? (showInfo ? "order-lg-last inbox_info" : "d-none") : ""}>
               {/* Stays in view while the conversation scrolls (BB, 17 Nov 2026: "as the conversation gets long this
                   column shifts to the bottom"); scrolls on its own when taller than the screen. */}
               <div className="dealer_info position-sticky mb-3 lead_center_col">
@@ -883,7 +881,7 @@ export default function ViewConversations({
                   />
                 )} */}
                 
-                <div className={`w_card leadinfo_card mb-2 row gx-1${tabbed && leadTab !== "details" ? " d-none" : ""}`}>
+                <div className="w_card leadinfo_card mb-2 row gx-1">
                   {/* The lead's details, editable in one click (LeadInfoCard: 13 Nov 2026 meeting / BB 17 Nov). */}
                   <div className="col-12">
                     <LeadInfoCard lead={lead} dealerTimezone={dealerTimezone} onStatusClick={() => setShowStatusModal(true)}
@@ -977,7 +975,7 @@ export default function ViewConversations({
                   ); return actionsTarget ? createPortal(actions, actionsTarget) : actions; })()}
                 </div>
                 {/* What the AI is doing with this lead (stage, next touch, call task, consent; on/off) */}
-                {lead?._id && (!tabbed || leadTab === "ai") && (
+                {lead?._id && (
                   <AiLeadPanel key={`${lead._id}-${lead.fe_lead_status || lead.status || ""}`} leadId={lead._id} />)}
                 {!embedded && !tabbed && (
                 <div className="d-flex align-items-center justify-content-between gap-2">
@@ -1018,8 +1016,8 @@ export default function ViewConversations({
               </div>
             </Col>
 
-            <Col xxl={tabbed ? 12 : 8} lg={tabbed ? 12 : 7} md={tabbed ? 12 : 7}
-              className={tabbed ? (leadTab === "conversation" ? "inbox_chat" : "d-none") : ""}>
+            <Col xxl={tabbed && !showInfo ? 12 : 8} lg={tabbed ? (showInfo ? 8 : 12) : 7} md={tabbed ? 12 : 7}
+              className={tabbed ? "inbox_chat" : ""}>
               <div className="position-relative mb-2">
                 {isNavigating && (
                   <div 
