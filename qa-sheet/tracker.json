@@ -1068,22 +1068,22 @@
   },
   "M25-16": {
    "feature": "Reply box in the conversation (chat style), customer left / ours right",
-   "status": "Partly done",
-   "live": "No",
+   "status": "Done",
+   "live": "After merge",
    "where": "Lead conversation",
    "order": "Meeting 25 Nov"
   },
   "M25-17": {
    "feature": "Attach vehicle: photos and facts",
-   "status": "Partly done",
-   "live": "No",
+   "status": "Done",
+   "live": "After merge",
    "where": "Reply window > Attach Vehicle",
    "order": "Meeting 25 Nov"
   },
   "M25-18": {
    "feature": "One-click dealer links (credit application...)",
-   "status": "Partly done",
-   "live": "No",
+   "status": "Done",
+   "live": "After merge",
    "where": "Reply window > Send a link",
    "order": "Meeting 25 Nov"
   },
@@ -1169,6 +1169,34 @@
    "status": "Done",
    "live": "After merge",
    "where": "-",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-31": {
+   "feature": "Lead page as an inbox: lead list + conversation, top band, Lead settings after Customer profile",
+   "status": "Done",
+   "live": "After merge",
+   "where": "Leads > open a lead",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-32": {
+   "feature": "Inbox extras: What we know strip + AI summary, AI working dots, grouped bubbles, Waiting and Hot badges",
+   "status": "Done",
+   "live": "After merge",
+   "where": "Leads > open a lead",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-33": {
+   "feature": "Bulk select and pager in the side lead list",
+   "status": "Done",
+   "live": "After merge",
+   "where": "Leads > open a lead > list",
+   "order": "Meeting 25 Nov"
+  },
+  "M25-34": {
+   "feature": "Lead page fits the screen (desktop, laptop, tablet, phone)",
+   "status": "Done",
+   "live": "After merge",
+   "where": "Leads > open a lead",
    "order": "Meeting 25 Nov"
   }
  }
