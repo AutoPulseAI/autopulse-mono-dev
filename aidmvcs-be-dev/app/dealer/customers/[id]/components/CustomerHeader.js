@@ -15,6 +15,7 @@ import { formatCurrency } from "../../../../utils/formatCurrency";
 import { useCan } from "../../../../hooks/PermissionsContext";
 import CallButton from "../../../components/CallButton";
 import ExportFormButton from "./ExportFormButton";
+import MergeFinder from "./MergeFinder";
 import { LeadFacts } from "../../../leads/components/LeadInfoCard";
 import { NAME_PART_FIELDS, namePartsOf, tidyCase } from "../../../../lib/personName";
 
@@ -323,6 +324,9 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
   // Reuses the leads permission - assigning a customer cascades to all of
   // their leads, so it belongs to the same permission as assigning a lead.
   const canAssignLeads = useCan("Assign Leads");
+  // Merge (Bibi, 26 Nov 2026): the same permission as Customers > Possible duplicates (the merge API checks it too).
+  const canMerge = useCan("Manage Leads");
+  const [merging, setMerging] = useState(false);
   const [notice, setNotice] = useState(null);
   const [formMessage, setFormMessage] = useState(null); // { variant, text } from Export to form
   // "More details" starts folded; a click opens it (19 Nov 2026: keeps the profile short).
@@ -414,6 +418,11 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
             {/* SOW G-056: a print-friendly summary of the profile as it is open now (styles.css @media print). */}
             <button type="button" className="cp_tool act_print" onClick={() => window.print()} title="Print this customer's summary">
               <i className="fa-duotone fa-print" />Print</button>
+            {canMerge && (
+              <button type="button" className="cp_tool act_status" onClick={() => setMerging(true)}
+                title="Find customers that may be the same person and merge them">
+                <i className="fa-duotone fa-code-merge" />Merge</button>
+            )}
           </div>
         </div>
         {/* 13 Nov 2026 meeting (10.3, DealerSocket "Search"): look the customer up on the web (opens a new tab). */}
@@ -449,6 +458,8 @@ export default function CustomerHeader({ customer, valueSnapshot, onSendMessage,
           </div>
         </div>
       </div>
+      {canMerge && <MergeFinder show={merging} customerId={String(customer._id)} dealerId={dealerId}
+        onHide={() => setMerging(false)} onMerged={() => { setMerging(false); onChanged?.(); }} />}
       {formMessage && <Alert variant={formMessage.variant} className="py-1 small cp_notice" dismissible onClose={() => setFormMessage(null)}>{formMessage.text}</Alert>}
       {notice && <Alert variant="success" className="py-1 small cp_notice" dismissible onClose={() => setNotice(null)}>{notice}</Alert>}
 

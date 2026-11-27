@@ -14,6 +14,10 @@ export async function attachInboxPreview(leads, { Model = Email } = {}) {
     { $match: { lead_id: { $in: ids }, is_note: { $ne: true }, status: { $ne: 'note' },
       communication_type: { $in: ['sms', 'email'] } } },
     { $sort: { timestamp: -1, _id: -1 } },
+    // Only what the preview needs, and only the start of the text: long HTML emails are never carried through the
+    // grouping (27 Nov 2026, the site slowed down).
+    { $project: { lead_id: 1, timestamp: 1, status: 1, communication_type: 1, ai_generated: 1, message_by: 1, read: 1,
+      mail_content: { $cond: [{ $eq: [{ $type: '$mail_content' }, 'string'] }, { $substrCP: ['$mail_content', 0, 1500] }, ''] } } },
     { $group: { _id: '$lead_id', last: { $first: '$$ROOT' },
       unread: { $sum: { $cond: [{ $and: [{ $in: ['$status', ['received', 'incoming']] }, { $ne: ['$read', true] }] }, 1, 0] } } } },
     { $project: { 'last.mail_content': 1, 'last.timestamp': 1, 'last.status': 1, 'last.communication_type': 1,

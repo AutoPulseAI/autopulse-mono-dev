@@ -33,7 +33,7 @@ for (const storeId of stores) {
   let storeName = storeId;
   try { const u = db.users.findOne({ _id: ObjectId(String(storeId)) }, { name: 1 }); if (u) storeName = u.name; } catch (e) { /* not an ObjectId */ }
   // Newest cars with a VIN first; one copy per VIN across all stores.
-  const cars = db.vehicles.find({ dealerId: storeId, vin: { $exists: true, $nin: [null, ''] } }).sort({ updatedAt: -1 }).limit(perStore * 3).toArray();
+  const cars = db.vehicles.find({ dealerId: storeId, removedAt: null, vin: { $exists: true, $nin: [null, ''] } }).sort({ updatedAt: -1 }).limit(perStore * 3).toArray();
   // Running it again tops each store up to PER_STORE; it never keeps adding.
   const already = db.vehicles.countDocuments({ dealerId: testId, 'test_copy.from_dealer': String(storeId) });
   const need = Math.max(0, perStore - already);
@@ -50,7 +50,7 @@ for (const storeId of stores) {
   if (!apply || !pick.length) continue;
   const now = new Date();
   const docs = pick.map((c) => {
-    const { _id, ...rest } = c;
+    const { _id, removedAt, ...rest } = c; // only cars still in stock; never copy a "gone" mark (it hides the car)
     return { ...rest, dealerId: testId, test_copy: { from_dealer: String(storeId), from_vehicle: String(_id), at: now }, createdAt: now, updatedAt: now };
   });
   try { db.vehicles.insertMany(docs, { ordered: false }); }

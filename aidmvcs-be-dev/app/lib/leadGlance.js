@@ -41,7 +41,8 @@ export async function leadGlance(lead, { db = mongoose.connection.db } = {}) {
   const f = {};
   // A lead's own value wins over the customer-wide one.
   for (const x of facts.sort((a, b) => (a.lead_id ? 1 : 0) - (b.lead_id ? 1 : 0))) f[x.path] = x.value;
-  const state = await db.collection('ai_lead_state').findOne({ lead_id: lid }, { projection: { summary: 1 } });
+  // With dealer_id the read uses the AI's (dealer_id, lead_id) index instead of scanning the whole collection.
+  const state = await db.collection('ai_lead_state').findOne({ dealer_id: { $in: [String(lead.dealer_id), ...(mongoose.isValidObjectId(String(lead.dealer_id)) ? [new mongoose.Types.ObjectId(String(lead.dealer_id))] : [])] }, lead_id: { $in: [lid, lead._id] } }, { projection: { summary: 1 } });
   const summary = typeof state?.summary === 'string' ? state.summary
     : typeof state?.summary?.text === 'string' ? state.summary.text : null;
   return { chips: glanceChips(f), summary: summary ? summary.slice(0, 400) : null };

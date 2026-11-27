@@ -124,3 +124,53 @@ export async function possibleMatchesFor(dealerId, customerId) {
       ...(o.phones || []).map((p) => digits(p?.value)).filter((d) => phones.includes(d))],
   }));
 }
+
+// One customer as the merge review shows it (same shape as a duplicateGroups customer).
+function mergeCard(c, leads) {
+  const a = (c.addresses || []).find((x) => x.is_primary) || (c.addresses || [])[0];
+  return { _id: String(c._id), name: c.name || null, emails: (c.emails || []).map((e) => e.value),
+    phones: (c.phones || []).map((p) => p.value), created_at: c.createdAt || null,
+    address: a ? [a.line1, a.city, a.state, a.zip].filter(Boolean).join(', ') : null,
+    leads: leads.get(String(c._id)) || 0, dealership_history: hasDealershipHistory(c) };
+}
+const escapeRx = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// The profile's "Merge" button (Bibi, 26 Nov 2026: "it will pull up all potential matching customers and dealer will
+// have to select which one they want to merge and what they want to keep"). Potential matches: the same phone or email
+// (as duplicateGroups) or the same full name; `q` instead finds any other customer by name, phone or email. Customers
+// already merged, and pairs marked "not the same person", are left out (the search still finds them by name).
+export async function mergeCandidates(dealerId, customerId, q = '') {
+  const dealer = String(dealerId);
+  const me = await Customer.findOne({ _id: customerId, dealer_id: dealer })
+    .select('name first_name last_name emails phones addresses createdAt merged_into dealervault_upload extra.dealervault.customer_numbers').lean();
+  if (!me) return null;
+  const emails = (me.emails || []).map((e) => String(e?.value || '').trim().toLowerCase()).filter(Boolean);
+  const phones = (me.phones || []).map((p) => digits(p?.value)).filter((d) => d.length === 10);
+  const name = String(me.name || [me.first_name, me.last_name].filter(Boolean).join(' ')).trim();
+  const base = { dealer_id: dealer, _id: { $ne: me._id }, merged_into: { $in: [null] } };
+  let filter;
+  const query = String(q || '').trim().slice(0, 80);
+  if (query) {
+    const d = query.replace(/\D/g, '');
+    filter = query.includes('@') ? { ...base, 'emails.value': new RegExp(escapeRx(query), 'i') }
+      : /^[\d\s()+.-]+$/.test(query) && d.length >= 3 ? { ...base, 'phones.value': new RegExp(escapeRx(d)) }
+        : { ...base, name: new RegExp(escapeRx(query), 'i') };
+  } else {
+    const or = [...(emails.length ? [{ 'emails.value': { $in: emails } }] : []), ...phones.map((p) => ({ 'phones.value': new RegExp(`${p}$`) })),
+      ...(name.split(/\s+/).length >= 2 ? [{ name: new RegExp(`^\\s*${escapeRx(name)}\\s*$`, 'i') }] : [])];
+    if (!or.length) return { me: mergeCard(me, new Map()), matches: [] };
+    filter = { ...base, $or: or };
+  }
+  const others = await Customer.find(filter)
+    .select('name emails phones addresses createdAt dealervault_upload extra.dealervault.customer_numbers').limit(25).lean();
+  const dismissed = query ? new Set() : new Set((await DuplicateReview.find({ dealer_id: dealer, decision: 'not_duplicate' })
+    .select('pair').lean()).map((r) => r.pair));
+  const list = others.filter((o) => !dismissed.has(pairKey(me._id, o._id)));
+  const ids = [me._id, ...list.map((o) => o._id)];
+  const leads = new Map((await Lead.aggregate([{ $match: { dealer_id: dealer, customer_id: { $in: ids } } },
+    { $group: { _id: '$customer_id', n: { $sum: 1 } } }])).map((r) => [String(r._id), r.n]));
+  const sameName = (o) => name && String(o.name || '').trim().toLowerCase() === name.toLowerCase();
+  return { me: mergeCard(me, leads), matches: list.map((o) => ({ ...mergeCard(o, leads),
+    shared: [...(o.emails || []).map((e) => String(e?.value || '').toLowerCase()).filter((e) => emails.includes(e)),
+      ...(o.phones || []).map((p) => digits(p?.value)).filter((x) => phones.includes(x)), ...(sameName(o) ? ['same name'] : [])] })) };
+}

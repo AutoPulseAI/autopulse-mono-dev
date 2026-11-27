@@ -1,5 +1,6 @@
 // Possible duplicate customers, for a manager to review (SOW Deliverable B b3, gap G-008). Nothing is merged here.
 //   GET  ?dealer_id=&customer_id=   only the customers that share a phone / email with that one (profile notice)
+//   GET  ?dealer_id=&customer_id=&for=merge[&q=]   the profile's Merge button: { me, matches } (same name too; q searches)
 //   GET  ?dealer_id=            the groups (app/lib/duplicateCustomers.js), newest activity first, at most 100
 //   POST {dealer_id, customer_ids: [a, b], decision: 'not_duplicate'}   "not the same person": the pair is not
 //        flagged again (DuplicateReview) and the decision is logged on both customers' timelines.
@@ -11,7 +12,7 @@ import Customer from '@models/Customer';
 import DuplicateReview from '@models/DuplicateReview';
 import { requireDealerAccess } from '@lib/apiGuard';
 import { hasPermission } from '@lib/staffPermission';
-import { duplicateGroups, pairKey, possibleMatchesFor } from '@lib/duplicateCustomers';
+import { duplicateGroups, mergeCandidates, pairKey, possibleMatchesFor } from '@lib/duplicateCustomers';
 import { logActivity } from '@lib/activityLog';
 
 export const runtime = 'nodejs';
@@ -33,6 +34,11 @@ export async function GET(req) {
   const customerId = params.get('customer_id');
   if (customerId) {
     if (!mongoose.isValidObjectId(customerId)) return fail('customer_id is not valid', 400);
+    // for=merge: the profile's Merge button - this customer and its potential matches (or a search, q=).
+    if (params.get('for') === 'merge') {
+      const found = await mergeCandidates(dealerId, customerId, params.get('q') || '');
+      return found ? Response.json(found) : fail('Customer not found', 404);
+    }
     return Response.json({ matches: await possibleMatchesFor(dealerId, customerId) });
   }
   return Response.json(await duplicateGroups(dealerId));

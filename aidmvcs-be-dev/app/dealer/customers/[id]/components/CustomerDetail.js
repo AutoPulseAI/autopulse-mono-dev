@@ -181,7 +181,8 @@ export default function CustomerDetail({ customerId }) {
         activeTab={activeTab}
       />
 
-      <OpenTasks tasks={openTasks} dealerId={activeEntity?.id} onChanged={fetchCustomer360} leads={leads || []} staffList={staffList} />
+      <OpenTasks tasks={openTasks} dealerId={activeEntity?.id} onChanged={fetchCustomer360} leads={leads || []} staffList={staffList}
+        customerName={[customer.first_name, customer.last_name].filter(Boolean).join(" ")} />
       {replyTo && (
         <EmailReplyModal lead={replyTo.lead} dealer_id={replyTo.lead.dealer_id || customer.dealer_id}
           communicationType={replyTo.channel} selectedConversation={{ lead_id: replyTo.lead._id }}
