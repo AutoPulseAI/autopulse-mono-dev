@@ -122,6 +122,24 @@ export default function ViewConversations({
   const [showInfo, setShowInfo] = useState(false);
   const leadTab = "conversation";
   const tabbed = !embedded;
+  // "What we know" (the user, 27 Nov 2026 - inbox ideas): what the AI already learned about this customer, as chips at
+  // the top of the conversation, and its summary of a long conversation. Stored facts only, no AI call
+  // (app/lib/leadGlance.js).
+  const [glance, setGlance] = useState({ chips: [], summary: null });
+  const [glanceOpen, setGlanceOpen] = useState(false);
+  useEffect(() => {
+    const id = lead?._id;
+    setGlance({ chips: [], summary: null });
+    setGlanceOpen(false);
+    if (!id) return undefined;
+    let gone = false;
+    const token = typeof window !== "undefined" ? localStorage.getItem("dealertoken") : null;
+    fetch(`/api/leads/${id}/glance`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!gone && d) setGlance({ chips: Array.isArray(d.chips) ? d.chips : [], summary: d.summary || null }); })
+      .catch(() => {});
+    return () => { gone = true; };
+  }, [lead?._id, lead?.fe_lead_status]);
   // Channels this customer opted out of (the AI's consent record), re-read whenever the lead or its status changes.
   const [stoppedChannels, setStoppedChannels] = useState({});
   useEffect(() => {
@@ -1134,6 +1152,22 @@ export default function ViewConversations({
                 </Nav>
               </div>
 
+              {tabbed && (glance.chips.length > 0 || glance.summary) && (
+                <div className="chat_glance" data-testid="lead-glance">
+                  <span className="chat_glance_title"><i className="fa-solid fa-lightbulb" aria-hidden="true"></i> What we know</span>
+                  {glance.chips.map((c) => (
+                    <span key={c.key} className="chat_glance_chip" title={`${c.label}: ${c.text}`}>
+                      <span className="chat_glance_label">{c.label}</span> {c.text}
+                    </span>
+                  ))}
+                  {glance.summary && (
+                    <button type="button" className="chat_glance_more" onClick={() => setGlanceOpen((o) => !o)}>
+                      {glanceOpen ? "Hide summary" : "AI summary"}
+                    </button>
+                  )}
+                  {glanceOpen && glance.summary && <div className="chat_glance_summary">{glance.summary}</div>}
+                </div>
+              )}
               {activeChannelEmails.length > 0 ? (
                 <div className="conversation-list chat_thread" ref={threadRef} data-testid="chat-thread">
                   {/* Chat order (the user, 27 Nov 2026): oldest at the top, newest at the bottom next to the message box;
@@ -1263,6 +1297,14 @@ export default function ViewConversations({
                           : st === "delivered" || /deliver|read|open/i.test(messageStatusLabel(email))
                             ? <span className="chat_tick read" title={messageStatusLabel(email)}><i className="fa-solid fa-check-double me-1"></i>{messageStatusLabel(email)}</span>
                             : <span className="chat_tick" title={messageStatusLabel(email)}><i className="fa-solid fa-check me-1"></i>{messageStatusLabel(email)}</span>;
+                      // Messages from the same sender within 2 minutes sit together, like WhatsApp: the name line is
+                      // shown once (still on hover / click for details).
+                      const prev = ordered[idx - 1];
+                      const kindOf = (m) => (m?.is_note || m?.status === "note" ? "note"
+                        : messageAuthor(m, lead, dealerParent?.dealer_account_information?.ai_bot_name).kind);
+                      const grouped = !isNote && !bookedBy && !dayChip && prev && !(prev.is_note || prev.status === "note")
+                        && kindOf(prev) === author.kind && email.timestamp && prev.timestamp
+                        && Math.abs(new Date(email.timestamp) - new Date(prev.timestamp)) < 2 * 60 * 1000;
 
                       return [dayChip, (
                         <div
@@ -1270,13 +1312,13 @@ export default function ViewConversations({
                           className={`w_card conversation-item ${
                             selectedConversation?._id === email._id ? 'selected-conversation' : ''
                           } ${isNote ? 'note-item' : ["received", "incoming"].includes(email.status) ? 'chat_in'
-                            : `chat_out ${author.kind === 'ai' ? 'chat_ai' : 'chat_staff'}${["failed", "undelivered", "bounced", "error"].includes(email.status) ? ' chat_failed' : ''}`}`}
+                            : `chat_out ${author.kind === 'ai' ? 'chat_ai' : 'chat_staff'}${["failed", "undelivered", "bounced", "error"].includes(email.status) ? ' chat_failed' : ''}`}${grouped ? ' chat_grouped' : ''}`}
                           onClick={() => setSelectedConversation(email)}
                           style={undefined}
                         >
                           {/* Who wrote it on top; the time and the delivery ticks at the bottom, like WhatsApp
                               (From / To / language on hover). */}
-                          <div className="chat_meta" title={isNote ? `User language: ${msgUserLanguageLabel}`
+                          <div className={`chat_meta${grouped ? ' visually-hidden' : ''}`} title={isNote ? `User language: ${msgUserLanguageLabel}`
                             : `From: ${email.sender || "-"}\nTo: ${email.recipient || "-"}\nUser language: ${msgUserLanguageLabel}`}>
                             {isNote ? (
                               <span className="chat_note_head">
@@ -1435,6 +1477,23 @@ export default function ViewConversations({
                         </div>
                       )];
                     })}
+                  {(() => {
+                    // "The AI is working on it" (the user, 27 Nov 2026 - inbox ideas): the customer wrote in the last
+                    // 3 minutes, nothing has gone back yet and the AI is on for this lead. It goes away when the reply
+                    // lands (the thread refreshes on its own) or after 3 minutes.
+                    const last = activeChannelEmails[0];
+                    const pausedUntil = leadData?.auto_reply_paused_until ? new Date(leadData.auto_reply_paused_until) : null;
+                    const aiOn = leadData?.auto_reply_enabled !== false && !(pausedUntil && pausedUntil > new Date());
+                    const fresh = last && ["received", "incoming"].includes(String(last.status || "").toLowerCase())
+                      && last.timestamp && Date.now() - new Date(last.timestamp).getTime() < 3 * 60 * 1000;
+                    return tabbed && aiOn && fresh ? (
+                      <div className="chat_typing" data-testid="ai-typing" aria-live="polite">
+                        <span className="chat_mini_avatar ai" aria-hidden="true"><i className="fa-solid fa-robot"></i></span>
+                        <span className="chat_typing_dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                        <span className="chat_typing_text">AI is working on a reply</span>
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
               ) : (
                 <div className="w_card p-4 text-center">

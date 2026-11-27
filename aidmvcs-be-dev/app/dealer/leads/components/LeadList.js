@@ -31,6 +31,14 @@ function inboxTime(at, tz) {
   return opt({ month: "numeric", day: "numeric", year: "2-digit" });
 }
 
+// "Waiting" (the user, 27 Nov 2026 - inbox ideas): the customer wrote last and nobody has answered for 5+ minutes.
+function waitingFor(last) {
+  if (last?.from !== "customer" || !last.at) return "";
+  const m = Math.floor((Date.now() - new Date(last.at).getTime()) / 60000);
+  if (!(m >= 5)) return "";
+  return m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`;
+}
+
 const UP_TYPE_OPTIONS = [["up:internet", "Internet"], ["up:phone", "Phone-up"], ["up:walk_in", "Walk-in"], ["up:not_set", "Not set"]];
 const DEPT_TABS = [["", "All departments", "fa-layer-group"], ["sales", "Sales", "fa-car"], ["service", "Service", "fa-screwdriver-wrench"], ["parts", "Parts", "fa-gears"]];
 
@@ -2009,6 +2017,7 @@ useImperativeHandle(ref, () => ({
                         <span className="inbox_main">
                           <span className="inbox_top">
                             <span className={`inbox_title${lead.inbox?.unread ? " unread" : ""}`}>{lead.name || "No name"}</span>
+                            {lead.hot === true && <span className="inbox_hot" title="Marked hot"><i className="fa-solid fa-fire" aria-hidden="true"></i></span>}
                             <span className="inbox_time">{inboxTime(lead.inbox?.last?.at || lead.createdAt, dealerTimezone)}</span>
                           </span>
                           <span className="inbox_bottom">
@@ -2023,6 +2032,8 @@ useImperativeHandle(ref, () => ({
                                 </>
                               ) : <span className="text-muted">{statusLabel(lead.fe_lead_status) || "New lead"}</span>}
                             </span>
+                            {waitingFor(lead.inbox?.last) && <span className="inbox_wait" title="The customer is waiting for an answer">
+                              <i className="fa-regular fa-hourglass-half me-1" aria-hidden="true"></i>{waitingFor(lead.inbox.last)}</span>}
                             {lead.inbox?.unread > 0 && <span className="inbox_unread">{lead.inbox.unread}</span>}
                           </span>
                         </span>
