@@ -17,6 +17,7 @@ import AiLeadPanel from "../../ai/components/AiLeadPanel";
 import CallButton from "../../components/CallButton";
 import LeadInfoCard, { LeadNextStep } from "./LeadInfoCard";
 import LeadJourney from "../../components/LeadJourney";
+import { avatarStyle, initialsOf } from "../../../lib/avatarColor";
 import { deskLogMenuVisible } from "../../desk-log/deskLogAccess";
 // import AutoReplyToggle from "./AutoReplyToggle"; // Import AutoReplyToggle
 // import PendingAutoReplyIndicator from "./PendingAutoReplyIndicator"; // Import Pending indicator
@@ -840,6 +841,7 @@ export default function ViewConversations({
                   came from, and every action the old lead page had - one place, nothing hidden. */}
               <div className="d-flex flex-wrap align-items-center gap-2">
                 <div className="me-auto d-flex align-items-center gap-2 flex-wrap">
+                  <span className="inbox_head_avatar" style={avatarStyle(lead?.name)} aria-hidden="true">{initialsOf(lead?.name)}</span>
                   <span className="inbox_name">{lead?.name || "Lead"}</span>
                   <button type="button" className="inbox_status" onClick={() => setShowStatusModal(true)} title="Change the status">
                     {leadStatusLabel(lead) || lead?.fe_lead_status || "New Lead"} <i className="fa-solid fa-chevron-down ms-1"></i>
@@ -1282,7 +1284,15 @@ export default function ViewConversations({
                                 {email.internal_use === true ? "Internal note" : "Lead note"} · {noteAuthor(email, isAiNote(email))}
                               </span>
                             ) : (
-                              <span className={`chat_who ${author.kind}`}>{author.label}</span>
+                              <span className={`chat_who ${author.kind}`}>
+                                <span className={`chat_mini_avatar ${author.kind}`}
+                                  style={author.kind === "customer" ? avatarStyle(lead?.name) : undefined} aria-hidden="true">
+                                  {author.kind === "ai" ? <i className="fa-solid fa-robot"></i>
+                                    : author.kind === "customer" ? initialsOf(lead?.name)
+                                      : <i className="fa-solid fa-user-tie"></i>}
+                                </span>
+                                {author.label}
+                              </span>
                             )}
                             {bookedBy && <span className="badge bg-warning text-dark">Appointment set by staff: {bookedBy}</span>}
                             {isNote && (

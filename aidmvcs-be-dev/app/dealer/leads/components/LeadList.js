@@ -3,6 +3,7 @@ import { leadStatusLabel, statusLabel } from "@lib/statusLabels";
 import { forwardRef,
   useImperativeHandle, useState, useEffect, Suspense, useCallback, useRef } from "react";
 import { formatTimestamp } from "../../../utils/dateUtils";
+import { avatarStyle, initialsOf } from "../../../lib/avatarColor";
 import { Button, ListGroup, Row, Col, Offcanvas, Modal, Form, Alert, Badge, Pagination, Spinner, Dropdown } from "react-bootstrap";
 import { useUser } from "../../context/UserContext";
 import { useCan } from "../../../hooks/PermissionsContext";
@@ -79,7 +80,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
   // out of a scope by hand.
   const [selectMode, setSelectMode] = useState(false);
   // Phones: the filters fold behind a button. Beside the conversation (compact) they are shown; the button folds them.
-  const [filtersOpen, setFiltersOpen] = useState(compact);
+  const [filtersOpen, setFiltersOpen] = useState(false); // folded behind the filter button until someone opens it
   const shownOnce = useRef(false); // the list has been on screen once (later loads keep the filters mounted)
   const [selected, setSelected] = useState(() => new Map());
   const [scope, setScope] = useState("page");
@@ -2000,8 +2001,10 @@ useImperativeHandle(ref, () => ({
                     <div className="position-relative w-100">
                       {/* Inbox row, like WhatsApp (the user, 27 Nov 2026): who, the last message, when, unread. */}
                       <div className="inbox_row">
-                        <span className="inbox_avatar" aria-hidden="true">
-                          {String(lead.name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?"}
+                        <span className="inbox_avatar" aria-hidden="true" style={avatarStyle(lead.name)}>
+                          {initialsOf(lead.name)}
+                          {lead.inbox?.last?.from === "ai" && <span className="inbox_avatar_badge ai" title="The AI wrote last"><i className="fa-solid fa-robot"></i></span>}
+                          {lead.inbox?.last?.from === "customer" && <span className="inbox_avatar_badge cust" title="The customer wrote last"></span>}
                         </span>
                         <span className="inbox_main">
                           <span className="inbox_top">

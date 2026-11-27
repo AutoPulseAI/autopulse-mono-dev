@@ -168,3 +168,31 @@
 .lead_next_fact { color: #334155; }
 .lead_next_fact i { color: #4f46e5; }
 .inbox_journey { flex: 1 1 260px; min-width: 220px; margin: 0 8px; }
+
+/* (4) More life (the user, 27 Nov 2026: "something crazy ... ChatGPT vibe"): a colour per person, live badges, soft
+   depth and a highlighted open conversation. */
+.inbox_avatar { position: relative; font-size: 0.82rem; letter-spacing: 0.02em; box-shadow: 0 2px 6px rgba(15,23,42,0.18);
+  border: 2px solid #fff; }
+.inbox_avatar_badge { position: absolute; right: -3px; bottom: -3px; width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid #fff; display: flex; align-items: center; justify-content: center; font-size: 0.5rem; }
+.inbox_avatar_badge.ai { background: #22c55e; color: #fff; }
+.inbox_avatar_badge.cust { background: #f59e0b; }
+.lead-item.active-lead .inbox_row { position: relative; }
+.lead-item.active-lead { background: linear-gradient(90deg, #eef2ff, #f8fafc) !important; border-left-color: #6366f1 !important; }
+.lead-item { transition: background 0.15s, transform 0.15s; }
+.lead-item:hover { background: #f8fafc; }
+.inbox_head_avatar { width: 46px; height: 46px; border-radius: 50%; display: inline-flex; align-items: center;
+  justify-content: center; font-weight: 800; font-size: 1rem; box-shadow: 0 4px 12px rgba(99,102,241,0.30);
+  border: 3px solid #fff; }
+.inbox_head { background: linear-gradient(180deg, #ffffff 0%, #fbfbff 100%); box-shadow: 0 6px 18px rgba(15,23,42,0.06) !important;
+  border: 1px solid #eef0f6 !important; border-radius: 14px !important; }
+.chat_mini_avatar { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px;
+  border-radius: 50%; font-size: 0.58rem; font-weight: 800; margin-right: 5px; vertical-align: middle; color: #fff; }
+.chat_mini_avatar.ai { background: linear-gradient(135deg, #22c55e, #15803d); }
+.chat_mini_avatar.staff { background: linear-gradient(135deg, #3b82f6, #1d4ed8); }
+.chat_mini_avatar.system { background: #94a3b8; }
+.chat_thread { background: radial-gradient(circle at 20% 10%, #f4efe8 0, #efeae2 40%, #ebe5dc 100%); }
+.chat_thread .conversation-item.chat_in, .chat_thread .conversation-item.chat_ai, .chat_thread .conversation-item.chat_staff {
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08), 0 4px 14px rgba(15,23,42,0.04) !important; }
+.chat_input_row { box-shadow: 0 6px 20px rgba(15,23,42,0.08); }
+.chat_send { background: linear-gradient(135deg, #6366f1, #2563eb); }
