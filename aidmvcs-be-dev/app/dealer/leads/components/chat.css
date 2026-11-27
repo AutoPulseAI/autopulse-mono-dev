@@ -167,7 +167,7 @@
 .lead_next_row .lead_next { margin: 0; }
 .lead_next_fact { color: #334155; }
 .lead_next_fact i { color: #4f46e5; }
-.inbox_journey { flex: 1 1 260px; min-width: 220px; margin: 0 8px; }
+.inbox_journey { flex: 0 1 520px; min-width: 220px; margin: 0 8px 0 auto; }
 
 /* (4) More life (the user, 27 Nov 2026: "something crazy ... ChatGPT vibe"): a colour per person, live badges, soft
    depth and a highlighted open conversation. */
@@ -220,3 +220,7 @@
 .inbox_hot { color: #f0590e; font-size: 0.75rem; margin-left: 4px; }
 .inbox_wait { flex: none; background: #fff4e5; color: #b35c00; border-radius: 999px; padding: 0 7px; font-size: 0.68rem;
   font-weight: 600; margin-left: 4px; white-space: nowrap; }
+/* Bulk select in the inbox list (27 Nov 2026). */
+.inbox_tick { flex: none; display: flex; align-items: center; margin-right: 2px; }
+.inbox_bulk { font-size: 0.8rem; }
+.inbox_bulk .btn { font-size: 0.75rem; }

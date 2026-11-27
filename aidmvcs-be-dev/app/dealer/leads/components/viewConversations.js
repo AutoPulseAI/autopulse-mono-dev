@@ -902,15 +902,16 @@ export default function ViewConversations({
                   <a className="inbox_act" href={`/dealer/customers/${lead.customer_id}`}>
                     <i className="fa-duotone fa-user"></i><span>Customer profile</span></a>
                 )}
+                {/* Lead settings right after Customer profile; the journey takes the rest, shorter and to the right (27 Nov 2026). */}
+                <button type="button" className={`inbox_act${showInfo ? " on" : ""}`} onClick={() => setShowInfo(!showInfo)}
+                  aria-pressed={showInfo} title="Edit the lead, its menu (View ADF...), Manager override, booking and the AI Assistant">
+                  <i className="fa-duotone fa-gear"></i><span>Lead settings</span></button>
                 {/* The lead's journey in the free space of the action row (the user, 27 Nov 2026). */}
                 {lead?._id && (
                   <div className="inbox_journey">
                     <LeadJourney key={`j-${lead._id}-${lead.fe_lead_status || ""}`} leadId={lead._id} timezone={dealerTimezone} />
                   </div>
                 )}
-                <button type="button" className={`inbox_act${showInfo ? " on" : ""}`} onClick={() => setShowInfo(!showInfo)}
-                  aria-pressed={showInfo} title="Edit the lead, its menu (View ADF...), Manager override, booking and the AI Assistant">
-                  <i className="fa-duotone fa-gear"></i><span>Lead settings</span></button>
               </div>
             </div>
           )}
