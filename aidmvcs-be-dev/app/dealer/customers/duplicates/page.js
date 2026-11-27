@@ -4,8 +4,8 @@
 // "Not the same person" so they aren't flagged again. Nothing is merged automatically.
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Badge, Button, Form, Offcanvas, Spinner, Table } from "react-bootstrap";
-import AppIcon, { Avatar, IconLabel } from "../../components/AppIcon";
+import { Alert, Badge, Button, Spinner, Table } from "react-bootstrap";
+import MergeReview from "../components/MergeReview";
 import { useUser } from "../../context/UserContext";
 import { useCan } from "../../../hooks/PermissionsContext";
 import { formatTimestamp } from "../../../utils/dateUtils";
@@ -33,7 +33,7 @@ export default function DuplicateCustomersPage() {
   useEffect(() => { load(); }, [load]);
 
   // Merge (G-008): pick which customer to keep -> Preview -> Confirm. Undo from "Recent merges".
-  const [merge, setMerge] = useState(null); // { customers: [a, b], keep, reason, preview, error }
+  const [merge, setMerge] = useState(null); // { customers: [a, b], keep } -> MergeReview
   const post = async (url, body) => {
     const res = await fetch(url, {
       method: "POST",
@@ -43,17 +43,6 @@ export default function DuplicateCustomersPage() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || "Request failed");
     return data;
-  };
-  const mergeBody = (m) => ({ keep_id: m.keep, merge_id: m.customers.find((c) => c._id !== m.keep)._id, picks: m.picks || {}, reason: m.reason });
-  const previewMerge = async () => {
-    setBusy("merge");
-    try { const p = await post("/api/customers/merge", { ...mergeBody(merge), confirm: false }); setMerge({ ...merge, preview: p, error: null }); }
-    catch (e) { setMerge({ ...merge, error: e.message }); } finally { setBusy(null); }
-  };
-  const confirmMerge = async () => {
-    setBusy("merge");
-    try { await post("/api/customers/merge", { ...mergeBody(merge), confirm: true }); setMerge(null); await load(); }
-    catch (e) { setMerge({ ...merge, error: e.message }); } finally { setBusy(null); }
   };
   const undoMerge = async (mergedId) => {
     setBusy(`undo:${mergedId}`); setError(null);
@@ -171,64 +160,8 @@ export default function DuplicateCustomersPage() {
       </div>
 
       {/* Merge review (SOW B3): side by side, nothing merges until Confirm, every lead stays its own opportunity. */}
-      <Offcanvas show={!!merge} onHide={() => setMerge(null)} placement="end" style={{ width: "min(620px, 100vw)" }}>
-        <Offcanvas.Header closeButton><Offcanvas.Title as="h6"><AppIcon name="customers" className="me-2" />Merge review</Offcanvas.Title></Offcanvas.Header>
-        <Offcanvas.Body className="small d-flex flex-column">
-          {merge?.error && <Alert variant="danger" className="py-2">{merge.error}</Alert>}
-          <p className="text-muted mb-2">Pick the customer to keep and the value to keep for each field. Nothing merges until you confirm.</p>
-          {merge && (
-            <div className="table-responsive">
-              <Table size="sm" className="align-middle">
-                <thead><tr><th />{merge.customers.map((c) => (
-                  <th key={c._id}><Form.Check type="radio" id={`keep-${c._id}`} name="keep" checked={merge.keep === c._id} aria-label={`Keep ${c.name || "this customer"}`}
-                    onChange={() => setMerge({ ...merge, keep: c._id, picks: {}, preview: null })}
-                    label={<span className="ap_person"><Avatar name={c.name} small /><span>{c.name || "(no name)"}</span></span>} /></th>))}</tr></thead>
-                <tbody>
-                  {[["name", "Name", "customer", (c) => c.name], ["email", "Email", "email", (c) => c.emails[0]], ["address", "Address", "source", (c) => c.address]].map(([field, label, icon, get]) => (
-                    <tr key={field}><td className="fw-semibold"><IconLabel name={icon}>{label}</IconLabel></td>
-                      {merge.customers.map((c) => {
-                        const isKeep = c._id === merge.keep;
-                        const on = (merge.picks?.[field] === "merge") !== isKeep;
-                        return <td key={c._id} className="text-break"><Form.Check type="radio" id={`${field}-${c._id}`} name={`pick-${field}`} disabled={!get(c)} checked={!!get(c) && on}
-                          onChange={() => setMerge({ ...merge, picks: { ...merge.picks, [field]: isKeep ? "keep" : "merge" }, preview: null })} label={get(c) || "Not set"} /></td>;
-                      })}
-                    </tr>
-                  ))}
-                  <tr><td className="fw-semibold"><IconLabel name="phone">Phone</IconLabel></td>{merge.customers.map((c) => <td key={c._id}>{c.phones.join(", ") || "Not set"}</td>)}</tr>
-                  <tr><td className="fw-semibold"><IconLabel name="lead">Leads</IconLabel></td>{merge.customers.map((c) => <td key={c._id}>{c.leads}</td>)}</tr>
-                </tbody>
-              </Table>
-            </div>
-          )}
-          <Form.Control size="sm" placeholder="Why (optional)" maxLength={300} value={merge?.reason || ""}
-            onChange={(e) => setMerge({ ...merge, reason: e.target.value })} />
-          {merge?.preview && (
-            <div className="mt-3">
-              <div className="fw-semibold mb-1">Opportunities stay separate</div>
-              <Table size="sm" className="align-middle">
-                <thead><tr><th><IconLabel name="vehicle">Lead</IconLabel></th><th><IconLabel name="source">Source</IconLabel></th><th><IconLabel name="status">Status</IconLabel></th><th><IconLabel name="owner">Owner</IconLabel></th></tr></thead>
-                <tbody>{[...merge.preview.keep.opportunities, ...merge.preview.merge.opportunities].map((o) => (
-                  <tr key={o.id}><td>{o.vehicle || "No vehicle"}</td><td>{o.source || "-"}</td><td>{o.status || "-"}</td><td>{o.owner || "Unassigned"}</td></tr>))}</tbody>
-              </Table>
-              <ul className="mb-1">
-                <li>Nothing is deleted or moved: every lead keeps its own source, dates, status, owner, conversation and AI follow-ups.</li>
-                <li>The value not picked is kept on the merge, and Undo puts it back. {merge.preview.merge.deals} sale(s), {merge.preview.merge.service_visits} service visit(s) and {merge.preview.merge.trade_ins} trade-in(s) will show there.</li>
-                <li>It can be undone from &quot;Recent merges&quot;.</li>
-                {merge.preview.notes.map((n) => <li key={n}>{n}</li>)}
-              </ul>
-            </div>
-          )}
-          <div className="d-flex gap-2 justify-content-end mt-auto pt-3">
-            <Button size="sm" variant="outline-secondary" disabled={busy === merge?.customers?.map((c) => c._id).join(":")}
-              onClick={async () => { const ids = merge.customers.map((c) => c._id); setMerge(null); await notSame(ids); }}>Not the same person</Button>
-            {!merge?.preview ? (
-              <Button size="sm" variant="custom" disabled={busy === "merge"} onClick={previewMerge}>{busy === "merge" ? <Spinner size="sm" /> : "Preview"}</Button>
-            ) : (
-              <Button size="sm" variant="custom" disabled={busy === "merge"} onClick={confirmMerge}>{busy === "merge" ? <Spinner size="sm" /> : "Merge"}</Button>
-            )}
-          </div>
-        </Offcanvas.Body>
-      </Offcanvas>
+      <MergeReview customers={merge?.customers} keep={merge?.keep} dealerId={dealerId} onHide={() => setMerge(null)}
+        onDone={async () => { setMerge(null); await load(); }} />
     </div>
   );
 }

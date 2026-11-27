@@ -46,7 +46,7 @@ export async function openTasks({ leadIds = [], dealerId = null, now = new Date(
   const out = [
     ...calls.map((c) => ({ kind: 'call', id: String(c._id), missed: c.status === 'missed',
       at: c.due_by ? day(c.due_by) : c.opened_at ? day(c.opened_at) : null, lead_id: String(c.lead_id),
-      text: `Call the customer${c.phone ? ` at ${c.phone}` : ''}${c.reason ? ` - ${String(c.reason).replace(/_/g, ' ')}` : ''}`,
+      phone: c.phone || null, text: `Call the customer${c.phone ? ` at ${c.phone}` : ''}${c.reason ? ` - ${String(c.reason).replace(/_/g, ' ')}` : ''}`,
       who: names.get(String(c.assigned_to)) || null })),
     ...bookings.map((b) => ({ kind: 'appt', at: day(b.bookingDate), lead_id: String(b.lead_id),
       text: `${b.appointment_type === 'service' ? 'Service' : 'Sales'} appointment${b.bookingTime ? ` at ${b.bookingTime}` : ''}`

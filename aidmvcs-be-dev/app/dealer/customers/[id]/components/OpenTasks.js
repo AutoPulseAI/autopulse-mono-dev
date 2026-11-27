@@ -9,6 +9,8 @@ import DismissTaskModal, { DISMISS_TASKS } from "../../../components/DismissTask
 import AddTaskModal from "../../../components/AddTaskModal";
 import { formatTimestamp } from "../../../../utils/dateUtils";
 import AppIcon from "../../../components/AppIcon";
+import CallOutcomeModal from "../../../ai/components/CallOutcomeModal";
+import { aiFetch } from "../../../ai/components/aiShared";
 
 const KIND = {
   call: { icon: "phone", href: (t) => `/dealer/ai/actions?tab=tasks${t.missed ? "&status=missed" : ""}` },
@@ -18,9 +20,27 @@ const KIND = {
 };
 
 // dealerId / onChanged: for Dismiss (only people whose role has "Dismiss Tasks"); the profile reloads after it.
-export default function OpenTasks({ tasks, dealerId, onChanged, leads = [], staffList = [] }) {
+// Complete (Bibi, 26 Nov 2026: "I'm seeing the task but no where for me to complete it"): a call task records the call's
+// outcome (the same prompt as Tasks / Call Tasks, which closes the task); a reminder is marked done. Shown where the
+// profile can reload after it (onChanged).
+export default function OpenTasks({ tasks, dealerId, onChanged, leads = [], staffList = [], customerName = "" }) {
   const canDismiss = useCan(DISMISS_TASKS);
   const [dismissing, setDismissing] = useState(null);
+  const [calling, setCalling] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const [error, setError] = useState("");
+  const complete = async (t) => {
+    setError("");
+    if (t.kind === "call") {
+      setCalling({ id: t.id, lead_id: t.lead_id, phone: t.phone || "", customer_name: customerName, dealer_id: dealerId });
+      return;
+    }
+    setBusy(t.id);
+    try {
+      await aiFetch(`/api/leads/${t.lead_id}/opportunity`, { method: "POST", body: JSON.stringify({ action: "reminder_done", reminder_id: t.id }) });
+      onChanged?.();
+    } catch (e) { setError(e.message); } finally { setBusy(null); }
+  };
   const [adding, setAdding] = useState(false);
   const addButton = (
     <button type="button" className="btn btn-sm btn-custom ms-auto text-nowrap" style={{ textTransform: "none" }}
@@ -37,6 +57,7 @@ export default function OpenTasks({ tasks, dealerId, onChanged, leads = [], staf
   return (
     <div className="cp_card cp_tasks mb-3">
       <div className="cp_tasks_head"><AppIcon name="task" />Open tasks <span className="cp_tab_count">{tasks.length}</span>{addButton}</div>
+      {error && <div className="alert alert-danger py-1 px-2 small mb-2">{error}</div>}
       <ul className="list-unstyled mb-0">
         {tasks.map((t, i) => {
           const k = KIND[t.kind] || KIND.followup;
@@ -47,6 +68,11 @@ export default function OpenTasks({ tasks, dealerId, onChanged, leads = [], staf
                 {t.who && <span className="text-muted"> · {t.kind === "call" || t.kind === "reminder" ? "Assigned to " : ""}{t.who}</span>}</span>
               {t.at && <span className="text-muted small text-nowrap">{t.kind === "call" ? (t.missed ? "was due " : "due ") : ""}{formatTimestamp(t.at)}</span>}
               <Link href={k.href(t)} className="small text-nowrap">Open</Link>
+              {onChanged && t.id && (t.kind === "call" || t.kind === "reminder") && (
+                <button type="button" className="btn btn-sm btn-success py-0 px-2 small text-nowrap" disabled={busy === t.id}
+                  onClick={() => complete(t)} title={t.kind === "call" ? "Record how the call went; this completes the task" : "Mark this reminder done"}>
+                  <i className="fa-solid fa-check me-1" />{t.kind === "call" ? "Complete call" : "Done"}</button>
+              )}
               {canDismiss && t.id && (t.kind === "call" || t.kind === "reminder") && (
                 <button type="button" className="btn btn-link btn-sm p-0 small text-danger text-nowrap" onClick={() => setDismissing(t)}
                   title="Close this task without doing it">Dismiss</button>
@@ -58,6 +84,8 @@ export default function OpenTasks({ tasks, dealerId, onChanged, leads = [], staf
       {addModal}
       <DismissTaskModal task={dismissing} dealerId={dealerId} onHide={() => setDismissing(null)}
         onDone={() => { setDismissing(null); onChanged?.(); }} />
+      <CallOutcomeModal show={Boolean(calling)} task={calling} dealerId={dealerId}
+        onDone={() => { setCalling(null); onChanged?.(); }} onNotCalled={() => setCalling(null)} />
     </div>
   );
 }
