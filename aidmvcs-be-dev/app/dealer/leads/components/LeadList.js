@@ -78,7 +78,8 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
   // how it was made (all matching / this page / first N / pages / ticked one by one); `unticked` counts leads taken
   // out of a scope by hand.
   const [selectMode, setSelectMode] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false); // phones: the filters fold behind a button
+  // Phones: the filters fold behind a button. Beside the conversation (compact) they are shown; the button folds them.
+  const [filtersOpen, setFiltersOpen] = useState(compact);
   const shownOnce = useRef(false); // the list has been on screen once (later loads keep the filters mounted)
   const [selected, setSelected] = useState(() => new Map());
   const [scope, setScope] = useState("page");
@@ -2022,58 +2023,30 @@ useImperativeHandle(ref, () => ({
                             {lead.inbox?.unread > 0 && <span className="inbox_unread">{lead.inbox.unread}</span>}
                           </span>
                         </span>
+                      <button type="button" className="inbox_more" aria-label={`More for ${lead.name || "this lead"}`}
+                          aria-expanded={openLeadId === lead._id}
+                          onClick={(e) => { e.stopPropagation(); setOpenLeadId(openLeadId === lead._id ? null : lead._id); }}>
+                          <i className="fa-regular fa-ellipsis-vertical"></i>
+                        </button>
                       </div>
-                      <p className="fw-semibold d-flex align-items-center mb-0 inbox_menu">
-                        <Button variant="outline-secondary" size="xs" className="ms-auto"
-                          onClick={(e) => {
-                            e.stopPropagation(); // prevent triggering onLeadSelected
-                            setOpenLeadId(openLeadId === lead._id ? null : lead._id);
-                          }} >
-                          <i className="fa-regular fa-ellipsis-vertical lead_action_icon px-1"></i>
-                        </Button>
-                      </p>
                       {openLeadId === lead._id && (
-                      <div className="d-flex align-items-center justify-content-between w-100 mt-1 lead_action">
-                        <div className="w_card_list_box_label">
-                          <p className="label"><small>Assigned To:</small></p>
+                        // The lead's quick actions, under its row (27 Nov 2026: was squeezed and broken).
+                        <div className="inbox_actions" onClick={(e) => e.stopPropagation()}>
+                          <label className="inbox_actions_label" htmlFor={`assign-${lead._id}`}>Assigned to</label>
                           {canAssignLeads ? (
-                            <Form.Select
-                              size="sm"
-                              value={lead.assigned_to?._id || ''}
-                              onChange={(e) => handleAssignmentChange(lead._id, e.target.value)}
-                              onClick={(e) => e.stopPropagation()}
-                            >
+                            <Form.Select id={`assign-${lead._id}`} size="sm" value={lead.assigned_to?._id || ''}
+                              onChange={(e) => handleAssignmentChange(lead._id, e.target.value)}>
                               <option value="">Unassigned</option>
-                              {staffList.map(staff => (
-                                <option key={staff._id} value={staff._id}>
-                                  {staff.name}
-                                </option>
-                              ))}
+                              {staffList.map((staff) => <option key={staff._id} value={staff._id}>{staff.name}</option>)}
                             </Form.Select>
                           ) : (
-                            <div className="w_card_list_box_label">
-                              <p className="label"><small>Assigned:</small></p>
-                              <p className="text-truncate">{lead.assigned_to?.name || "Unassigned"}</p>
-                            </div>
+                            <span className="inbox_actions_value">{lead.assigned_to?.name || "Unassigned"}</span>
                           )}
-                        </div>
-                        <div className="d-flex gap-1 w_card_list_btns justify-content-end">
-                          {!compact && (
-                          <Button variant="custom" size="sm" onClick={(e) => {
-                            e.stopPropagation();
-                            handleLeadClick(lead);
-                          }}>
-                            <i className="fa-regular fa-envelope-open"></i>
-                          </Button>
-                          )}
-                          <Button variant="danger" size="sm" onClick={(e) => {
-                            e.stopPropagation();
-                            handleShowDeleteModal(lead);
-                          }}>
+                          <Button variant="outline-danger" size="sm" title="Delete lead" aria-label="Delete lead"
+                            onClick={() => handleShowDeleteModal(lead)}>
                             <i className="fa-regular fa-trash"></i>
                           </Button>
                         </div>
-                      </div>
                       )}
                     </div>
                   ) : (
@@ -2236,7 +2209,18 @@ useImperativeHandle(ref, () => ({
             )}
           </ListGroup>
 
-          {pagination.totalPages > 1 && (
+          {compact && pagination.totalPages > 1 && (
+            // Beside the conversation the list pages like an inbox: one line, Previous / page of pages / Next.
+            <div className="inbox_pager">
+              <Button variant="outline-custom" size="sm" aria-label="Previous page" disabled={pagination.currentPage === 1}
+                onClick={() => handlePageChange(pagination.currentPage - 1)}><i className="fa-solid fa-chevron-left"></i></Button>
+              <span>Page <strong>{pagination.currentPage.toLocaleString("en-US")}</strong> of {pagination.totalPages.toLocaleString("en-US")}
+                <small className="text-muted d-block">{(pagination.totalItems || 0).toLocaleString("en-US")} leads</small></span>
+              <Button variant="outline-custom" size="sm" aria-label="Next page" disabled={pagination.currentPage === pagination.totalPages}
+                onClick={() => handlePageChange(pagination.currentPage + 1)}><i className="fa-solid fa-chevron-right"></i></Button>
+            </div>
+          )}
+          {!compact && pagination.totalPages > 1 && (
             <div className={!compact ? "d-md-flex justify-content-center mt-3" : "justify-content-center mt-2"}>
               <Pagination className="mb-md-0 justify-content-center flex-wrap">
                 <Pagination.Prev

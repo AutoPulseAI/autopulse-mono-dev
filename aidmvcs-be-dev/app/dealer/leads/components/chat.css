@@ -109,7 +109,7 @@
 .chat_note_edit:hover { opacity: 1; }
 
 /* The lead list beside the conversation as an inbox, like WhatsApp (the user, 27 Nov 2026). */
-.inbox_row { display: flex; align-items: center; gap: 10px; padding-right: 26px; min-width: 0; }
+.inbox_row { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .inbox_avatar { flex: 0 0 38px; width: 38px; height: 38px; border-radius: 50%; background: #dfe5e7; color: #3b4a54;
   display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem; }
 .inbox_main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -122,6 +122,16 @@
 .inbox_snip b { color: #3b4a54; font-weight: 600; }
 .inbox_unread { flex: 0 0 auto; background: #25d366; color: #fff; border-radius: 10px; font-size: 0.68rem;
   font-weight: 700; padding: 1px 7px; }
-.inbox_menu { position: absolute; top: 50%; right: -4px; transform: translateY(-50%); }
-.inbox_menu .btn { border: 0; background: transparent; }
+.inbox_more { flex: 0 0 22px; border: 0; background: transparent; color: #667781; padding: 2px 0; border-radius: 6px; }
+.inbox_more:hover, .inbox_more[aria-expanded="true"] { background: #eef2f7; color: #111827; }
+.inbox_actions { display: flex; align-items: center; gap: 6px; margin-top: 8px; padding: 6px 8px; background: #f8fafc;
+  border: 1px solid #e2e8f0; border-radius: 8px; }
+.inbox_actions_label { font-size: 0.72rem; color: #64748b; white-space: nowrap; margin: 0; }
+.inbox_actions .form-select { flex: 1; min-width: 0; }
+.inbox_actions_value { flex: 1; font-size: 0.8rem; }
 .inbox_filters_closed > div:not(:first-child) { display: none !important; }
+.inbox_actions { flex-wrap: wrap; row-gap: 4px; }
+.inbox_actions_label { flex-basis: 100%; }
+.inbox_actions .form-select { flex: 1 1 0; width: auto; }
+.inbox_pager { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px;
+  padding: 6px 4px; border-top: 1px solid #e5e7eb; font-size: 0.82rem; text-align: center; }
