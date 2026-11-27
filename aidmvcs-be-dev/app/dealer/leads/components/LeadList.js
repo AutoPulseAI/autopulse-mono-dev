@@ -117,6 +117,9 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [loading, setLoading] = useState(true);
+  const loadingRef = useRef(true);
+  // A list that finished loading is measured once more (a resize during a load was skipped).
+  useEffect(() => { loadingRef.current = loading; if (!loading) fitRef.current?.(); }, [loading]);
   const [alert, setAlert] = useState({ show: false, message: "", variant: "success" });
   const { user, dealerParent } = useUser();
   const [panel360, setPanel360] = useState(null); // the 360 View side panel (19 Nov 2026)
@@ -202,23 +205,31 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
   // The side list fills its column (the user, 28 Nov 2026: "a lot of gap above the pager - 3 to 4 more leads fit"):
   // beside the conversation on a desktop, a page holds as many leads as the screen has room for (5-50).
   const listBoxRef = useRef(null);
+  const fitRef = useRef(null);
   useEffect(() => {
     if (!compact || typeof ResizeObserver === "undefined") return undefined;
     const box = listBoxRef.current?.querySelector(".list-group");
     if (!box) return undefined;
     let timer = null;
+    let lastH = 0;
     const fit = () => {
       if (window.innerWidth < 993) return; // tablet / phone: the list slides in and scrolls; 10 a page
+      if (loadingRef.current) return; // measure only a settled list
+      // Re-measure only when the room itself changed (window resized), not when rows come and go.
+      const h = box.clientHeight;
+      if (Math.abs(h - lastH) < 8) return;
       const rows = box.querySelectorAll(":scope > .lead-item");
       if (rows.length < 2) return;
       const pitch = rows[1].getBoundingClientRect().top - rows[0].getBoundingClientRect().top;
       if (!(pitch > 20)) return;
+      lastH = h;
       const n = Math.max(5, Math.min(50, Math.floor((box.clientHeight + 2) / pitch)));
       setPagination((p) => (p.itemsPerPage === n ? p : { ...p, itemsPerPage: n }));
     };
-    const ro = new ResizeObserver(() => { clearTimeout(timer); timer = setTimeout(fit, 250); });
+    fitRef.current = () => { clearTimeout(timer); timer = setTimeout(fit, 250); };
+    const ro = new ResizeObserver(() => fitRef.current?.());
     ro.observe(box);
-    return () => { clearTimeout(timer); ro.disconnect(); };
+    return () => { clearTimeout(timer); ro.disconnect(); fitRef.current = null; };
   }, [compact, leads.length > 1]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [inputValues, setInputValues] = useState({
@@ -1982,7 +1993,10 @@ useImperativeHandle(ref, () => ({
           </div>
         )}
 
-        {loading && <div className="text-muted small mt-2" role="status">Loading leads...</div>}
+        {/* Beside the conversation the loading note floats over the list, so the list never jumps (28 Nov 2026: the
+            list flickered - the note pushed the rows down, the page size was re-measured, the list reloaded, ...). */}
+        {loading && (compact ? <div className="inbox_loading" role="status">Loading leads...</div>
+          : <div className="text-muted small mt-2" role="status">Loading leads...</div>)}
         <div className="w_card_list mt-3" ref={listBoxRef} style={loading ? { opacity: 0.5 } : undefined}>
           <ListGroup as="ul" variant="flush">
             {!compact && (
