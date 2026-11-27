@@ -1,6 +1,6 @@
 "use client";
 import { leadStatusLabel } from "@lib/statusLabels";
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { formatTimestamp } from "../../../utils/dateUtils";
 import useFetch from "../../../hooks/useFetch";
@@ -15,7 +15,8 @@ import StatusModal from "./StatusModal"; // Import StatusModal
 import LeadNotesModal from "./LeadNotesModal"; // Import LeadNotesModal
 import AiLeadPanel from "../../ai/components/AiLeadPanel";
 import CallButton from "../../components/CallButton";
-import LeadInfoCard, { LeadNextStep } from "./LeadInfoCard";
+import LeadInfoCard, { LeadNextStep, NextStepLine, useLeadPlan } from "./LeadInfoCard";
+import OwnerTag from "./OwnerTag";
 import LeadJourney from "../../components/LeadJourney";
 import { avatarStyle, initialsOf } from "../../../lib/avatarColor";
 import { deskLogMenuVisible } from "../../desk-log/deskLogAccess";
@@ -80,6 +81,19 @@ export default function ViewConversations({
   onLeadSaved,
   // A DOM element (the customer profile's opportunity row): the action buttons are shown there instead of here.
   actionsTarget = null,
+  // The customer profile's Leads tab (the user, 27 Nov 2026: "the leads part can be the same as the Leads page"): the
+  // Leads page's layout (header band, actions bar, journey, Lead settings drawer, chat) without the all-dealer list.
+  // Prev / Next step through the customer's own leads (onPrevLead / onNextLead, navLabel "Lead 1 of 3"); headerExtra
+  // is shown under the actions bar (the opportunity: milestones, visits, vehicles of interest); onActionsSlot gets an
+  // element in the actions bar for the opportunity's own buttons (Reminder, Appt., Log call, Other task).
+  profileMode = false,
+  onPrevLead = null,
+  onNextLead = null,
+  navLabel = "",
+  headerExtra = null,
+  // Shown on the lead's header, under the actions (customer profile: the lead's milestones, SOW B b4 / G-009).
+  headerTrack = null,
+  onActionsSlot = null,
 }) {
   const AGENT_VIEW_LANGUAGE_STORAGE_KEY = "dealer_agent_view_language";
   const [emails, setEmails] = useState([]);
@@ -120,8 +134,12 @@ export default function ViewConversations({
   // (3) The user, 27 Nov 2026: two columns only - the lead list and the inbox; the lead's profile (card, journey, lead
   // type, source, booking, AI Assistant) slides out from the right with the Lead profile button.
   const [showInfo, setShowInfo] = useState(false);
+  // Customer profile (28 Nov 2026): the opportunity (headerExtra) slides out like Lead settings, from its own button.
+  const [oppOpen, setOppOpen] = useState(false);
+  // Customer profile: the lead's plan once - AI type and vehicle wanted as tags, the next step under the journey.
+  const plan = useLeadPlan(profileMode ? lead : null);
   const leadTab = "conversation";
-  const tabbed = !embedded;
+  const tabbed = !embedded || profileMode;
   // "What we know" (the user, 27 Nov 2026 - inbox ideas): what the AI already learned about this customer, as chips at
   // the top of the conversation, and its summary of a long conversation. Stored facts only, no AI call
   // (app/lib/leadGlance.js).
@@ -225,6 +243,13 @@ export default function ViewConversations({
     const el = threadRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [lead?._id, activeChannelTab, newestId]);
+  // Older messages load by themselves when the thread is scrolled near its top (the user, 28 Nov 2026: infinite
+  // scroll inside the conversation); the message being read stays where it was (anchorRef: distance from the bottom).
+  const anchorRef = useRef(null);
+  useLayoutEffect(() => {
+    const el = threadRef.current;
+    if (el && anchorRef.current != null) { el.scrollTop = el.scrollHeight - anchorRef.current; anchorRef.current = null; }
+  }, [emails]);
 
     // 🔹 hold a ref to the LeadList so we can trigger pagination from here
   const leadListRef = useRef(null);
@@ -336,6 +361,7 @@ export default function ViewConversations({
     if (!leadId || !olderCursor || olderRequestRef.current) return;
 
     olderRequestRef.current = true;
+    if (threadRef.current) anchorRef.current = threadRef.current.scrollHeight - threadRef.current.scrollTop;
     setLoadingOlderConversations(true);
     const generation = conversationGenerationRef.current;
     try {
@@ -348,6 +374,7 @@ export default function ViewConversations({
       cursorRef.current.hasOlder = Boolean(result.pageInfo.hasOlder);
       setHasOlderConversations(cursorRef.current.hasOlder);
     } catch (err) {
+      anchorRef.current = null;
       console.error("Error loading older conversations:", err);
     } finally {
       olderRequestRef.current = false;
@@ -852,7 +879,7 @@ export default function ViewConversations({
         </Col>
       )}
 
-        <Col xxl={embedded ? 12 : 9} lg={embedded ? 12 : 8} md={12} sm={12} className={tabbed ? "inbox_col" : undefined}>
+        <Col xxl={embedded ? 12 : 9} lg={embedded ? 12 : 8} md={12} sm={12} className={tabbed ? `inbox_col${profileMode ? " in_profile" : ""}` : undefined}>
           {tabbed && (
             <div className="inbox_head w_card mb-2" data-testid="lead-header">
               {/* The lead's top band, like the customer profile (the user, 27 Nov 2026): who, the status, where the lead
@@ -865,13 +892,31 @@ export default function ViewConversations({
                     {leadStatusLabel(lead) || lead?.fe_lead_status || "New Lead"} <i className="fa-solid fa-chevron-down ms-1"></i>
                   </button>
                 </div>
-                <Button variant="outline-custom" size="sm" onClick={handlePrevLead} disabled={isNavigating} title="Previous lead">
+                <Button variant="outline-custom" size="sm" onClick={profileMode ? onPrevLead : handlePrevLead}
+                  disabled={profileMode ? !onPrevLead : isNavigating} title="Previous lead">
                   <i className="fa-solid fa-chevron-left me-1"></i>Prev
                 </Button>
-                <Button variant="outline-custom" size="sm" onClick={handleNextLead} disabled={isNavigating} title="Next lead">
+                {profileMode && navLabel && <span className="small text-muted">{navLabel}</span>}
+                <Button variant="outline-custom" size="sm" onClick={profileMode ? onNextLead : handleNextLead}
+                  disabled={profileMode ? !onNextLead : isNavigating} title="Next lead">
                   Next<i className="fa-solid fa-chevron-right ms-1"></i>
                 </Button>
               </div>
+              {profileMode ? (
+                // Customer profile (the user, 28 Nov 2026): the lead's facts as tags; its phone and email are in Lead
+                // profile (the customer's own are on their Profile).
+                // Every fact named on its tag, always shown - "not set" when empty (the user, 28 Nov 2026).
+                <div className="inbox_tags" aria-label="Lead facts">
+                  <span className="ltag t_up"><i className="fa-solid fa-tag" /><small>Up type</small>{contactTypeLabel(lead)}</span>
+                  <span className="ltag t_dept"><i className="fa-solid fa-building" /><small>Department</small>{DEPARTMENT_NAMES[leadDepartment(lead)]}</span>
+                  <span className="ltag t_src"><i className="fa-solid fa-filter" /><small>Source</small>{lead?.lead_source || lead?.source || "Not set"}</span>
+                  <span className="ltag t_sub"><i className="fa-solid fa-sitemap" /><small>Sub-source</small>{lead?.sub_source || "None"}</span>
+                  {lead?.campaign && <span className="ltag t_sub"><i className="fa-solid fa-bullhorn" /><small>Campaign</small>{lead.campaign}</span>}
+                  <OwnerTag lead={lead} onChanged={() => onLeadSaved?.()} />
+                  <span className="ltag t_ai"><i className="fa-solid fa-robot" /><small>AI type</small>{plan ? plan.sales_type || "-" : "…"}</span>
+                  <span className="ltag t_car"><i className="fa-solid fa-car-side" /><small>Vehicle wanted</small>{plan ? plan.vehicle_wanted || "Not known yet" : "…"}</span>
+                </div>
+              ) : (
               <div className="inbox_band">
                 <span><small>UP TYPE</small>{contactTypeLabel(lead)}</span>
                 <span><small>DEPARTMENT</small>{DEPARTMENT_NAMES[leadDepartment(lead)]}</span>
@@ -881,8 +926,9 @@ export default function ViewConversations({
                 <span><small>PHONE</small>{lead?.phone || "-"}</span>
                 <span><small>EMAIL</small>{lead?.email || "-"}</span>
               </div>
+              )}
               {/* Next step, AI type, vehicle wanted and the lead's journey, on screen (the user, 27 Nov 2026). */}
-              {lead?._id && <LeadNextStep key={`next-${lead._id}-${lead.fe_lead_status || ""}`} lead={lead} timezone={dealerTimezone} />}
+              {lead?._id && !profileMode && <LeadNextStep key={`next-${lead._id}-${lead.fe_lead_status || ""}`} lead={lead} timezone={dealerTimezone} />}
               <div className="inbox_actions_bar">
                 {lead?.phone && (
                   <span className="inbox_act inbox_act_call">
@@ -898,22 +944,45 @@ export default function ViewConversations({
                   <a className="inbox_act" href={`/dealer/desk-log?check_in=${lead._id}`}>
                     <i className="fa-duotone fa-user-check"></i><span>Check in</span></a>
                 )}
-                {lead?.customer_id && (
+                {profileMode && <span className="inbox_opp_slot" ref={onActionsSlot} />}
+                {lead?.customer_id && !profileMode && (
                   <a className="inbox_act" href={`/dealer/customers/${lead.customer_id}`}>
                     <i className="fa-duotone fa-user"></i><span>Customer profile</span></a>
+                )}
+                {profileMode && headerExtra && (
+                  <button type="button" className={`inbox_act${oppOpen ? " on" : ""}`} onClick={() => setOppOpen(!oppOpen)} aria-pressed={oppOpen}
+                    title="Opportunity: milestones, hot, age, showroom visits, vehicles of interest, reminders, Active, View ADF">
+                    <i className="fa-duotone fa-briefcase"></i><span>Opportunity</span></button>
                 )}
                 {/* Lead settings right after Customer profile; the journey takes the rest, shorter and to the right (27 Nov 2026). */}
                 <button type="button" className={`inbox_act${showInfo ? " on" : ""}`} onClick={() => setShowInfo(!showInfo)}
                   aria-pressed={showInfo} title="Edit the lead, its menu (View ADF...), Manager override, booking and the AI Assistant">
-                  <i className="fa-duotone fa-gear"></i><span>Lead settings</span></button>
+                  <i className={profileMode ? "fa-duotone fa-id-badge" : "fa-duotone fa-gear"}></i><span>{profileMode ? "Lead profile" : "Lead settings"}</span></button>
                 {/* The lead's journey in the free space of the action row (the user, 27 Nov 2026). */}
                 {lead?._id && (
                   <div className="inbox_journey">
                     <LeadJourney key={`j-${lead._id}-${lead.fe_lead_status || ""}`} leadId={lead._id} timezone={dealerTimezone} />
+                    {/* Customer profile: what happens next, right under where the lead is on its way (28 Nov 2026). */}
+                    {profileMode && <NextStepLine plan={plan} timezone={dealerTimezone} />}
                   </div>
                 )}
               </div>
+              {profileMode && headerTrack}
             </div>
+          )}
+          {profileMode && headerExtra && (
+            <>
+              {oppOpen && <div className="inbox_drawer_backdrop" onClick={() => setOppOpen(false)} aria-hidden="true" />}
+              {/* Always mounted (its More menu sits in the actions bar), shown when Opportunity is pressed. */}
+              <div className={`inbox_drawer opp_drawer${oppOpen ? " open" : ""}`} aria-hidden={!oppOpen}>
+                <div className="inbox_drawer_head">
+                  <strong><i className="fa-duotone fa-briefcase me-2"></i>Opportunity</strong>
+                  <Button variant="outline-secondary" size="sm" onClick={() => setOppOpen(false)} aria-label="Close the opportunity">
+                    <i className="fa-solid fa-xmark"></i></Button>
+                </div>
+                {headerExtra}
+              </div>
+            </>
           )}
           <Row className="gx-3">
             {tabbed && showInfo && <div className="inbox_drawer_backdrop" onClick={() => setShowInfo(false)} aria-hidden="true" />}
@@ -921,9 +990,16 @@ export default function ViewConversations({
               className={tabbed ? `inbox_drawer${showInfo ? " open" : ""}` : ""} aria-hidden={tabbed && !showInfo}>
               {tabbed && (
                 <div className="inbox_drawer_head">
-                  <strong><i className="fa-duotone fa-gear me-2"></i>Lead settings</strong>
+                  <strong><i className={`fa-duotone ${profileMode ? "fa-id-badge" : "fa-gear"} me-2`}></i>{profileMode ? "Lead profile" : "Lead settings"}</strong>
                   <Button variant="outline-secondary" size="sm" onClick={() => setShowInfo(false)} aria-label="Close lead settings">
                     <i className="fa-solid fa-xmark"></i></Button>
+                </div>
+              )}
+              {profileMode && (
+                // The lead's own phone and email (not on the header here; the customer's are on their Profile).
+                <div className="w_card mb-2 small lead_contact_card">
+                  <div><i className="fa-solid fa-phone me-2 text-primary"></i>{lead?.phone || "No phone on this lead"}</div>
+                  <div><i className="fa-regular fa-envelope me-2 text-primary"></i>{lead?.email || "No email on this lead"}</div>
                 </div>
               )}
               {/* Stays in view while the conversation scrolls (BB, 17 Nov 2026: "as the conversation gets long this
@@ -1170,7 +1246,8 @@ export default function ViewConversations({
                 </div>
               )}
               {activeChannelEmails.length > 0 ? (
-                <div className="conversation-list chat_thread" ref={threadRef} data-testid="chat-thread">
+                <div className="conversation-list chat_thread" ref={threadRef} data-testid="chat-thread"
+                  onScroll={(e) => { if (e.currentTarget.scrollTop < 120 && hasOlderConversations && !loadingOlderConversations) loadOlderConversations(); }}>
                   {/* Chat order (the user, 27 Nov 2026): oldest at the top, newest at the bottom next to the message box;
                       older messages load at the top. */}
                   {hasOlderConversations && (

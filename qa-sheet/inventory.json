@@ -1,5 +1,5 @@
 {
- "crawledAt": "2026-11-27T13:30:18.740Z",
+ "crawledAt": "2026-11-27T23:18:22.912Z",
  "app": "http://127.0.0.1:3137",
  "screens": {
   "admin/ai-studio": {
@@ -3486,7 +3486,7 @@
   },
   "dealer/_menu": {
    "route": "/dealer",
-   "url": "/dealer/admin",
+   "url": "/dealer/customers",
    "chrome": true,
    "title": "",
    "panels": [],
@@ -3501,14 +3501,14 @@
     },
     {
      "label": "Switch store",
-     "id": "react-aria6064960235-_r_2_",
+     "id": "react-aria5396244803-_r_2_",
      "kind": "button",
      "panel": "",
      "href": null
     },
     {
      "label": "Notifications",
-     "id": "react-aria6064960235-_r_0_",
+     "id": "react-aria5396244803-_r_0_",
      "kind": "button",
      "panel": "",
      "href": null
@@ -3680,6 +3680,55 @@
      "kind": "button",
      "panel": "",
      "href": null
+    },
+    {
+     "label": "Administration",
+     "id": null,
+     "kind": "link",
+     "panel": "",
+     "href": "/dealer/admin"
+    },
+    {
+     "label": "Employee Roles",
+     "id": null,
+     "kind": "link",
+     "panel": "",
+     "href": "/dealer/roles"
+    },
+    {
+     "label": "Employee Management",
+     "id": null,
+     "kind": "link",
+     "panel": "",
+     "href": "/dealer/staff"
+    },
+    {
+     "label": "Email Setup",
+     "id": null,
+     "kind": "link",
+     "panel": "",
+     "href": "/dealer/email-accounts"
+    },
+    {
+     "label": "Settings",
+     "id": null,
+     "kind": "link",
+     "panel": "",
+     "href": "/dealer/settings"
+    },
+    {
+     "label": "Forms Library",
+     "id": null,
+     "kind": "link",
+     "panel": "",
+     "href": "/dealer/forms"
+    },
+    {
+     "label": "Report Scheduling",
+     "id": null,
+     "kind": "link",
+     "panel": "",
+     "href": "/dealer/report-schedule"
     }
    ],
    "fields": []
@@ -4781,301 +4830,6 @@
      "panel": "Conversation List"
     }
    ]
-  },
-  "dealer/customers": {
-   "route": "/dealer/customers",
-   "url": "/dealer/customers",
-   "title": "Customers",
-   "panels": [
-    "Customers",
-    "Customer List"
-   ],
-   "tabs": [],
-   "buttons": [
-    {
-     "label": "Possible duplicates",
-     "id": null,
-     "kind": "link",
-     "panel": "Customers",
-     "href": "/dealer/customers/duplicates"
-    },
-    {
-     "label": "Search",
-     "id": null,
-     "kind": "button",
-     "panel": "Customers",
-     "href": null
-    },
-    {
-     "label": "Clear filters",
-     "id": null,
-     "kind": "button",
-     "panel": "Customers",
-     "href": null
-    },
-    {
-     "label": "Date Range",
-     "id": null,
-     "kind": "button",
-     "panel": "Customers",
-     "href": null
-    },
-    {
-     "label": "Add Customer",
-     "id": null,
-     "kind": "button",
-     "panel": "Customer List",
-     "href": null
-    },
-    {
-     "label": "Page buttons (previous / next / number)",
-     "id": null,
-     "kind": "link",
-     "panel": "Customer List",
-     "href": null
-    },
-    {
-     "label": "› Next",
-     "id": null,
-     "kind": "link",
-     "panel": "Customer List",
-     "href": null
-    },
-    {
-     "label": "Go",
-     "id": null,
-     "kind": "button",
-     "panel": "Customer List",
-     "href": null
-    }
-   ],
-   "fields": [
-    {
-     "label": "Name",
-     "id": null,
-     "name": null,
-     "kind": "input:text",
-     "panel": "Customers"
-    },
-    {
-     "label": "Last name",
-     "id": null,
-     "name": null,
-     "kind": "input:text",
-     "panel": "Customers"
-    },
-    {
-     "label": "Email",
-     "id": null,
-     "name": null,
-     "kind": "input:text",
-     "panel": "Customers"
-    },
-    {
-     "label": "Phone",
-     "id": null,
-     "name": null,
-     "kind": "input:text",
-     "panel": "Customers"
-    },
-    {
-     "label": "",
-     "id": null,
-     "name": null,
-     "kind": "select",
-     "panel": "Customers"
-    },
-    {
-     "label": "Page",
-     "id": null,
-     "name": null,
-     "kind": "input:number",
-     "panel": "Customer List"
-    }
-   ]
-  },
-  "dealer/customers::Date Range": {
-   "route": "/dealer/customers",
-   "url": "/dealer/customers",
-   "parent": "dealer/customers",
-   "via": "Button 'Date Range'",
-   "overlay": true,
-   "title": "",
-   "panels": [],
-   "tabs": [],
-   "buttons": [
-    {
-     "label": "Page buttons (previous / next / number)",
-     "id": null,
-     "kind": "button",
-     "panel": "Customers",
-     "href": null
-    },
-    {
-     "label": "Apply",
-     "id": null,
-     "kind": "button",
-     "panel": "Customers",
-     "href": null
-    },
-    {
-     "label": "Clear",
-     "id": null,
-     "kind": "button",
-     "panel": "Customers",
-     "href": null
-    }
-   ],
-   "fields": [
-    {
-     "label": "",
-     "id": null,
-     "name": null,
-     "kind": "select",
-     "panel": "Customers"
-    }
-   ]
-  },
-  "dealer/customers::Add Customer": {
-   "route": "/dealer/customers",
-   "url": "/dealer/customers",
-   "parent": "dealer/customers",
-   "via": "Button 'Add Customer'",
-   "overlay": true,
-   "title": "Add Customer",
-   "panels": [
-    "Add Customer",
-    "Add New Customer"
-   ],
-   "tabs": [],
-   "buttons": [
-    {
-     "label": "Page buttons (previous / next / number)",
-     "id": null,
-     "kind": "button",
-     "panel": "Customers",
-     "href": null
-    },
-    {
-     "label": "Apply",
-     "id": null,
-     "kind": "button",
-     "panel": "Customers",
-     "href": null
-    },
-    {
-     "label": "Clear",
-     "id": null,
-     "kind": "button",
-     "panel": "Customers",
-     "href": null
-    },
-    {
-     "label": "Close",
-     "id": null,
-     "kind": "button",
-     "panel": "Add Customer",
-     "href": null
-    },
-    {
-     "label": "Save Customer",
-     "id": null,
-     "kind": "button",
-     "panel": "Add New Customer",
-     "href": null
-    },
-    {
-     "label": "Cancel",
-     "id": null,
-     "kind": "button",
-     "panel": "Add New Customer",
-     "href": null
-    }
-   ],
-   "fields": [
-    {
-     "label": "",
-     "id": null,
-     "name": null,
-     "kind": "select",
-     "panel": "Customers"
-    },
-    {
-     "label": "First name",
-     "id": null,
-     "name": "first_name",
-     "kind": "input:text",
-     "panel": "Add New Customer"
-    },
-    {
-     "label": "Middle name",
-     "id": null,
-     "name": "middle_name",
-     "kind": "input:text",
-     "panel": "Add New Customer"
-    },
-    {
-     "label": "Last name",
-     "id": null,
-     "name": "last_name",
-     "kind": "input:text",
-     "panel": "Add New Customer"
-    },
-    {
-     "label": "Email",
-     "id": null,
-     "name": "email",
-     "kind": "input:email",
-     "panel": "Add New Customer"
-    },
-    {
-     "label": "Phone",
-     "id": null,
-     "name": "phone",
-     "kind": "input:tel",
-     "panel": "Add New Customer"
-    },
-    {
-     "label": "Follow-up Preference",
-     "id": null,
-     "name": "followup_preference",
-     "kind": "select",
-     "panel": "Add New Customer"
-    },
-    {
-     "label": "Preferred Contact Mode",
-     "id": null,
-     "name": "preferred_communication_mode",
-     "kind": "input:text",
-     "panel": "Add New Customer"
-    },
-    {
-     "label": "Language",
-     "id": null,
-     "name": "user_language",
-     "kind": "input:text",
-     "panel": "Add New Customer"
-    }
-   ]
-  },
-  "dealer/customers/duplicates": {
-   "route": "/dealer/customers/duplicates",
-   "url": "/dealer/customers/duplicates",
-   "title": "Possible duplicate customers",
-   "panels": [
-    "Possible duplicate customers"
-   ],
-   "tabs": [],
-   "buttons": [
-    {
-     "label": "Back",
-     "id": null,
-     "kind": "link",
-     "panel": "",
-     "href": "/dealer/customers"
-    }
-   ],
-   "fields": []
   },
   "dealer/dashboard": {
    "route": "/dealer/dashboard",
@@ -6537,324 +6291,6 @@
      "name": null,
      "kind": "input:text",
      "panel": "Campaigns and tracking codes"
-    }
-   ]
-  },
-  "dealer/leads": {
-   "route": "/dealer/leads",
-   "url": "/dealer/leads",
-   "title": "Leads",
-   "panels": [
-    "Leads",
-    "Lead List"
-   ],
-   "tabs": [],
-   "buttons": [
-    {
-     "label": "Stopped",
-     "id": null,
-     "kind": "button",
-     "panel": "Leads",
-     "href": null
-    },
-    {
-     "label": "All",
-     "id": null,
-     "kind": "button",
-     "panel": "Leads",
-     "href": null
-    },
-    {
-     "label": "Mine",
-     "id": null,
-     "kind": "button",
-     "panel": "Leads",
-     "href": null
-    },
-    {
-     "label": "Unassigned",
-     "id": null,
-     "kind": "button",
-     "panel": "Leads",
-     "href": null
-    },
-    {
-     "label": "All departments",
-     "id": null,
-     "kind": "button",
-     "panel": "Leads",
-     "href": null
-    },
-    {
-     "label": "Sales",
-     "id": null,
-     "kind": "button",
-     "panel": "Leads",
-     "href": null
-    },
-    {
-     "label": "Service",
-     "id": null,
-     "kind": "button",
-     "panel": "Leads",
-     "href": null
-    },
-    {
-     "label": "Parts",
-     "id": null,
-     "kind": "button",
-     "panel": "Leads",
-     "href": null
-    },
-    {
-     "label": "Actions",
-     "id": "leads-actions",
-     "kind": "button",
-     "panel": "Lead List",
-     "href": null
-    },
-    {
-     "label": "Date Range",
-     "id": null,
-     "kind": "button",
-     "panel": "Lead List",
-     "href": null
-    },
-    {
-     "label": "Search",
-     "id": null,
-     "kind": "button",
-     "panel": "Lead List",
-     "href": null
-    },
-    {
-     "label": "Clear",
-     "id": null,
-     "kind": "button",
-     "panel": "Lead List",
-     "href": null,
-     "disabled": true
-    },
-    {
-     "label": "Row: View",
-     "id": null,
-     "kind": "button",
-     "panel": "Lead List",
-     "href": null,
-     "row": true
-    },
-    {
-     "label": "Row: (regular icon)",
-     "id": null,
-     "kind": "button",
-     "panel": "Lead List",
-     "href": null,
-     "row": true
-    }
-   ],
-   "fields": [
-    {
-     "label": "",
-     "id": null,
-     "name": null,
-     "kind": "select",
-     "panel": "Leads"
-    },
-    {
-     "label": "Search name, phone, email or stock number",
-     "id": null,
-     "name": "q",
-     "kind": "input:search",
-     "panel": "Lead List"
-    },
-    {
-     "label": "status",
-     "id": null,
-     "name": "status",
-     "kind": "select",
-     "panel": "Lead List"
-    },
-    {
-     "label": "lead_source",
-     "id": null,
-     "name": "lead_source",
-     "kind": "select",
-     "panel": "Lead List"
-    },
-    {
-     "label": "source",
-     "id": null,
-     "name": "source",
-     "kind": "select",
-     "panel": "Lead List"
-    },
-    {
-     "label": "Assigned to",
-     "id": null,
-     "name": "owner",
-     "kind": "select",
-     "panel": "Lead List"
-    },
-    {
-     "label": "message_filter",
-     "id": null,
-     "name": "message_filter",
-     "kind": "select",
-     "panel": "Lead List"
-    },
-    {
-     "label": "",
-     "id": null,
-     "name": null,
-     "kind": "select",
-     "panel": "Lead List"
-    }
-   ]
-  },
-  "dealer/leads~Sales": {
-   "title": "Leads",
-   "panels": [],
-   "tabs": [],
-   "buttons": [
-    {
-     "label": "Clear Department: Sales",
-     "id": null,
-     "kind": "button",
-     "panel": "Lead List",
-     "href": null
-    }
-   ],
-   "fields": [],
-   "route": "/dealer/leads",
-   "url": "/dealer/leads",
-   "parent": "dealer/leads",
-   "via": "Show 'Sales'"
-  },
-  "dealer/leads~Service": {
-   "title": "Leads",
-   "panels": [],
-   "tabs": [],
-   "buttons": [
-    {
-     "label": "Clear Department: Service",
-     "id": null,
-     "kind": "button",
-     "panel": "Lead List",
-     "href": null
-    }
-   ],
-   "fields": [],
-   "route": "/dealer/leads",
-   "url": "/dealer/leads",
-   "parent": "dealer/leads",
-   "via": "Show 'Service'"
-  },
-  "dealer/leads~Parts": {
-   "title": "Leads",
-   "panels": [],
-   "tabs": [],
-   "buttons": [
-    {
-     "label": "Clear Department: Parts",
-     "id": null,
-     "kind": "button",
-     "panel": "Lead List",
-     "href": null
-    }
-   ],
-   "fields": [],
-   "route": "/dealer/leads",
-   "url": "/dealer/leads",
-   "parent": "dealer/leads",
-   "via": "Show 'Parts'"
-  },
-  "dealer/leads::Actions": {
-   "route": "/dealer/leads",
-   "url": "/dealer/leads",
-   "parent": "dealer/leads",
-   "via": "Button 'Actions'",
-   "overlay": true,
-   "title": "",
-   "panels": [],
-   "tabs": [],
-   "buttons": [
-    {
-     "label": "Add lead",
-     "id": null,
-     "kind": "link",
-     "panel": "Lead List",
-     "href": null
-    },
-    {
-     "label": "Import CSV",
-     "id": null,
-     "kind": "link",
-     "panel": "Lead List",
-     "href": null
-    },
-    {
-     "label": "Export CSV 10 with your filters",
-     "id": null,
-     "kind": "link",
-     "panel": "Lead List",
-     "href": null
-    },
-    {
-     "label": "Select leads change many at once",
-     "id": null,
-     "kind": "link",
-     "panel": "Lead List",
-     "href": null
-    },
-    {
-     "label": "Bulk history who changed what, undo",
-     "id": null,
-     "kind": "link",
-     "panel": "Lead List",
-     "href": null
-    }
-   ],
-   "fields": []
-  },
-  "dealer/leads::Date Range": {
-   "route": "/dealer/leads",
-   "url": "/dealer/leads",
-   "parent": "dealer/leads",
-   "via": "Button 'Date Range'",
-   "overlay": true,
-   "title": "",
-   "panels": [],
-   "tabs": [],
-   "buttons": [
-    {
-     "label": "Page buttons (previous / next / number)",
-     "id": null,
-     "kind": "button",
-     "panel": "Lead List",
-     "href": null
-    },
-    {
-     "label": "Apply",
-     "id": null,
-     "kind": "button",
-     "panel": "Lead List",
-     "href": null
-    },
-    {
-     "label": "Clear",
-     "id": null,
-     "kind": "button",
-     "panel": "Lead List",
-     "href": null
-    }
-   ],
-   "fields": [
-    {
-     "label": "",
-     "id": null,
-     "name": null,
-     "kind": "select",
-     "panel": "Lead List"
     }
    ]
   },
@@ -9287,707 +8723,6 @@
    "buttons": [],
    "fields": []
   },
-  "dealer/customers/[id]": {
-   "route": "/dealer/customers/[id]",
-   "url": "/dealer/customers/6b05f1b3bd8975fd49baea04",
-   "title": "Customer Details",
-   "panels": [
-    "Customer Details",
-    "CONTACT +19142241000 · alma@example.com",
-    "PREFERENCES Contact: Not set · Follow-up: Not set · Language",
-    "CUSTOMER VALUE Sales $0.00 · Service $0.00",
-    "Overview",
-    "Recent Activity"
-   ],
-   "tabs": [
-    "Overview",
-    "Leads",
-    "Appts",
-    "Sales",
-    "Service",
-    "Vehicles",
-    "Trade-in"
-   ],
-   "buttons": [
-    {
-     "label": "Previous Customer",
-     "id": null,
-     "kind": "button",
-     "panel": "Customer Details",
-     "href": null,
-     "disabled": true
-    },
-    {
-     "label": "Next Customer",
-     "id": null,
-     "kind": "button",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "AA Aguilar, Alma +19142241000",
-     "id": null,
-     "kind": "button",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "PM Pipitone, Michael +19142241001",
-     "id": null,
-     "kind": "button",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "LR Lazu, Roberto +19142241002",
-     "id": null,
-     "kind": "button",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "LG Lopreato, Gregory +19142241003",
-     "id": null,
-     "kind": "button",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "KS Kave, Shannikai +19142241004",
-     "id": null,
-     "kind": "button",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "OM Osias, Mercedes +19142241005",
-     "id": null,
-     "kind": "button",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "HP Hill, Phillip +19142241006",
-     "id": null,
-     "kind": "button",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "TM Taylor, Monique +19142241007",
-     "id": null,
-     "kind": "button",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "BD Brooks, Dana +19142241008",
-     "id": null,
-     "kind": "button",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "OL Ortega, Luis +19142241009",
-     "id": null,
-     "kind": "button",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "NP Nair, Priya +19142241010",
-     "id": null,
-     "kind": "button",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "FO Fitz, Owen +19142241011",
-     "id": null,
-     "kind": "button",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "MK Mills, Kara +19142241012",
-     "id": null,
-     "kind": "button",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "RT Reyes, Tom +19142241013",
-     "id": null,
-     "kind": "button",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "CI Chen, Ivy +19142241014",
-     "id": null,
-     "kind": "button",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "Previous page",
-     "id": null,
-     "kind": "button",
-     "panel": "Customer Details",
-     "href": null,
-     "disabled": true
-    },
-    {
-     "label": "Next page",
-     "id": null,
-     "kind": "button",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "Back to Customers",
-     "id": null,
-     "kind": "button",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "Edit first, middle and last name",
-     "id": null,
-     "kind": "button",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "Call +19142241000",
-     "id": null,
-     "kind": "link",
-     "panel": "Customer Details",
-     "href": "tel:+19142241000"
-    },
-    {
-     "label": "Text",
-     "id": null,
-     "kind": "button",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "Forms",
-     "id": "react-aria9996607002-_r_5_",
-     "kind": "button",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "Print",
-     "id": null,
-     "kind": "button",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "Google",
-     "id": null,
-     "kind": "link",
-     "panel": "Customer Details",
-     "href": "https://www.google.com/search?q=Alma%20Aguilar"
-    },
-    {
-     "label": "Facebook",
-     "id": null,
-     "kind": "link",
-     "panel": "Customer Details",
-     "href": "https://www.facebook.com/search/top?q=Alma%20Aguilar"
-    },
-    {
-     "label": "LinkedIn",
-     "id": null,
-     "kind": "link",
-     "panel": "Customer Details",
-     "href": "https://www.linkedin.com/search/results/all/?keywords=Alma%20Aguilar"
-    },
-    {
-     "label": "Overview",
-     "id": null,
-     "kind": "tab",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "Leads",
-     "id": null,
-     "kind": "tab",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "Appts",
-     "id": null,
-     "kind": "tab",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "Sales",
-     "id": null,
-     "kind": "tab",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "Service",
-     "id": null,
-     "kind": "tab",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "Vehicles",
-     "id": null,
-     "kind": "tab",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "Trade-in",
-     "id": null,
-     "kind": "tab",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "CONTACT",
-     "id": null,
-     "kind": "button",
-     "panel": "Customer Details",
-     "href": null
-    },
-    {
-     "label": "PREFERENCES",
-     "id": null,
-     "kind": "button",
-     "panel": "CONTACT +19142241000 · alma@example.com",
-     "href": null
-    },
-    {
-     "label": "CUSTOMER VALUE",
-     "id": null,
-     "kind": "button",
-     "panel": "PREFERENCES Contact: Not set · Follow-up: Not set · Language",
-     "href": null
-    },
-    {
-     "label": "Add task",
-     "id": null,
-     "kind": "button",
-     "panel": "CUSTOMER VALUE Sales $0.00 · Service $0.00",
-     "href": null
-    },
-    {
-     "label": "All",
-     "id": null,
-     "kind": "button",
-     "panel": "Recent Activity",
-     "href": null
-    },
-    {
-     "label": "Staff",
-     "id": null,
-     "kind": "button",
-     "panel": "Recent Activity",
-     "href": null
-    },
-    {
-     "label": "AI",
-     "id": null,
-     "kind": "button",
-     "panel": "Recent Activity",
-     "href": null
-    },
-    {
-     "label": "Customer",
-     "id": null,
-     "kind": "button",
-     "panel": "Recent Activity",
-     "href": null
-    }
-   ],
-   "fields": [
-    {
-     "label": "Search customers by name, phone or email",
-     "id": null,
-     "name": null,
-     "kind": "input:text",
-     "panel": "Customer Details"
-    },
-    {
-     "label": "Assigned to Unassigned Sam Sales Maya Manager",
-     "id": null,
-     "name": null,
-     "kind": "select",
-     "panel": "Customer Details"
-    },
-    {
-     "label": "Search recent activity",
-     "id": null,
-     "name": null,
-     "kind": "input:text",
-     "panel": "Recent Activity"
-    },
-    {
-     "label": "Period",
-     "id": null,
-     "name": null,
-     "kind": "select",
-     "panel": "Recent Activity"
-    }
-   ]
-  },
-  "dealer/customers/[id]~CONTACT": {
-   "title": "Customer Details",
-   "panels": [
-    "CONTACT",
-    "Trade In"
-   ],
-   "tabs": [
-    "Overview",
-    "Leads",
-    "Appts",
-    "Sales",
-    "Service",
-    "Vehicles",
-    "Trade-in"
-   ],
-   "buttons": [
-    {
-     "label": "Change +19142241000",
-     "id": null,
-     "kind": "button",
-     "panel": "CONTACT",
-     "href": null
-    },
-    {
-     "label": "Remove +19142241000",
-     "id": null,
-     "kind": "button",
-     "panel": "CONTACT",
-     "href": null
-    },
-    {
-     "label": "Add a phone",
-     "id": null,
-     "kind": "button",
-     "panel": "CONTACT",
-     "href": null
-    },
-    {
-     "label": "Add an email",
-     "id": null,
-     "kind": "button",
-     "panel": "CONTACT",
-     "href": null
-    },
-    {
-     "label": "Add an address",
-     "id": null,
-     "kind": "button",
-     "panel": "CONTACT",
-     "href": null
-    },
-    {
-     "label": "Add Trade In",
-     "id": null,
-     "kind": "button",
-     "panel": "Trade In",
-     "href": null
-    }
-   ],
-   "fields": [
-    {
-     "label": "phone type",
-     "id": null,
-     "name": null,
-     "kind": "select",
-     "panel": "CONTACT"
-    },
-    {
-     "label": "email type",
-     "id": null,
-     "name": null,
-     "kind": "select",
-     "panel": "CONTACT"
-    }
-   ],
-   "route": "/dealer/customers/[id]",
-   "url": "/dealer/customers/6b05f1b3bd8975fd49baea04",
-   "parent": "dealer/customers/[id]",
-   "via": "Show 'CONTACT'"
-  },
-  "dealer/customers/[id]~PREFERENCES": {
-   "title": "Customer Details",
-   "panels": [
-    "CONTACT",
-    "PREFERENCES",
-    "MORE DETAILS"
-   ],
-   "tabs": [
-    "Overview",
-    "Leads",
-    "Appts",
-    "Sales",
-    "Service",
-    "Vehicles",
-    "Trade-in"
-   ],
-   "buttons": [
-    {
-     "label": "Change +19142241000",
-     "id": null,
-     "kind": "button",
-     "panel": "CONTACT",
-     "href": null
-    },
-    {
-     "label": "Remove +19142241000",
-     "id": null,
-     "kind": "button",
-     "panel": "CONTACT",
-     "href": null
-    },
-    {
-     "label": "Add a phone",
-     "id": null,
-     "kind": "button",
-     "panel": "CONTACT",
-     "href": null
-    },
-    {
-     "label": "Add an email",
-     "id": null,
-     "kind": "button",
-     "panel": "CONTACT",
-     "href": null
-    },
-    {
-     "label": "Add an address",
-     "id": null,
-     "kind": "button",
-     "panel": "CONTACT",
-     "href": null
-    },
-    {
-     "label": "Edit Preferred contact",
-     "id": null,
-     "kind": "button",
-     "panel": "PREFERENCES",
-     "href": null
-    },
-    {
-     "label": "Edit Follow-up by",
-     "id": null,
-     "kind": "button",
-     "panel": "PREFERENCES",
-     "href": null
-    },
-    {
-     "label": "Edit Language",
-     "id": null,
-     "kind": "button",
-     "panel": "PREFERENCES",
-     "href": null
-    },
-    {
-     "label": "MORE DETAILS",
-     "id": null,
-     "kind": "button",
-     "panel": "PREFERENCES",
-     "href": null
-    }
-   ],
-   "fields": [
-    {
-     "label": "phone type",
-     "id": null,
-     "name": null,
-     "kind": "select",
-     "panel": "CONTACT"
-    },
-    {
-     "label": "email type",
-     "id": null,
-     "name": null,
-     "kind": "select",
-     "panel": "CONTACT"
-    }
-   ],
-   "route": "/dealer/customers/[id]",
-   "url": "/dealer/customers/6b05f1b3bd8975fd49baea04",
-   "parent": "dealer/customers/[id]",
-   "via": "Show 'PREFERENCES'"
-  },
-  "dealer/customers/[id]~CUSTOMER VALUE": {
-   "title": "Customer Details",
-   "panels": [
-    "CONTACT",
-    "PREFERENCES",
-    "MORE DETAILS",
-    "CUSTOMER VALUE"
-   ],
-   "tabs": [
-    "Overview",
-    "Leads",
-    "Appts",
-    "Sales",
-    "Service",
-    "Vehicles",
-    "Trade-in"
-   ],
-   "buttons": [
-    {
-     "label": "Change +19142241000",
-     "id": null,
-     "kind": "button",
-     "panel": "CONTACT",
-     "href": null
-    },
-    {
-     "label": "Remove +19142241000",
-     "id": null,
-     "kind": "button",
-     "panel": "CONTACT",
-     "href": null
-    },
-    {
-     "label": "Add a phone",
-     "id": null,
-     "kind": "button",
-     "panel": "CONTACT",
-     "href": null
-    },
-    {
-     "label": "Add an email",
-     "id": null,
-     "kind": "button",
-     "panel": "CONTACT",
-     "href": null
-    },
-    {
-     "label": "Add an address",
-     "id": null,
-     "kind": "button",
-     "panel": "CONTACT",
-     "href": null
-    },
-    {
-     "label": "Edit Preferred contact",
-     "id": null,
-     "kind": "button",
-     "panel": "PREFERENCES",
-     "href": null
-    },
-    {
-     "label": "Edit Follow-up by",
-     "id": null,
-     "kind": "button",
-     "panel": "PREFERENCES",
-     "href": null
-    },
-    {
-     "label": "Edit Language",
-     "id": null,
-     "kind": "button",
-     "panel": "PREFERENCES",
-     "href": null
-    },
-    {
-     "label": "MORE DETAILS",
-     "id": null,
-     "kind": "button",
-     "panel": "PREFERENCES",
-     "href": null
-    }
-   ],
-   "fields": [
-    {
-     "label": "phone type",
-     "id": null,
-     "name": null,
-     "kind": "select",
-     "panel": "CONTACT"
-    },
-    {
-     "label": "email type",
-     "id": null,
-     "name": null,
-     "kind": "select",
-     "panel": "CONTACT"
-    }
-   ],
-   "route": "/dealer/customers/[id]",
-   "url": "/dealer/customers/6b05f1b3bd8975fd49baea04",
-   "parent": "dealer/customers/[id]",
-   "via": "Show 'CUSTOMER VALUE'"
-  },
-  "dealer/customers/[id]::Add task": {
-   "route": "/dealer/customers/[id]",
-   "url": "/dealer/customers/6b05f1b3bd8975fd49baea04",
-   "parent": "dealer/customers/[id]",
-   "via": "Button 'Add task'",
-   "overlay": true,
-   "title": "Add a task",
-   "panels": [
-    "Add a task"
-   ],
-   "tabs": [],
-   "buttons": [
-    {
-     "label": "Close",
-     "id": null,
-     "kind": "button",
-     "panel": "Add a task",
-     "href": null
-    },
-    {
-     "label": "Cancel",
-     "id": null,
-     "kind": "button",
-     "panel": "Add a task",
-     "href": null
-    },
-    {
-     "label": "Add task",
-     "id": null,
-     "kind": "button",
-     "panel": "Add a task",
-     "href": null,
-     "disabled": true
-    }
-   ],
-   "fields": [
-    {
-     "label": "e.g. Call to confirm the trade-in",
-     "id": null,
-     "name": null,
-     "kind": "input:text",
-     "panel": "Add a task"
-    },
-    {
-     "label": "",
-     "id": null,
-     "name": null,
-     "kind": "input:datetime-local",
-     "panel": "Add a task"
-    },
-    {
-     "label": "",
-     "id": null,
-     "name": null,
-     "kind": "select",
-     "panel": "Add a task"
-    }
-   ]
-  },
   "dealer/parts-inventory/[id]": {
    "route": "/dealer/parts-inventory/[id]",
    "skipped": "no example record linked from its list page",
@@ -10051,6 +8786,1049 @@
    "tabs": [],
    "buttons": [],
    "fields": []
+  },
+  "dealer/leads": {
+   "route": "/dealer/leads",
+   "url": "/dealer/leads",
+   "title": "Leads",
+   "panels": [
+    "Leads",
+    "Lead List"
+   ],
+   "tabs": [],
+   "buttons": [
+    {
+     "label": "Stopped",
+     "id": null,
+     "kind": "button",
+     "panel": "Leads",
+     "href": null
+    },
+    {
+     "label": "All",
+     "id": null,
+     "kind": "button",
+     "panel": "Leads",
+     "href": null
+    },
+    {
+     "label": "Mine",
+     "id": null,
+     "kind": "button",
+     "panel": "Leads",
+     "href": null
+    },
+    {
+     "label": "Unassigned",
+     "id": null,
+     "kind": "button",
+     "panel": "Leads",
+     "href": null
+    },
+    {
+     "label": "All departments",
+     "id": null,
+     "kind": "button",
+     "panel": "Leads",
+     "href": null
+    },
+    {
+     "label": "Sales",
+     "id": null,
+     "kind": "button",
+     "panel": "Leads",
+     "href": null
+    },
+    {
+     "label": "Service",
+     "id": null,
+     "kind": "button",
+     "panel": "Leads",
+     "href": null
+    },
+    {
+     "label": "Parts",
+     "id": null,
+     "kind": "button",
+     "panel": "Leads",
+     "href": null
+    },
+    {
+     "label": "Actions",
+     "id": "leads-actions",
+     "kind": "button",
+     "panel": "Lead List",
+     "href": null
+    },
+    {
+     "label": "Date Range",
+     "id": null,
+     "kind": "button",
+     "panel": "Lead List",
+     "href": null
+    },
+    {
+     "label": "Search",
+     "id": null,
+     "kind": "button",
+     "panel": "Lead List",
+     "href": null
+    },
+    {
+     "label": "Clear",
+     "id": null,
+     "kind": "button",
+     "panel": "Lead List",
+     "href": null,
+     "disabled": true
+    },
+    {
+     "label": "Row: View",
+     "id": null,
+     "kind": "button",
+     "panel": "Lead List",
+     "href": null,
+     "row": true
+    },
+    {
+     "label": "Row: (regular icon)",
+     "id": null,
+     "kind": "button",
+     "panel": "Lead List",
+     "href": null,
+     "row": true
+    }
+   ],
+   "fields": [
+    {
+     "label": "",
+     "id": null,
+     "name": null,
+     "kind": "select",
+     "panel": "Leads"
+    },
+    {
+     "label": "Search name, phone, email or stock number",
+     "id": null,
+     "name": "q",
+     "kind": "input:search",
+     "panel": "Lead List"
+    },
+    {
+     "label": "status",
+     "id": null,
+     "name": "status",
+     "kind": "select",
+     "panel": "Lead List"
+    },
+    {
+     "label": "lead_source",
+     "id": null,
+     "name": "lead_source",
+     "kind": "select",
+     "panel": "Lead List"
+    },
+    {
+     "label": "source",
+     "id": null,
+     "name": "source",
+     "kind": "select",
+     "panel": "Lead List"
+    },
+    {
+     "label": "Assigned to",
+     "id": null,
+     "name": "owner",
+     "kind": "select",
+     "panel": "Lead List"
+    },
+    {
+     "label": "message_filter",
+     "id": null,
+     "name": "message_filter",
+     "kind": "select",
+     "panel": "Lead List"
+    },
+    {
+     "label": "",
+     "id": null,
+     "name": null,
+     "kind": "select",
+     "panel": "Lead List"
+    }
+   ]
+  },
+  "dealer/leads~Sales": {
+   "title": "Leads",
+   "panels": [],
+   "tabs": [],
+   "buttons": [
+    {
+     "label": "Clear Department: Sales",
+     "id": null,
+     "kind": "button",
+     "panel": "Lead List",
+     "href": null
+    }
+   ],
+   "fields": [],
+   "route": "/dealer/leads",
+   "url": "/dealer/leads",
+   "parent": "dealer/leads",
+   "via": "Show 'Sales'"
+  },
+  "dealer/leads~Service": {
+   "title": "Leads",
+   "panels": [],
+   "tabs": [],
+   "buttons": [
+    {
+     "label": "Clear Department: Service",
+     "id": null,
+     "kind": "button",
+     "panel": "Lead List",
+     "href": null
+    }
+   ],
+   "fields": [],
+   "route": "/dealer/leads",
+   "url": "/dealer/leads",
+   "parent": "dealer/leads",
+   "via": "Show 'Service'"
+  },
+  "dealer/leads~Parts": {
+   "title": "Leads",
+   "panels": [],
+   "tabs": [],
+   "buttons": [
+    {
+     "label": "Clear Department: Parts",
+     "id": null,
+     "kind": "button",
+     "panel": "Lead List",
+     "href": null
+    }
+   ],
+   "fields": [],
+   "route": "/dealer/leads",
+   "url": "/dealer/leads",
+   "parent": "dealer/leads",
+   "via": "Show 'Parts'"
+  },
+  "dealer/leads::Actions": {
+   "route": "/dealer/leads",
+   "url": "/dealer/leads",
+   "parent": "dealer/leads",
+   "via": "Button 'Actions'",
+   "overlay": true,
+   "title": "",
+   "panels": [],
+   "tabs": [],
+   "buttons": [
+    {
+     "label": "Add lead",
+     "id": null,
+     "kind": "link",
+     "panel": "Lead List",
+     "href": null
+    },
+    {
+     "label": "Import CSV",
+     "id": null,
+     "kind": "link",
+     "panel": "Lead List",
+     "href": null
+    },
+    {
+     "label": "Export CSV 10 with your filters",
+     "id": null,
+     "kind": "link",
+     "panel": "Lead List",
+     "href": null
+    },
+    {
+     "label": "Select leads change many at once",
+     "id": null,
+     "kind": "link",
+     "panel": "Lead List",
+     "href": null
+    },
+    {
+     "label": "Bulk history who changed what, undo",
+     "id": null,
+     "kind": "link",
+     "panel": "Lead List",
+     "href": null
+    }
+   ],
+   "fields": []
+  },
+  "dealer/leads::Date Range": {
+   "route": "/dealer/leads",
+   "url": "/dealer/leads",
+   "parent": "dealer/leads",
+   "via": "Button 'Date Range'",
+   "overlay": true,
+   "title": "",
+   "panels": [],
+   "tabs": [],
+   "buttons": [
+    {
+     "label": "Page buttons (previous / next / number)",
+     "id": null,
+     "kind": "button",
+     "panel": "Lead List",
+     "href": null
+    },
+    {
+     "label": "Apply",
+     "id": null,
+     "kind": "button",
+     "panel": "Lead List",
+     "href": null
+    },
+    {
+     "label": "Clear",
+     "id": null,
+     "kind": "button",
+     "panel": "Lead List",
+     "href": null
+    }
+   ],
+   "fields": [
+    {
+     "label": "",
+     "id": null,
+     "name": null,
+     "kind": "select",
+     "panel": "Lead List"
+    }
+   ]
+  },
+  "dealer/customers": {
+   "route": "/dealer/customers",
+   "url": "/dealer/customers",
+   "title": "Customers",
+   "panels": [
+    "Customers",
+    "Customer List"
+   ],
+   "tabs": [],
+   "buttons": [
+    {
+     "label": "Possible duplicates",
+     "id": null,
+     "kind": "link",
+     "panel": "Customers",
+     "href": "/dealer/customers/duplicates"
+    },
+    {
+     "label": "All",
+     "id": null,
+     "kind": "button",
+     "panel": "Customers",
+     "href": null
+    },
+    {
+     "label": "Mine",
+     "id": null,
+     "kind": "button",
+     "panel": "Customers",
+     "href": null
+    },
+    {
+     "label": "Unassigned",
+     "id": null,
+     "kind": "button",
+     "panel": "Customers",
+     "href": null
+    },
+    {
+     "label": "Add Customer",
+     "id": null,
+     "kind": "button",
+     "panel": "Customer List",
+     "href": null
+    },
+    {
+     "label": "Date Range",
+     "id": null,
+     "kind": "button",
+     "panel": "Customer List",
+     "href": null
+    },
+    {
+     "label": "Search",
+     "id": null,
+     "kind": "button",
+     "panel": "Customer List",
+     "href": null
+    },
+    {
+     "label": "Clear",
+     "id": null,
+     "kind": "button",
+     "panel": "Customer List",
+     "href": null
+    },
+    {
+     "label": "Row: Open the customer's profile",
+     "id": null,
+     "kind": "button",
+     "panel": "Customer List",
+     "href": null,
+     "row": true
+    },
+    {
+     "label": "Page buttons (previous / next / number)",
+     "id": null,
+     "kind": "link",
+     "panel": "Customer List",
+     "href": null
+    },
+    {
+     "label": "› Next",
+     "id": null,
+     "kind": "link",
+     "panel": "Customer List",
+     "href": null
+    },
+    {
+     "label": "Go",
+     "id": null,
+     "kind": "button",
+     "panel": "Customer List",
+     "href": null
+    }
+   ],
+   "fields": [
+    {
+     "label": "Sort customers",
+     "id": null,
+     "name": null,
+     "kind": "select",
+     "panel": "Customers"
+    },
+    {
+     "label": "Search name, phone or email",
+     "id": null,
+     "name": null,
+     "kind": "input:search",
+     "panel": "Customer List"
+    },
+    {
+     "label": "Source",
+     "id": null,
+     "name": null,
+     "kind": "select",
+     "panel": "Customer List"
+    },
+    {
+     "label": "Assigned to",
+     "id": null,
+     "name": null,
+     "kind": "select",
+     "panel": "Customer List"
+    },
+    {
+     "label": "Page",
+     "id": null,
+     "name": null,
+     "kind": "input:number",
+     "panel": "Customer List"
+    }
+   ]
+  },
+  "dealer/customers::Add Customer": {
+   "route": "/dealer/customers",
+   "url": "/dealer/customers",
+   "parent": "dealer/customers",
+   "via": "Button 'Add Customer'",
+   "overlay": true,
+   "title": "Add Customer",
+   "panels": [
+    "Add Customer",
+    "Add New Customer"
+   ],
+   "tabs": [],
+   "buttons": [
+    {
+     "label": "Close",
+     "id": null,
+     "kind": "button",
+     "panel": "Add Customer",
+     "href": null
+    },
+    {
+     "label": "Save Customer",
+     "id": null,
+     "kind": "button",
+     "panel": "Add New Customer",
+     "href": null
+    },
+    {
+     "label": "Cancel",
+     "id": null,
+     "kind": "button",
+     "panel": "Add New Customer",
+     "href": null
+    }
+   ],
+   "fields": [
+    {
+     "label": "First name",
+     "id": null,
+     "name": "first_name",
+     "kind": "input:text",
+     "panel": "Add New Customer"
+    },
+    {
+     "label": "Middle name",
+     "id": null,
+     "name": "middle_name",
+     "kind": "input:text",
+     "panel": "Add New Customer"
+    },
+    {
+     "label": "Last name",
+     "id": null,
+     "name": "last_name",
+     "kind": "input:text",
+     "panel": "Add New Customer"
+    },
+    {
+     "label": "Email",
+     "id": null,
+     "name": "email",
+     "kind": "input:email",
+     "panel": "Add New Customer"
+    },
+    {
+     "label": "Phone",
+     "id": null,
+     "name": "phone",
+     "kind": "input:tel",
+     "panel": "Add New Customer"
+    },
+    {
+     "label": "Follow-up Preference",
+     "id": null,
+     "name": "followup_preference",
+     "kind": "select",
+     "panel": "Add New Customer"
+    },
+    {
+     "label": "Preferred Contact Mode",
+     "id": null,
+     "name": "preferred_communication_mode",
+     "kind": "input:text",
+     "panel": "Add New Customer"
+    },
+    {
+     "label": "Language",
+     "id": null,
+     "name": "user_language",
+     "kind": "input:text",
+     "panel": "Add New Customer"
+    }
+   ]
+  },
+  "dealer/customers::Date Range": {
+   "route": "/dealer/customers",
+   "url": "/dealer/customers",
+   "parent": "dealer/customers",
+   "via": "Button 'Date Range'",
+   "overlay": true,
+   "title": "",
+   "panels": [],
+   "tabs": [],
+   "buttons": [
+    {
+     "label": "Page buttons (previous / next / number)",
+     "id": null,
+     "kind": "button",
+     "panel": "Customer List",
+     "href": null
+    },
+    {
+     "label": "Apply",
+     "id": null,
+     "kind": "button",
+     "panel": "Customer List",
+     "href": null
+    },
+    {
+     "label": "Clear",
+     "id": null,
+     "kind": "button",
+     "panel": "Customer List",
+     "href": null
+    }
+   ],
+   "fields": [
+    {
+     "label": "",
+     "id": null,
+     "name": null,
+     "kind": "select",
+     "panel": "Customer List"
+    }
+   ]
+  },
+  "dealer/customers/duplicates": {
+   "route": "/dealer/customers/duplicates",
+   "url": "/dealer/customers/duplicates",
+   "title": "Possible duplicate customers",
+   "panels": [
+    "Possible duplicate customers"
+   ],
+   "tabs": [],
+   "buttons": [
+    {
+     "label": "Back",
+     "id": null,
+     "kind": "link",
+     "panel": "",
+     "href": "/dealer/customers"
+    }
+   ],
+   "fields": []
+  },
+  "dealer/customers/[id]": {
+   "route": "/dealer/customers/[id]",
+   "url": "/dealer/customers/6af238d15195a9aa245ec001",
+   "title": "Customer Details",
+   "panels": [
+    "Customer Details",
+    "Profile",
+    "CONTACT",
+    "PREFERENCES",
+    "MORE DETAILS",
+    "CUSTOMER VALUE"
+   ],
+   "tabs": [
+    "Profile",
+    "Leads 1",
+    "Activity",
+    "Tasks",
+    "Appts",
+    "Sales",
+    "Service",
+    "Vehicles",
+    "Trade-in"
+   ],
+   "buttons": [
+    {
+     "label": "Export to form",
+     "id": "react-aria9553120454-_r_3_",
+     "kind": "button",
+     "panel": "Customer Details",
+     "href": null
+    },
+    {
+     "label": "Actions",
+     "id": "customer-actions",
+     "kind": "button",
+     "panel": "Customer Details",
+     "href": null
+    },
+    {
+     "label": "Back to Customers",
+     "id": null,
+     "kind": "button",
+     "panel": "Customer Details",
+     "href": null
+    },
+    {
+     "label": "Previous Customer",
+     "id": null,
+     "kind": "button",
+     "panel": "Customer Details",
+     "href": null,
+     "disabled": true
+    },
+    {
+     "label": "Next Customer",
+     "id": null,
+     "kind": "button",
+     "panel": "Customer Details",
+     "href": null
+    },
+    {
+     "label": "Hide the customer list",
+     "id": null,
+     "kind": "button",
+     "panel": "Customer Details",
+     "href": null
+    },
+    {
+     "label": "All",
+     "id": null,
+     "kind": "button",
+     "panel": "Customer Details",
+     "href": null
+    },
+    {
+     "label": "Mine",
+     "id": null,
+     "kind": "button",
+     "panel": "Customer Details",
+     "href": null
+    },
+    {
+     "label": "Unassigned",
+     "id": null,
+     "kind": "button",
+     "panel": "Customer Details",
+     "href": null
+    },
+    {
+     "label": "Previous page",
+     "id": null,
+     "kind": "button",
+     "panel": "Customer Details",
+     "href": null,
+     "disabled": true
+    },
+    {
+     "label": "Next page",
+     "id": null,
+     "kind": "button",
+     "panel": "Customer Details",
+     "href": null
+    },
+    {
+     "label": "Profile",
+     "id": null,
+     "kind": "tab",
+     "panel": "Customer Details",
+     "href": null
+    },
+    {
+     "label": "Leads",
+     "id": null,
+     "kind": "tab",
+     "panel": "Customer Details",
+     "href": null
+    },
+    {
+     "label": "Activity",
+     "id": null,
+     "kind": "tab",
+     "panel": "Customer Details",
+     "href": null
+    },
+    {
+     "label": "Tasks",
+     "id": null,
+     "kind": "tab",
+     "panel": "Customer Details",
+     "href": null
+    },
+    {
+     "label": "Appts",
+     "id": null,
+     "kind": "tab",
+     "panel": "Customer Details",
+     "href": null
+    },
+    {
+     "label": "Sales",
+     "id": null,
+     "kind": "tab",
+     "panel": "Customer Details",
+     "href": null
+    },
+    {
+     "label": "Service",
+     "id": null,
+     "kind": "tab",
+     "panel": "Customer Details",
+     "href": null
+    },
+    {
+     "label": "Vehicles",
+     "id": null,
+     "kind": "tab",
+     "panel": "Customer Details",
+     "href": null
+    },
+    {
+     "label": "Trade-in",
+     "id": null,
+     "kind": "tab",
+     "panel": "Customer Details",
+     "href": null
+    },
+    {
+     "label": "Edit first, middle and last name",
+     "id": null,
+     "kind": "button",
+     "panel": "Profile",
+     "href": null
+    },
+    {
+     "label": "CONTACT",
+     "id": null,
+     "kind": "button",
+     "panel": "Profile",
+     "href": null
+    },
+    {
+     "label": "Change (217) 555-8045",
+     "id": null,
+     "kind": "button",
+     "panel": "CONTACT",
+     "href": null
+    },
+    {
+     "label": "Remove (217) 555-8045",
+     "id": null,
+     "kind": "button",
+     "panel": "CONTACT",
+     "href": null
+    },
+    {
+     "label": "Add a phone",
+     "id": null,
+     "kind": "button",
+     "panel": "CONTACT",
+     "href": null
+    },
+    {
+     "label": "Add an email",
+     "id": null,
+     "kind": "button",
+     "panel": "CONTACT",
+     "href": null
+    },
+    {
+     "label": "Add an address",
+     "id": null,
+     "kind": "button",
+     "panel": "CONTACT",
+     "href": null
+    },
+    {
+     "label": "PREFERENCES",
+     "id": null,
+     "kind": "button",
+     "panel": "CONTACT",
+     "href": null
+    },
+    {
+     "label": "Edit Preferred contact",
+     "id": null,
+     "kind": "button",
+     "panel": "PREFERENCES",
+     "href": null
+    },
+    {
+     "label": "Edit Follow-up by",
+     "id": null,
+     "kind": "button",
+     "panel": "PREFERENCES",
+     "href": null
+    },
+    {
+     "label": "Edit Language",
+     "id": null,
+     "kind": "button",
+     "panel": "PREFERENCES",
+     "href": null
+    },
+    {
+     "label": "MORE DETAILS",
+     "id": null,
+     "kind": "button",
+     "panel": "PREFERENCES",
+     "href": null
+    },
+    {
+     "label": "CUSTOMER VALUE",
+     "id": null,
+     "kind": "button",
+     "panel": "MORE DETAILS",
+     "href": null
+    }
+   ],
+   "fields": [
+    {
+     "label": "Search customers by name, phone or email",
+     "id": null,
+     "name": null,
+     "kind": "input:search",
+     "panel": "Customer Details"
+    },
+    {
+     "label": "Assigned to Unassigned Sam Sales Maya Manager",
+     "id": null,
+     "name": null,
+     "kind": "select",
+     "panel": "Profile"
+    },
+    {
+     "label": "phone type",
+     "id": null,
+     "name": null,
+     "kind": "select",
+     "panel": "CONTACT"
+    },
+    {
+     "label": "email type",
+     "id": null,
+     "name": null,
+     "kind": "select",
+     "panel": "CONTACT"
+    }
+   ]
+  },
+  "dealer/customers/[id]~Mine": {
+   "title": "Customer Details",
+   "panels": [
+    "Trade-in",
+    "Trade In"
+   ],
+   "tabs": [
+    "Profile",
+    "Leads 1",
+    "Activity",
+    "Tasks",
+    "Appts",
+    "Sales",
+    "Service",
+    "Vehicles",
+    "Trade-in"
+   ],
+   "buttons": [
+    {
+     "label": "Add Trade In",
+     "id": null,
+     "kind": "button",
+     "panel": "Trade In",
+     "href": null
+    }
+   ],
+   "fields": [
+    {
+     "label": "Trade-ins of which lead",
+     "id": null,
+     "name": null,
+     "kind": "select",
+     "panel": "Trade In"
+    }
+   ],
+   "route": "/dealer/customers/[id]",
+   "url": "/dealer/customers/6af238d15195a9aa245ec001",
+   "parent": "dealer/customers/[id]",
+   "via": "Show 'Mine'"
+  },
+  "dealer/customers/[id]::Actions": {
+   "route": "/dealer/customers/[id]",
+   "url": "/dealer/customers/6af238d15195a9aa245ec001",
+   "parent": "dealer/customers/[id]",
+   "via": "Button 'Actions'",
+   "overlay": true,
+   "title": "",
+   "panels": [],
+   "tabs": [],
+   "buttons": [
+    {
+     "label": "Print",
+     "id": null,
+     "kind": "link",
+     "panel": "Customer Details",
+     "href": null
+    },
+    {
+     "label": "Merge",
+     "id": null,
+     "kind": "link",
+     "panel": "Customer Details",
+     "href": null
+    },
+    {
+     "label": "Google",
+     "id": null,
+     "kind": "link",
+     "panel": "Customer Details",
+     "href": "https://www.google.com/search?q=Carla%20Reyes"
+    },
+    {
+     "label": "Facebook",
+     "id": null,
+     "kind": "link",
+     "panel": "Customer Details",
+     "href": "https://www.facebook.com/search/top?q=Carla%20Reyes"
+    },
+    {
+     "label": "LinkedIn",
+     "id": null,
+     "kind": "link",
+     "panel": "Customer Details",
+     "href": "https://www.linkedin.com/search/results/all/?keywords=Carla%20Reyes"
+    }
+   ],
+   "fields": []
+  },
+  "dealer/customers/[id]::Edit first, middle and last name": {
+   "route": "/dealer/customers/[id]",
+   "url": "/dealer/customers/6af238d15195a9aa245ec001",
+   "parent": "dealer/customers/[id]",
+   "via": "Button 'Edit first, middle and last name'",
+   "overlay": true,
+   "title": "Add a task",
+   "panels": [
+    "Add a task"
+   ],
+   "tabs": [],
+   "buttons": [
+    {
+     "label": "Close",
+     "id": null,
+     "kind": "button",
+     "panel": "Add a task",
+     "href": null
+    },
+    {
+     "label": "Cancel",
+     "id": null,
+     "kind": "button",
+     "panel": "Add a task",
+     "href": null
+    },
+    {
+     "label": "Add task",
+     "id": null,
+     "kind": "button",
+     "panel": "Add a task",
+     "href": null,
+     "disabled": true
+    }
+   ],
+   "fields": [
+    {
+     "label": "e.g. Call to confirm the trade-in",
+     "id": null,
+     "name": null,
+     "kind": "input:text",
+     "panel": "Add a task"
+    },
+    {
+     "label": "",
+     "id": null,
+     "name": null,
+     "kind": "input:datetime-local",
+     "panel": "Add a task"
+    },
+    {
+     "label": "",
+     "id": null,
+     "name": null,
+     "kind": "select",
+     "panel": "Add a task"
+    }
+   ]
   }
  }
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Button, ButtonGroup, Form } from "react-bootstrap";
+import { Form } from "react-bootstrap";
 import moment from "moment-timezone";
 import { ListPages } from "../../../leads/components/BulkAssign";
 import { formatTimestamp } from "../../../../utils/dateUtils";
@@ -86,7 +86,7 @@ function kindOf(e) {
   const k = String(e.kind || "");
   if (k === "note" || k === "note_removed") return "note";
   if (k === "message_in" || k === "message_out") return /(^|\] )Email/.test(e.text || "") ? "email" : "text";
-  if (k === "lead_edited" || k === "hot_changed") return "lead";
+  if (k === "lead_edited" || k === "hot_changed" || k === "lead_deleted" || k === "customer_created") return "lead";
   if (/call/.test(k)) return "call";
   if (/stage|status/.test(k)) return "status";
   if (/assign/.test(k)) return "owner";
@@ -95,7 +95,7 @@ function kindOf(e) {
 }
 const KIND_TITLE = { status_changed: "Status changed", lead_edited: "Lead edited", lead_reassigned: "Owner changed", reminder_set: "Task added", reminder_done: "Task done",
   reminder_updated: "Task changed", reminder_removed: "Task removed", note_removed: "Note removed", ai_stage: "Status changed", opt_out: "Opted out", opt_in: "Opted back in",
-  customer_merged: "Customers merged", customer_merge_undone: "Merge undone", in_market_changed: "Market status changed", appointment_created: "Appointment set" };
+  lead_deleted: "Lead deleted", customer_created: "Customer added", customer_merged: "Customers merged", customer_merge_undone: "Merge undone", in_market_changed: "Market status changed", appointment_created: "Appointment set" };
 const whoOf = (e) => {
   if (e.type === "activity") return e.who || (ACTOR_META[e.actor] || ACTOR_META.system).label;
   if (e.type === "assignment") return e.record?.assigned_by_name || "Staff";
@@ -150,59 +150,80 @@ export default function OverviewTab({ overview, activity = [] }) {
   useEffect(() => { setPage(1); setOpen(null); }, [filter, kind, leadFilter, days, needle]);
   const present = Object.keys(KINDS).filter((k) => base.some((e) => e._kind === k));
   let lastDay = null;
+  // A timeline (the user, 28 Nov 2026: Activity better aligned): one toolbar, the kind chips, then per day a rail of
+  // coloured icons, each entry a card - what happened and when on top, the detail under it, who and which opportunity
+  // as tags. A click opens the full detail. Same data, filters and pages as before.
   return (
-    <div className="w_card">
-      <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
-        <h3 className="w_card_title mb-0 me-auto"><i className="fa-solid fa-clock-rotate-left me-2" style={{ color: "#5f7890" }} aria-hidden="true" />Recent Activity</h3>
-        <Form.Control size="sm" style={{ width: 220 }} placeholder="Search recent activity" aria-label="Search recent activity" value={query} onChange={(e) => setQuery(e.target.value)} />
+    <div className="w_card tl_card">
+      <div className="tl_toolbar">
+        <div className="tl_search">
+          <i className="fa-solid fa-magnifying-glass" aria-hidden="true" />
+          <Form.Control size="sm" placeholder="Search activity" aria-label="Search recent activity" value={query} onChange={(e) => setQuery(e.target.value)} />
+        </div>
         {leadOptions.length > 1 && (
-          <Form.Select size="sm" className="w-auto" value={leadFilter} aria-label="Show one lead" onChange={(e) => setLeadFilter(e.target.value)}>
+          <Form.Select size="sm" className="tl_select" value={leadFilter} aria-label="Show one lead" onChange={(e) => setLeadFilter(e.target.value)}>
             <option value="">All opportunities</option>
             {leadOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
           </Form.Select>
         )}
-        <Form.Select size="sm" className="w-auto" value={days} aria-label="Period" onChange={(e) => setDays(e.target.value)}>
+        <Form.Select size="sm" className="tl_select" value={days} aria-label="Period" onChange={(e) => setDays(e.target.value)}>
           <option value="">All time</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option>
         </Form.Select>
-        <ButtonGroup size="sm">
-          {FILTERS.map(([key, label]) => <Button key={key} variant={filter === key ? "custom" : "outline-custom"} onClick={() => setFilter(key)}>{label}</Button>)}
-        </ButtonGroup>
+        <div className="tl_who" role="group" aria-label="Who did it">
+          {FILTERS.map(([key, label]) => (
+            <button key={key} type="button" className={filter === key ? "on" : ""} aria-pressed={filter === key} onClick={() => setFilter(key)}>
+              {key !== "all" && <i className={`fa-solid ${ACTOR_META[key].icon}`} aria-hidden="true" />}{label}
+            </button>
+          ))}
+        </div>
       </div>
-      <div className="ra_types">
+      <div className="tl_kinds">
         <button type="button" className={kind === "all" ? "on" : ""} onClick={() => setKind("all")}>All <b>{base.length}</b></button>
         {present.map((k) => (
-          <button type="button" key={k} className={kind === k ? "on" : ""} onClick={() => setKind(k)}>
-            <i className={`fa-solid ${KINDS[k][1]} me-1`} style={{ color: KINDS[k][2] }} aria-hidden="true" />{KINDS[k][0]} <b>{base.filter((e) => e._kind === k).length}</b>
+          <button type="button" key={k} className={kind === k ? "on" : ""} style={{ "--c": KINDS[k][2] }} onClick={() => setKind(k)}>
+            <i className={`fa-solid ${KINDS[k][1]}`} aria-hidden="true" />{KINDS[k][0]} <b>{base.filter((e) => e._kind === k).length}</b>
           </button>
         ))}
       </div>
       {rows.length === 0 ? (
         <div className="text-center py-4 text-muted">{all.length ? "No activity matches these filters." : "No activity found."}</div>
-      ) : visible.map((entry) => {
-        const day = dayLabel(entry.at);
-        const showDay = day !== lastDay;
-        lastDay = day;
-        const k = KINDS[entry._kind];
-        const who = whoOf(entry);
-        const meta = whoMeta(entry);
-        const isOpen = open === entry._key;
-        const [title, line] = lineFor(entry, textOf(entry));
-        const opp = oppOf(entry);
-        return (
-          <div key={entry._key}>
-            {showDay && <div className="ra_day">{day}</div>}
-            <button type="button" className={`ra_row${isOpen ? " on" : ""}`} aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : entry._key)}>
-              <span className="ra_icon" style={{ background: k[2] }}><i className={`fa-solid ${k[1]}`} aria-hidden="true" /></span>
-              <span className="ra_main"><b>{title}</b><span>{line}</span></span>
-              <span className="ra_opp" title={opp}>{opp}</span>
-              <span className="ra_who" title={who}><i className={`fa-solid ${meta.icon} me-1`} aria-hidden="true" />{who}</span>
-              <span className="ra_time">{entry.at ? moment(entry.at).format("h:mm A") : ""}</span>
-              <i className={`fa-solid fa-chevron-${isOpen ? "up" : "down"} text-muted`} aria-hidden="true" />
-            </button>
-            {isOpen && <div className="ra_detail"><b>Details:</b> {entry.full || entry.detail || line}<br />{opp && <><b>Opportunity:</b> {opp} · </>}<b>By:</b> {who}{entry.at ? ` · ${formatTimestamp(entry.at)}` : ""}</div>}
-          </div>
-        );
-      })}
+      ) : (
+        <ol className="tl_list">
+          {visible.map((entry) => {
+            const day = dayLabel(entry.at);
+            const showDay = day !== lastDay;
+            lastDay = day;
+            const k = KINDS[entry._kind];
+            const who = whoOf(entry);
+            const meta = whoMeta(entry);
+            const isOpen = open === entry._key;
+            const [title, line] = lineFor(entry, textOf(entry));
+            const opp = oppOf(entry);
+            const actor = entry.type === "activity" ? entry.actor || "system" : entry.type === "assignment" ? "staff" : "system";
+            return (
+              <li key={entry._key} className="tl_item_wrap">
+                {showDay && <div className="tl_day"><span>{day}</span></div>}
+                <div className="tl_item" style={{ "--c": k[2] }}>
+                  <span className="tl_dot" aria-hidden="true"><i className={`fa-solid ${k[1]}`} /></span>
+                  <button type="button" className={`tl_body${isOpen ? " on" : ""}`} aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : entry._key)}>
+                    <span className="tl_top">
+                      <b className="tl_title">{title}</b>
+                      <span className="tl_time">{entry.at ? moment(entry.at).format("h:mm A") : ""}</span>
+                    </span>
+                    {line && <span className={`tl_text${isOpen ? " full" : ""}`}>{isOpen ? (entry.full || entry.detail || line) : line}</span>}
+                    <span className="tl_meta">
+                      <span className={`tl_tag who_${actor}`}><i className={`fa-solid ${meta.icon}`} aria-hidden="true" />{who}</span>
+                      {opp && <span className="tl_tag"><i className="fa-solid fa-car-side" aria-hidden="true" />{opp}</span>}
+                      {isOpen && entry.at && <span className="tl_tag"><i className="fa-regular fa-clock" aria-hidden="true" />{formatTimestamp(entry.at)}</span>}
+                      <i className={`fa-solid fa-chevron-${isOpen ? "up" : "down"} tl_chev`} aria-hidden="true" />
+                    </span>
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      )}
       {pages > 1 && <div className="mt-3"><ListPages current={current} total={pages} onPage={setPage} /></div>}
     </div>
   );

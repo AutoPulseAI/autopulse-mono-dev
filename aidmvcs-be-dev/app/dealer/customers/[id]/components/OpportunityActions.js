@@ -8,7 +8,8 @@
 //   Vehicles of interest: several per opportunity, from the dealer's inventory or typed in
 // api/leads/[id]/opportunity; every change goes on the customer timeline.
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Badge, Button, Form, Modal, Spinner } from "react-bootstrap";
+import { createPortal } from "react-dom";
+import { Alert, Badge, Button, Dropdown, Form, Modal, Spinner } from "react-bootstrap";
 import CallButton from "../../../components/CallButton";
 import { aiFetch } from "../../../ai/components/aiShared";
 import { formatTimestamp } from "../../../../utils/dateUtils";
@@ -48,17 +49,23 @@ function InventoryPicker({ dealerId, onPick }) {
   );
 }
 
-export default function OpportunityActions({ lead, onChanged, actionsRef = null }) {
+// toolsTarget (customer profile Leads tab, 27 Nov 2026): an element in the lead's actions bar - Reminder, Appt., Log
+// call and Other task are shown there, beside Call / Add note / Update status, instead of in a row of their own.
+// showDetails / onData (the customer's lead, 28 Nov 2026): the reminders, vehicles of interest and Active switch show
+// only when the lead's Details are open; onData(data) gives the counts for the folded summary line.
+export default function OpportunityActions({ lead, onChanged, actionsRef = null, toolsTarget = null, showDetails = true, onData }) {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [reminder, setReminder] = useState(null); // { due_at, note, assigned_to }
   const [task, setTask] = useState(null);         // other task note
   const [manual, setManual] = useState(null);     // typed vehicle
+  const [logSignal, setLogSignal] = useState(0);  // More > Log a call
   const url = `/api/leads/${lead._id}/opportunity`;
 
   const load = useCallback(() => aiFetch(url).then(setData).catch((e) => setError(e.message)), [url]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (data) onData?.(data); }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const act = async (body) => {
     setBusy(true); setError(null);
@@ -79,10 +86,28 @@ export default function OpportunityActions({ lead, onChanged, actionsRef = null 
   const open = data.reminders.filter((r) => !r.done_at);
 
   return (
-    <div className="border rounded p-2 mb-3 small">
+    <div className={toolsTarget ? "opp_box small" : "border rounded p-2 mb-3 small"}>
       {error && <Alert variant="danger" className="py-1 px-2 mb-2">{error}</Alert>}
       {/* One row of solid action blocks for this opportunity (Bibi, 25 Nov 2026: all communication in one place, solid
           blue like SMS Reply). The lead's own SMS Reply, Call, Note, Status and Check in are placed in the slot. */}
+      {toolsTarget ? createPortal(
+        // One More button beside the Leads page's own actions (the user, 28 Nov 2026: keep the bar as on the Leads page).
+        <Dropdown className="inbox_more_menu" align="end">
+          <Dropdown.Toggle as="button" type="button" className="inbox_act" id={`opp-more-${lead._id}`}>
+            <i className="fa-duotone fa-ellipsis" /><span>More</span>
+          </Dropdown.Toggle>
+          <Dropdown.Menu>
+            <Dropdown.Item onClick={() => setReminder({ due_at: "", note: "", assigned_to: "" })}>
+              <i className="fa-solid fa-alarm-clock fa-fw me-2 text-warning" />Reminder</Dropdown.Item>
+            <Dropdown.Item href="/dealer/booking"><i className="fa-solid fa-calendar-days fa-fw me-2 text-success" />Appointment</Dropdown.Item>
+            <Dropdown.Item onClick={() => setLogSignal((n) => n + 1)}>
+              <i className="fa-solid fa-phone-arrow-up-right fa-fw me-2 text-primary" />Log a call made from another phone</Dropdown.Item>
+            <Dropdown.Item onClick={() => setTask("")}><i className="fa-solid fa-clipboard-list fa-fw me-2 text-secondary" />Other task</Dropdown.Item>
+          </Dropdown.Menu>
+        </Dropdown>, toolsTarget) : null}
+      {toolsTarget && <CallButton logOnly hideButton openSignal={logSignal} phone={lead.phone} leadId={lead._id}
+        dealerId={lead.dealer_id} onLogged={onChanged} />}
+      {toolsTarget ? null : (
       <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
         <div className="opp_tools">
           <span className="opp_slot" ref={actionsRef} />
@@ -99,7 +124,8 @@ export default function OpportunityActions({ lead, onChanged, actionsRef = null 
           title="A flag for your team; the AI's follow-ups don't change"
           onChange={(e) => act({ action: "in_market", value: e.target.checked })} />
       </div>
-
+      )}
+      {showDetails && (<>
       {open.length > 0 && (
         <ul className="list-unstyled mb-2">
           {open.map((r) => (
@@ -113,8 +139,14 @@ export default function OpportunityActions({ lead, onChanged, actionsRef = null 
         </ul>
       )}
 
-      <div className="fw-semibold mb-1"><i className="fa-solid fa-car me-1" />Vehicles of interest
-        <Badge bg="light" text="dark" className="ms-1">{data.vehicles_of_interest.length}</Badge></div>
+      <div className="fw-semibold mb-1 d-flex flex-wrap align-items-center gap-2"><span><i className="fa-solid fa-car me-1" />Vehicles of interest
+        <Badge bg="light" text="dark" className="ms-1">{data.vehicles_of_interest.length}</Badge></span>
+        {toolsTarget && (
+          <Form.Check type="switch" className="ms-auto mb-0 fw-normal" id={`in-market-${lead._id}`} disabled={busy}
+            label={data.in_market ? "Active" : "Not in market"} checked={data.in_market}
+            title="A flag for your team; the AI's follow-ups don't change"
+            onChange={(e) => act({ action: "in_market", value: e.target.checked })} />
+        )}</div>
       {data.vehicles_of_interest.length === 0 && <div className="text-muted mb-1">None added (the lead&apos;s own vehicle is shown above).</div>}
       <ul className="list-unstyled mb-1">
         {data.vehicles_of_interest.map((v) => (
@@ -140,6 +172,7 @@ export default function OpportunityActions({ lead, onChanged, actionsRef = null 
           <Button size="sm" variant="link" onClick={() => setManual(null)}>Cancel</Button>
         </div>
       )}
+      </>)}
 
       <Modal show={!!reminder} onHide={() => setReminder(null)} centered>
         <Modal.Header closeButton><Modal.Title as="h6">Reminder</Modal.Title></Modal.Header>

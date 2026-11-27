@@ -20,7 +20,7 @@ import { BulkBar, BulkScope, BulkPanel, BulkNotice, undoBulk, exportBulk } from 
 import LeadDetailsPanel from "./LeadDetailsPanel";
 // Source type (24 Nov 2026: it listed the same names as Lead source): how the lead came in, as on each row.
 // Inbox time: today = the time, this week = the day, else the date (dealer time zone).
-function inboxTime(at, tz) {
+export function inboxTime(at, tz) {
   if (!at) return "";
   const d = new Date(at);
   const opt = (o) => d.toLocaleString("en-US", { timeZone: tz || undefined, ...o });
@@ -32,7 +32,7 @@ function inboxTime(at, tz) {
 }
 
 // "Waiting" (the user, 27 Nov 2026 - inbox ideas): the customer wrote last and nobody has answered for 5+ minutes.
-function waitingFor(last) {
+export function waitingFor(last) {
   if (last?.from !== "customer" || !last.at) return "";
   const m = Math.floor((Date.now() - new Date(last.at).getTime()) / 60000);
   if (!(m >= 5)) return "";
