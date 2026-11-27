@@ -1,5 +1,5 @@
 {
- "crawledAt": "2026-11-26T23:47:45.000Z",
+ "crawledAt": "2026-11-27T02:25:49.006Z",
  "app": "http://127.0.0.1:3137",
  "screens": {
   "admin/ai-studio": {
@@ -157,21 +157,21 @@
     },
     {
      "label": "Edit",
-     "id": "react-aria3970110091-_r_1_-tab-edit",
+     "id": "react-aria2457122468-_r_1_-tab-edit",
      "kind": "tab",
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "href": null
     },
     {
      "label": "Live (v1)",
-     "id": "react-aria3970110091-_r_1_-tab-live",
+     "id": "react-aria2457122468-_r_1_-tab-live",
      "kind": "tab",
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "href": null
     },
     {
      "label": "History (1)",
-     "id": "react-aria3970110091-_r_1_-tab-history",
+     "id": "react-aria2457122468-_r_1_-tab-history",
      "kind": "tab",
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "href": null
@@ -2258,14 +2258,14 @@
     },
     {
      "label": "General",
-     "id": "react-aria1709024534-_r_1_-tab-general",
+     "id": "react-aria8851638534-_r_1_-tab-general",
      "kind": "tab",
      "panel": "Add Package",
      "href": null
     },
     {
      "label": "Features",
-     "id": "react-aria1709024534-_r_1_-tab-features",
+     "id": "react-aria8851638534-_r_1_-tab-features",
      "kind": "tab",
      "panel": "Add Package",
      "href": null
@@ -3501,14 +3501,14 @@
     },
     {
      "label": "Switch store",
-     "id": "react-aria1954031804-_r_2_",
+     "id": "react-aria2044341902-_r_2_",
      "kind": "button",
      "panel": "",
      "href": null
     },
     {
      "label": "Notifications",
-     "id": "react-aria1954031804-_r_0_",
+     "id": "react-aria2044341902-_r_0_",
      "kind": "button",
      "panel": "",
      "href": null
@@ -4184,35 +4184,35 @@
      "href": null
     },
     {
-     "label": "CR Carla Reyes 43 minutes ago You: Composer test from the new box 1 3 +121755580",
+     "label": "CR Carla Reyes 32 minutes ago Around 11am works for me 2 5 +12175558045",
      "id": null,
      "kind": "button",
      "panel": "AI Messages",
      "href": null
     },
     {
-     "label": "RL Roberto Lazu 1 day ago Trade-in question 2 1 1 +19142241002",
+     "label": "RL Roberto Lazu 2 days ago Trade-in question 1 1 +19142241002",
      "id": null,
      "kind": "button",
      "panel": "AI Messages",
      "href": null
     },
     {
-     "label": "VS Victor Stone 17 days ago My Camry needs its 30k service, can I book it? 1 1 +",
+     "label": "VS Victor Stone 17 days ago My Camry needs its 30k service, can I book it? 1 +12",
      "id": null,
      "kind": "button",
      "panel": "AI Messages",
      "href": null
     },
     {
-     "label": "LC Lily Chen 17 days ago Looking for a family minivan under $32k. 1 1 +121755538",
+     "label": "LC Lily Chen 17 days ago Looking for a family minivan under $32k. 1 +12175553844",
      "id": null,
      "kind": "button",
      "panel": "AI Messages",
      "href": null
     },
     {
-     "label": "GK Grace Kim 17 days ago Is the 2023 Tacoma SR5 still available? 1 1 +1217555434",
+     "label": "GK Grace Kim 17 days ago Is the 2023 Tacoma SR5 still available? 1 +12175554343",
      "id": null,
      "kind": "button",
      "panel": "AI Messages",
@@ -5083,7 +5083,7 @@
    "title": "Leads Dashboard",
    "panels": [
     "Leads Dashboard",
-    "CUSTOMER REPLIES BY LEAD AGE0 + 0 = 0 customer replied",
+    "CUSTOMER REPLIES BY LEAD AGE0 + 1 = 1 customer replied",
     "Lead Sources",
     "Lead Status",
     "Lead Received",
@@ -5102,7 +5102,7 @@
     },
     {
      "label": "Download report",
-     "id": "react-aria3846846543-_r_5_",
+     "id": "react-aria9582763294-_r_3_",
      "kind": "button",
      "panel": "Leads Dashboard",
      "href": null
@@ -5125,7 +5125,7 @@
      "label": "Messages Delivered",
      "id": null,
      "kind": "link",
-     "panel": "0",
+     "panel": "1",
      "href": "/dealer/leads?messages=sent&startDate=:date&endDate=:date"
     },
     {
@@ -5167,7 +5167,7 @@
      "label": "Replied from Today's Leads",
      "id": null,
      "kind": "link",
-     "panel": "CUSTOMER REPLIES BY LEAD AGE0 + 0 = 0 customer replied",
+     "panel": "CUSTOMER REPLIES BY LEAD AGE0 + 1 = 1 customer replied",
      "href": "/dealer/leads?status=Contacted&reply_age=new&startDate=:date&endDate=:date"
     },
     {
@@ -5181,7 +5181,7 @@
      "label": "Lead 1-7 days old",
      "id": null,
      "kind": "link",
-     "panel": "0",
+     "panel": "1",
      "href": "/dealer/leads?status=Contacted&reply_age=d1_7&startDate=:date&endDate=:date"
     },
     {
@@ -5202,7 +5202,7 @@
      "label": "Lead 31-60 days old",
      "id": null,
      "kind": "link",
-     "panel": "0",
+     "panel": "1",
      "href": "/dealer/leads?status=Contacted&reply_age=d31_60&startDate=:date&endDate=:date"
     },
     {
@@ -5348,7 +5348,7 @@
     },
     {
      "label": "Download",
-     "id": "react-aria3434872396-_r_6_",
+     "id": "react-aria6261571160-_r_4_",
      "kind": "button",
      "panel": "Where leads come from",
      "href": null
@@ -5958,7 +5958,7 @@
     },
     {
      "label": "More: check in, today's appointments, settings",
-     "id": "react-aria8843040948-_r_2_",
+     "id": "react-aria1956464170-_r_2_",
      "kind": "button",
      "panel": "Desk Log",
      "href": null
@@ -6282,7 +6282,7 @@
    "buttons": [
     {
      "label": "Add a standard form",
-     "id": "react-aria4700236167-_r_3_",
+     "id": "react-aria6654779491-_r_3_",
      "kind": "button",
      "panel": "Forms Library",
      "href": null
@@ -7024,7 +7024,7 @@
    "title": "Leads Dashboard",
    "panels": [
     "Leads Dashboard",
-    "CUSTOMER REPLIES BY LEAD AGE0 + 0 = 0 customer replied",
+    "CUSTOMER REPLIES BY LEAD AGE0 + 1 = 1 customer replied",
     "How each number is counted",
     "Lead Sources",
     "Lead Status",
@@ -7044,7 +7044,7 @@
     },
     {
      "label": "Download report",
-     "id": "react-aria5676538120-_r_3_",
+     "id": "react-aria2869994027-_r_3_",
      "kind": "button",
      "panel": "Leads Dashboard",
      "href": null
@@ -7067,7 +7067,7 @@
      "label": "Messages Delivered",
      "id": null,
      "kind": "link",
-     "panel": "0",
+     "panel": "1",
      "href": "/dealer/leads?messages=sent&startDate=:date&endDate=:date"
     },
     {
@@ -7109,7 +7109,7 @@
      "label": "Replied from Today's Leads",
      "id": null,
      "kind": "link",
-     "panel": "CUSTOMER REPLIES BY LEAD AGE0 + 0 = 0 customer replied",
+     "panel": "CUSTOMER REPLIES BY LEAD AGE0 + 1 = 1 customer replied",
      "href": "/dealer/leads?status=Contacted&reply_age=new&startDate=:date&endDate=:date"
     },
     {
@@ -7123,7 +7123,7 @@
      "label": "Lead 1-7 days old",
      "id": null,
      "kind": "link",
-     "panel": "0",
+     "panel": "1",
      "href": "/dealer/leads?status=Contacted&reply_age=d1_7&startDate=:date&endDate=:date"
     },
     {
@@ -7144,7 +7144,7 @@
      "label": "Lead 31-60 days old",
      "id": null,
      "kind": "link",
-     "panel": "0",
+     "panel": "1",
      "href": "/dealer/leads?status=Contacted&reply_age=d31_60&startDate=:date&endDate=:date"
     },
     {
@@ -8043,14 +8043,14 @@
    "buttons": [
     {
      "label": "My Current Plan",
-     "id": "react-aria9669964472-_r_2_-tab-currentplan",
+     "id": "react-aria1700727277-_r_2_-tab-currentplan",
      "kind": "tab",
      "panel": "My Subscription",
      "href": null
     },
     {
      "label": "Subscription Plans",
-     "id": "react-aria9669964472-_r_2_-tab-subscriptionplan",
+     "id": "react-aria1700727277-_r_2_-tab-subscriptionplan",
      "kind": "tab",
      "panel": "My Subscription",
      "href": null
@@ -9474,7 +9474,7 @@
     },
     {
      "label": "Forms",
-     "id": "react-aria536487848-_r_3_",
+     "id": "react-aria8360362428-_r_3_",
      "kind": "button",
      "panel": "Customer Details",
      "href": null

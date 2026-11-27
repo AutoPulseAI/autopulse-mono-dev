@@ -9,12 +9,15 @@ import EmailReplyModal from "./EmailReplyModal";
 import ChatComposer from "./ChatComposer";
 import "./chat.css";
 import { DEPARTMENT_NAMES, canReplyInDepartment, leadDepartment } from "@lib/departmentNames";
+import { contactTypeLabel } from "@lib/leadContactType";
 import DateRangePickerComponent from "../../components/DateRangePicker";
 import StatusModal from "./StatusModal"; // Import StatusModal
 import LeadNotesModal from "./LeadNotesModal"; // Import LeadNotesModal
 import AiLeadPanel from "../../ai/components/AiLeadPanel";
 import CallButton from "../../components/CallButton";
-import LeadInfoCard from "./LeadInfoCard";
+import LeadInfoCard, { LeadNextStep } from "./LeadInfoCard";
+import LeadJourney from "../../components/LeadJourney";
+import { avatarStyle, initialsOf } from "../../../lib/avatarColor";
 import { deskLogMenuVisible } from "../../desk-log/deskLogAccess";
 // import AutoReplyToggle from "./AutoReplyToggle"; // Import AutoReplyToggle
 // import PendingAutoReplyIndicator from "./PendingAutoReplyIndicator"; // Import Pending indicator
@@ -114,9 +117,29 @@ export default function ViewConversations({
   // AI Assistant) instead of a middle column; the customer profile (embedded) keeps its own layout.
   // (2) The user, 27 Nov 2026: the lead's information must stay on screen - it is a panel on the right of the
   // conversation again (lead card, then the AI Assistant), which the Details button folds away.
-  const [showInfo, setShowInfo] = useState(true);
+  // (3) The user, 27 Nov 2026: two columns only - the lead list and the inbox; the lead's profile (card, journey, lead
+  // type, source, booking, AI Assistant) slides out from the right with the Lead profile button.
+  const [showInfo, setShowInfo] = useState(false);
   const leadTab = "conversation";
   const tabbed = !embedded;
+  // "What we know" (the user, 27 Nov 2026 - inbox ideas): what the AI already learned about this customer, as chips at
+  // the top of the conversation, and its summary of a long conversation. Stored facts only, no AI call
+  // (app/lib/leadGlance.js).
+  const [glance, setGlance] = useState({ chips: [], summary: null });
+  const [glanceOpen, setGlanceOpen] = useState(false);
+  useEffect(() => {
+    const id = lead?._id;
+    setGlance({ chips: [], summary: null });
+    setGlanceOpen(false);
+    if (!id) return undefined;
+    let gone = false;
+    const token = typeof window !== "undefined" ? localStorage.getItem("dealertoken") : null;
+    fetch(`/api/leads/${id}/glance`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!gone && d) setGlance({ chips: Array.isArray(d.chips) ? d.chips : [], summary: d.summary || null }); })
+      .catch(() => {});
+    return () => { gone = true; };
+  }, [lead?._id, lead?.fe_lead_status]);
   // Channels this customer opted out of (the AI's consent record), re-read whenever the lead or its status changes.
   const [stoppedChannels, setStoppedChannels] = useState({});
   useEffect(() => {
@@ -810,7 +833,7 @@ export default function ViewConversations({
 
       {/* Fixed Sidebar - not applicable when embedded (no all-dealer lead list to browse) */}
       {!embedded && (
-        <Col xxl={3} lg={4} md={5} sm={12} className={`dealer-sidebar ${isOpen ? "sidebar-open" : "sidebar-closed"}`} ref={sidebarRef}>
+        <Col xxl={3} lg={4} md={5} sm={12} className={`dealer-sidebar inbox_side ${isOpen ? "sidebar-open" : "sidebar-closed"}`} ref={sidebarRef}>
           <div className="dealer_info position-sticky">
               {isMobile && (
             <div className="d-flex justify-content-between align-items-center mb-2">
@@ -829,41 +852,80 @@ export default function ViewConversations({
         </Col>
       )}
 
-        <Col xxl={embedded ? 12 : 9} lg={embedded ? 12 : 8} md={12} sm={12}>
+        <Col xxl={embedded ? 12 : 9} lg={embedded ? 12 : 8} md={12} sm={12} className={tabbed ? "inbox_col" : undefined}>
           {tabbed && (
-            <div className="inbox_head w_card mb-2" data-testid="lead-tabs">
+            <div className="inbox_head w_card mb-2" data-testid="lead-header">
+              {/* The lead's top band, like the customer profile (the user, 27 Nov 2026): who, the status, where the lead
+                  came from, and every action the old lead page had - one place, nothing hidden. */}
               <div className="d-flex flex-wrap align-items-center gap-2">
-                <div className="me-auto">
-                  <div className="inbox_name">{lead?.name || "Lead"}</div>
-                  <div className="small text-muted">
-                    {leadStatusLabel(lead) || lead?.fe_lead_status || "New Lead"}
-                    {lead?.phone ? ` · ${lead.phone}` : ""}{lead?.email ? ` · ${lead.email}` : ""}
-                  </div>
+                <div className="me-auto d-flex align-items-center gap-2 flex-wrap">
+                  <span className="inbox_head_avatar" style={avatarStyle(lead?.name)} aria-hidden="true">{initialsOf(lead?.name)}</span>
+                  <span className="inbox_name">{lead?.name || "Lead"}</span>
+                  <button type="button" className="inbox_status" onClick={() => setShowStatusModal(true)} title="Change the status">
+                    {leadStatusLabel(lead) || lead?.fe_lead_status || "New Lead"} <i className="fa-solid fa-chevron-down ms-1"></i>
+                  </button>
                 </div>
-                <Button variant="outline-custom" size="sm" onClick={handlePrevLead} disabled={isNavigating} aria-label="Previous lead">
-                  <i className="fa-solid fa-chevron-left"></i>
+                <Button variant="outline-custom" size="sm" onClick={handlePrevLead} disabled={isNavigating} title="Previous lead">
+                  <i className="fa-solid fa-chevron-left me-1"></i>Prev
                 </Button>
-                <Button variant="outline-custom" size="sm" onClick={handleNextLead} disabled={isNavigating} aria-label="Next lead">
-                  <i className="fa-solid fa-chevron-right"></i>
+                <Button variant="outline-custom" size="sm" onClick={handleNextLead} disabled={isNavigating} title="Next lead">
+                  Next<i className="fa-solid fa-chevron-right ms-1"></i>
                 </Button>
-                {lead?.customer_id && (
-                  <Button variant="outline-secondary" size="sm" href={`/dealer/customers/${lead.customer_id}`}>
-                    <i className="fa-regular fa-user me-1"></i>Customer profile
-                  </Button>
+              </div>
+              <div className="inbox_band">
+                <span><small>UP TYPE</small>{contactTypeLabel(lead)}</span>
+                <span><small>DEPARTMENT</small>{DEPARTMENT_NAMES[leadDepartment(lead)]}</span>
+                <span><small>SOURCE</small>{lead?.lead_source || lead?.source || "Not set"}</span>
+                <span><small>SUB-SOURCE</small>{lead?.sub_source || "No sub-source"}</span>
+                <span><small>OWNER</small>{lead?.assigned_to?.name || "Unassigned"}</span>
+                <span><small>PHONE</small>{lead?.phone || "-"}</span>
+                <span><small>EMAIL</small>{lead?.email || "-"}</span>
+              </div>
+              {/* Next step, AI type, vehicle wanted and the lead's journey, on screen (the user, 27 Nov 2026). */}
+              {lead?._id && <LeadNextStep key={`next-${lead._id}-${lead.fe_lead_status || ""}`} lead={lead} timezone={dealerTimezone} />}
+              <div className="inbox_actions_bar">
+                {lead?.phone && (
+                  <span className="inbox_act inbox_act_call">
+                    <CallButton phone={lead.phone} leadId={lead._id} dealerId={lead.dealer_id} size="sm" variant="link" label="Call"
+                      icon="fa-duotone fa-phone-office" />
+                  </span>
                 )}
-                <Button variant="outline-secondary" size="sm" onClick={handleClose}>
-                  <i className="fa-solid fa-arrow-left me-1"></i>Back to list
-                </Button>
-                <Button variant={showInfo ? "custom" : "outline-custom"} size="sm" aria-pressed={showInfo}
-                  onClick={() => setShowInfo(!showInfo)} title="Lead details and AI Assistant">
-                  <i className="fa-regular fa-sidebar-flip me-1"></i>Details
-                </Button>
+                <button type="button" className="inbox_act" onClick={() => setShowNotesModal(true)}>
+                  <i className="fa-duotone fa-note-sticky"></i><span>Add note</span></button>
+                <button type="button" className="inbox_act" onClick={() => setShowStatusModal(true)}>
+                  <i className="fa-duotone fa-right-left"></i><span>Update status</span></button>
+                {showCheckIn && (
+                  <a className="inbox_act" href={`/dealer/desk-log?check_in=${lead._id}`}>
+                    <i className="fa-duotone fa-user-check"></i><span>Check in</span></a>
+                )}
+                {lead?.customer_id && (
+                  <a className="inbox_act" href={`/dealer/customers/${lead.customer_id}`}>
+                    <i className="fa-duotone fa-user"></i><span>Customer profile</span></a>
+                )}
+                {/* Lead settings right after Customer profile; the journey takes the rest, shorter and to the right (27 Nov 2026). */}
+                <button type="button" className={`inbox_act${showInfo ? " on" : ""}`} onClick={() => setShowInfo(!showInfo)}
+                  aria-pressed={showInfo} title="Edit the lead, its menu (View ADF...), Manager override, booking and the AI Assistant">
+                  <i className="fa-duotone fa-gear"></i><span>Lead settings</span></button>
+                {/* The lead's journey in the free space of the action row (the user, 27 Nov 2026). */}
+                {lead?._id && (
+                  <div className="inbox_journey">
+                    <LeadJourney key={`j-${lead._id}-${lead.fe_lead_status || ""}`} leadId={lead._id} timezone={dealerTimezone} />
+                  </div>
+                )}
               </div>
             </div>
           )}
           <Row className="gx-3">
+            {tabbed && showInfo && <div className="inbox_drawer_backdrop" onClick={() => setShowInfo(false)} aria-hidden="true" />}
             <Col xxl={4} lg={tabbed ? 4 : 5} md={tabbed ? 12 : 5}
-              className={tabbed ? (showInfo ? "order-lg-last inbox_info" : "d-none") : ""}>
+              className={tabbed ? `inbox_drawer${showInfo ? " open" : ""}` : ""} aria-hidden={tabbed && !showInfo}>
+              {tabbed && (
+                <div className="inbox_drawer_head">
+                  <strong><i className="fa-duotone fa-gear me-2"></i>Lead settings</strong>
+                  <Button variant="outline-secondary" size="sm" onClick={() => setShowInfo(false)} aria-label="Close lead settings">
+                    <i className="fa-solid fa-xmark"></i></Button>
+                </div>
+              )}
               {/* Stays in view while the conversation scrolls (BB, 17 Nov 2026: "as the conversation gets long this
                   column shifts to the bottom"); scrolls on its own when taller than the screen. */}
               <div className="dealer_info position-sticky mb-3 lead_center_col">
@@ -884,7 +946,7 @@ export default function ViewConversations({
                 <div className="w_card leadinfo_card mb-2 row gx-1">
                   {/* The lead's details, editable in one click (LeadInfoCard: 13 Nov 2026 meeting / BB 17 Nov). */}
                   <div className="col-12">
-                    <LeadInfoCard lead={lead} dealerTimezone={dealerTimezone} onStatusClick={() => setShowStatusModal(true)}
+                    <LeadInfoCard lead={lead} dealerTimezone={dealerTimezone} onStatusClick={() => setShowStatusModal(true)} settingsOnly={tabbed}
                       onSaved={(saved) => { if (!embedded && onLeadSelected) onLeadSelected({ ...lead, ...saved }); onLeadSaved?.(saved); }} />
                   </div>
 
@@ -1016,7 +1078,7 @@ export default function ViewConversations({
               </div>
             </Col>
 
-            <Col xxl={tabbed && !showInfo ? 12 : 8} lg={tabbed ? (showInfo ? 8 : 12) : 7} md={tabbed ? 12 : 7}
+            <Col xxl={tabbed ? 12 : 8} lg={tabbed ? 12 : 7} md={tabbed ? 12 : 7}
               className={tabbed ? "inbox_chat" : ""}>
               <div className="position-relative mb-2">
                 {isNavigating && (
@@ -1091,6 +1153,22 @@ export default function ViewConversations({
                 </Nav>
               </div>
 
+              {tabbed && (glance.chips.length > 0 || glance.summary) && (
+                <div className="chat_glance" data-testid="lead-glance">
+                  <span className="chat_glance_title"><i className="fa-solid fa-lightbulb" aria-hidden="true"></i> What we know</span>
+                  {glance.chips.map((c) => (
+                    <span key={c.key} className="chat_glance_chip" title={`${c.label}: ${c.text}`}>
+                      <span className="chat_glance_label">{c.label}</span> {c.text}
+                    </span>
+                  ))}
+                  {glance.summary && (
+                    <button type="button" className="chat_glance_more" onClick={() => setGlanceOpen((o) => !o)}>
+                      {glanceOpen ? "Hide summary" : "AI summary"}
+                    </button>
+                  )}
+                  {glanceOpen && glance.summary && <div className="chat_glance_summary">{glance.summary}</div>}
+                </div>
+              )}
               {activeChannelEmails.length > 0 ? (
                 <div className="conversation-list chat_thread" ref={threadRef} data-testid="chat-thread">
                   {/* Chat order (the user, 27 Nov 2026): oldest at the top, newest at the bottom next to the message box;
@@ -1203,7 +1281,13 @@ export default function ViewConversations({
                               {sn.from ? <>{sn.from} <i className="fa-solid fa-arrow-right mx-1" aria-hidden="true"></i></> : "Status: "}
                               <strong>{sn.to}</strong>
                               <span className="chat_system_by"> · {sn.by === "AI" ? "by the AI" : `by ${sn.by}`}{sn.why ? ` · ${sn.why}` : ""} · {clock}</span>
+                              {showTranslation && translatedText && <span className="d-block chat_system_by">{agentViewLanguage}: {translatedText}</span>}
                             </span>
+                            {/* Status notes can be edited as before (nothing from the old screen is lost). */}
+                            <button type="button" className="chat_note_edit" aria-label="Edit note" title="Edit note"
+                              onClick={(e) => { e.stopPropagation(); handleEditNote(email); }}>
+                              <i className="fa-regular fa-pen-to-square"></i>
+                            </button>
                           </div>
                         )];
                       }
@@ -1212,8 +1296,16 @@ export default function ViewConversations({
                         : ["failed", "undelivered", "bounced", "error"].includes(st)
                           ? <span className="chat_tick failed" title={messageStatusLabel(email)}><i className="fa-solid fa-circle-exclamation me-1"></i>{messageStatusLabel(email)}</span>
                           : st === "delivered" || /deliver|read|open/i.test(messageStatusLabel(email))
-                            ? <span className="chat_tick read" title={messageStatusLabel(email)}><i className="fa-solid fa-check-double"></i></span>
-                            : <span className="chat_tick" title={messageStatusLabel(email)}><i className="fa-solid fa-check"></i></span>;
+                            ? <span className="chat_tick read" title={messageStatusLabel(email)}><i className="fa-solid fa-check-double me-1"></i>{messageStatusLabel(email)}</span>
+                            : <span className="chat_tick" title={messageStatusLabel(email)}><i className="fa-solid fa-check me-1"></i>{messageStatusLabel(email)}</span>;
+                      // Messages from the same sender within 2 minutes sit together, like WhatsApp: the name line is
+                      // shown once (still on hover / click for details).
+                      const prev = ordered[idx - 1];
+                      const kindOf = (m) => (m?.is_note || m?.status === "note" ? "note"
+                        : messageAuthor(m, lead, dealerParent?.dealer_account_information?.ai_bot_name).kind);
+                      const grouped = !isNote && !bookedBy && !dayChip && prev && !(prev.is_note || prev.status === "note")
+                        && kindOf(prev) === author.kind && email.timestamp && prev.timestamp
+                        && Math.abs(new Date(email.timestamp) - new Date(prev.timestamp)) < 2 * 60 * 1000;
 
                       return [dayChip, (
                         <div
@@ -1221,13 +1313,13 @@ export default function ViewConversations({
                           className={`w_card conversation-item ${
                             selectedConversation?._id === email._id ? 'selected-conversation' : ''
                           } ${isNote ? 'note-item' : ["received", "incoming"].includes(email.status) ? 'chat_in'
-                            : `chat_out ${author.kind === 'ai' ? 'chat_ai' : 'chat_staff'}${["failed", "undelivered", "bounced", "error"].includes(email.status) ? ' chat_failed' : ''}`}`}
+                            : `chat_out ${author.kind === 'ai' ? 'chat_ai' : 'chat_staff'}${["failed", "undelivered", "bounced", "error"].includes(email.status) ? ' chat_failed' : ''}`}${grouped ? ' chat_grouped' : ''}`}
                           onClick={() => setSelectedConversation(email)}
                           style={undefined}
                         >
                           {/* Who wrote it on top; the time and the delivery ticks at the bottom, like WhatsApp
                               (From / To / language on hover). */}
-                          <div className="chat_meta" title={isNote ? `User language: ${msgUserLanguageLabel}`
+                          <div className={`chat_meta${grouped ? ' visually-hidden' : ''}`} title={isNote ? `User language: ${msgUserLanguageLabel}`
                             : `From: ${email.sender || "-"}\nTo: ${email.recipient || "-"}\nUser language: ${msgUserLanguageLabel}`}>
                             {isNote ? (
                               <span className="chat_note_head">
@@ -1235,7 +1327,15 @@ export default function ViewConversations({
                                 {email.internal_use === true ? "Internal note" : "Lead note"} · {noteAuthor(email, isAiNote(email))}
                               </span>
                             ) : (
-                              <span className={`chat_who ${author.kind}`}>{author.label}</span>
+                              <span className={`chat_who ${author.kind}`}>
+                                <span className={`chat_mini_avatar ${author.kind}`}
+                                  style={author.kind === "customer" ? avatarStyle(lead?.name) : undefined} aria-hidden="true">
+                                  {author.kind === "ai" ? <i className="fa-solid fa-robot"></i>
+                                    : author.kind === "customer" ? initialsOf(lead?.name)
+                                      : <i className="fa-solid fa-user-tie"></i>}
+                                </span>
+                                {author.label}
+                              </span>
                             )}
                             {bookedBy && <span className="badge bg-warning text-dark">Appointment set by staff: {bookedBy}</span>}
                             {isNote && (
@@ -1245,6 +1345,14 @@ export default function ViewConversations({
                               </button>
                             )}
                           </div>
+                          {/* Click a message for its details (From / To / language), as the old screen showed them. */}
+                          {!isNote && selectedConversation?._id === email._id && (
+                            <div className="chat_details">
+                              <div><strong>From:</strong> {email.sender || "-"}</div>
+                              <div><strong>To:</strong> {email.recipient || "-"}</div>
+                              <div><strong>User language:</strong> {msgUserLanguageLabel}</div>
+                            </div>
+                          )}
                           {!isNote && email.communication_type === "email" && email.subject && (
                             <div className="chat_subject">{email.subject}</div>
                           )}
@@ -1370,6 +1478,23 @@ export default function ViewConversations({
                         </div>
                       )];
                     })}
+                  {(() => {
+                    // "The AI is working on it" (the user, 27 Nov 2026 - inbox ideas): the customer wrote in the last
+                    // 3 minutes, nothing has gone back yet and the AI is on for this lead. It goes away when the reply
+                    // lands (the thread refreshes on its own) or after 3 minutes.
+                    const last = activeChannelEmails[0];
+                    const pausedUntil = leadData?.auto_reply_paused_until ? new Date(leadData.auto_reply_paused_until) : null;
+                    const aiOn = leadData?.auto_reply_enabled !== false && !(pausedUntil && pausedUntil > new Date());
+                    const fresh = last && ["received", "incoming"].includes(String(last.status || "").toLowerCase())
+                      && last.timestamp && Date.now() - new Date(last.timestamp).getTime() < 3 * 60 * 1000;
+                    return tabbed && aiOn && fresh ? (
+                      <div className="chat_typing" data-testid="ai-typing" aria-live="polite">
+                        <span className="chat_mini_avatar ai" aria-hidden="true"><i className="fa-solid fa-robot"></i></span>
+                        <span className="chat_typing_dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                        <span className="chat_typing_text">AI is working on a reply</span>
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
               ) : (
                 <div className="w_card p-4 text-center">
@@ -1394,10 +1519,10 @@ export default function ViewConversations({
                   leadUserLanguage={latestConversationUserLanguageLabel}
                   // One place for each action: on the Leads page they are in the box's + menu; on the customer profile
                   // they stay in the opportunity's action row (so not in the + menu there).
-                  showCall={tabbed}
-                  onAddNote={tabbed ? () => setShowNotesModal(true) : null}
-                  onUpdateStatus={tabbed ? () => setShowStatusModal(true) : null}
-                  onCheckIn={tabbed && showCheckIn ? () => { window.location.href = `/dealer/desk-log?check_in=${lead._id}`; } : null}
+                  showCall={false}
+                  onAddNote={null}
+                  onUpdateStatus={null}
+                  onCheckIn={null}
                   disabledReason={!replyAllowed ? `${DEPARTMENT_NAMES[leadDepartment(lead)]} lead - ${DEPARTMENT_NAMES[leadDepartment(lead)]} staff reply`
                     : lead.fe_lead_status === "Opted Out" && lead.status_source === "staff" ? "Opted Out by staff - nothing is sent" : null}
                 />

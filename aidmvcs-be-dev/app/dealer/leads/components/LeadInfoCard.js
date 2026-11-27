@@ -111,6 +111,34 @@ function LeadPlan({ lead, timezone }) {
   );
 }
 
+// The lead's next step alone (the Leads inbox's top band shows it on screen, the user 27 Nov 2026), with the AI type
+// and vehicle wanted beside it; same data as LeadPlan.
+export function LeadNextStep({ lead, timezone }) {
+  const [plan, setPlan] = useState(null);
+  const id = lead?._id;
+  const dealerId = lead?.dealer_id;
+  useEffect(() => {
+    if (!id) return undefined;
+    let live = true;
+    setPlan(null);
+    fetch(`/api/dealer-ai/actions?tab=lead&lead_id=${id}${dealerId ? `&dealer_id=${encodeURIComponent(dealerId)}` : ""}`, { headers: auth() })
+      .then((r) => (r.ok ? r.json() : null)).then((d) => { if (live) setPlan(d); }).catch(() => {});
+    return () => { live = false; };
+  }, [id, dealerId, lead?.fe_lead_status]);
+  if (!plan) return null;
+  const next = plan.next_step;
+  return (
+    <div className="lead_next_row">
+      <div className={`lead_next${next ? "" : " none"}`}>
+        <i className={`fa-solid ${next?.who === "AI" ? "fa-robot" : next ? "fa-list-check" : "fa-road-barrier"}`} aria-hidden="true" />
+        <span><strong>Next step:</strong> {next ? `${next.text}${next.at ? `, ${formatTimestamp(next.at, timezone)}` : ""}${next.who && next.who !== "AI" ? ` (${next.who})` : ""}` : "None planned"}</span>
+      </div>
+      <span className="lead_next_fact"><i className="fa-solid fa-robot" aria-hidden="true" /> AI type: <strong>{plan.sales_type || "-"}</strong></span>
+      <span className="lead_next_fact"><i className="fa-solid fa-car-side" aria-hidden="true" /> Vehicle wanted: <strong>{plan.vehicle_wanted || "Not known yet"}</strong></span>
+    </div>
+  );
+}
+
 // The lead's status as a pill next to its type and source: tinted in its colour, click to change it.
 function StatusPill({ lead, onStatusClick }) {
   const label = leadStatusLabel(lead) || "No status";
@@ -287,7 +315,9 @@ function UndoReassign({ lead, onSaved }) {
   );
 }
 
-export default function LeadInfoCard({ lead: given, dealerTimezone, onSaved, onStatusClick }) {
+// settingsOnly (the Leads inbox's Lead settings panel, 27 Nov 2026): what the top band does not already show - Edit and
+// the ... menu, vehicle, lead date, owner / Manager override, undo reassign. The edit form is the same.
+export default function LeadInfoCard({ lead: given, dealerTimezone, onSaved, onStatusClick, settingsOnly = false }) {
   const [lead, setLead] = useState(given);
   const [form, setForm] = useState(null); // null = viewing
   const leadRef = useRef(given); // the saved lead the next save compares against (a save can finish after a re-render)
@@ -400,16 +430,21 @@ export default function LeadInfoCard({ lead: given, dealerTimezone, onSaved, onS
           <OpportunityMenu lead={lead} timezone={dealerTimezone} onDepartment={changeDepartment} />
         </div>
       </div>
-      <div className="d-flex flex-wrap align-items-center gap-1 mb-2">
-        <StatusPill lead={lead} onStatusClick={onStatusClick} />
-        {lead?.hot && <span className="cp_hot on" title="Marked hot on the customer's profile"><i className="fa-solid fa-fire me-1" />HOT</span>}
-      </div>
-      {/* Where the lead came from, each in its own labelled field (23 Nov 2026), named as the source / sub-source
-          report names them: Up Type > Source > Sub-Source, plus department and campaign. */}
-      <LeadPlan lead={lead} timezone={dealerTimezone} />
-      {lead?._id && <LeadJourney key={`${lead._id}-${lead.fe_lead_status || ""}`} leadId={lead._id} timezone={dealerTimezone} />}
-      <p className="mb-1 small text-break"><i className="fa-solid fa-phone me-2 text-muted" />{lead?.phone || "No phone"}</p>
-      <p className="mb-1 small text-break"><i className="fa-solid fa-envelope me-2 text-muted" />{lead?.email || "No email"}</p>
+      {!settingsOnly && (
+        <>
+          <div className="d-flex flex-wrap align-items-center gap-1 mb-2">
+            <StatusPill lead={lead} onStatusClick={onStatusClick} />
+            {lead?.hot && <span className="cp_hot on" title="Marked hot on the customer's profile"><i className="fa-solid fa-fire me-1" />HOT</span>}
+          </div>
+          {/* Where the lead came from, each in its own labelled field (23 Nov 2026), named as the source / sub-source
+              report names them: Up Type > Source > Sub-Source, plus department and campaign. */}
+          <LeadPlan lead={lead} timezone={dealerTimezone} />
+          {lead?._id && <LeadJourney key={`${lead._id}-${lead.fe_lead_status || ""}`} leadId={lead._id} timezone={dealerTimezone} />}
+          <p className="mb-1 small text-break"><i className="fa-solid fa-phone me-2 text-muted" />{lead?.phone || "No phone"}</p>
+          <p className="mb-1 small text-break"><i className="fa-solid fa-envelope me-2 text-muted" />{lead?.email || "No email"}</p>
+        </>
+      )}
+      {settingsOnly && lead?.hot && <p className="mb-1"><span className="cp_hot on"><i className="fa-solid fa-fire me-1" />HOT</span></p>}
       <p className="mb-1 small"><strong>Vehicle:</strong> {vehicle || "Not given"}{lead?.vin ? <span className="text-muted"> · VIN {lead.vin}</span> : null}</p>
       <p className="mb-0 small text-muted"><i className="fa-solid fa-lock me-1" />Lead date {formatTimestamp(lead.createdAt, dealerTimezone)}</p>
       <OwnerLine lead={lead} onSaved={onSaved} />

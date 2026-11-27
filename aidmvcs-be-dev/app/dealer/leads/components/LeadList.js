@@ -3,6 +3,7 @@ import { leadStatusLabel, statusLabel } from "@lib/statusLabels";
 import { forwardRef,
   useImperativeHandle, useState, useEffect, Suspense, useCallback, useRef } from "react";
 import { formatTimestamp } from "../../../utils/dateUtils";
+import { avatarStyle, initialsOf } from "../../../lib/avatarColor";
 import { Button, ListGroup, Row, Col, Offcanvas, Modal, Form, Alert, Badge, Pagination, Spinner, Dropdown } from "react-bootstrap";
 import { useUser } from "../../context/UserContext";
 import { useCan } from "../../../hooks/PermissionsContext";
@@ -28,6 +29,14 @@ function inboxTime(at, tz) {
   if (day(d) === day(now)) return opt({ hour: "numeric", minute: "2-digit" });
   if (now - d < 6 * 864e5) return opt({ weekday: "short" });
   return opt({ month: "numeric", day: "numeric", year: "2-digit" });
+}
+
+// "Waiting" (the user, 27 Nov 2026 - inbox ideas): the customer wrote last and nobody has answered for 5+ minutes.
+function waitingFor(last) {
+  if (last?.from !== "customer" || !last.at) return "";
+  const m = Math.floor((Date.now() - new Date(last.at).getTime()) / 60000);
+  if (!(m >= 5)) return "";
+  return m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`;
 }
 
 const UP_TYPE_OPTIONS = [["up:internet", "Internet"], ["up:phone", "Phone-up"], ["up:walk_in", "Walk-in"], ["up:not_set", "Not set"]];
@@ -79,7 +88,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
   // out of a scope by hand.
   const [selectMode, setSelectMode] = useState(false);
   // Phones: the filters fold behind a button. Beside the conversation (compact) they are shown; the button folds them.
-  const [filtersOpen, setFiltersOpen] = useState(compact);
+  const [filtersOpen, setFiltersOpen] = useState(false); // folded behind the filter button until someone opens it
   const shownOnce = useRef(false); // the list has been on screen once (later loads keep the filters mounted)
   const [selected, setSelected] = useState(() => new Map());
   const [scope, setScope] = useState("page");
@@ -1660,6 +1669,14 @@ useImperativeHandle(ref, () => ({
                   <i className="fa-solid fa-filter" aria-hidden="true"></i>
                   {filterChips.length > 0 && <span className="ms-1">{filterChips.length}</span>}
                 </Button>
+                {/* Bulk actions beside the conversation too (the user, 27 Nov 2026): Select ticks leads in this list. */}
+                {(canAssignLeads || canManageLeads) && (
+                  <Button variant={selectMode ? "custom" : "outline-custom"} size="sm" aria-pressed={selectMode}
+                    title={selectMode ? "Stop selecting" : "Select leads - change many at once"} disabled={!selectMode && !leads.length}
+                    onClick={() => (selectMode ? stopSelecting() : startSelecting())}>
+                    <i className="fa-solid fa-list-check" aria-hidden="true"></i>
+                  </Button>
+                )}
                 <Form.Control
                   type="search"
                   placeholder="Search name, phone, email or stock #"
@@ -1932,8 +1949,8 @@ useImperativeHandle(ref, () => ({
             ))}
           </div>
         )}
-        {selectMode && !compact && (
-          <div className="mt-2">
+        {selectMode && (
+          <div className={compact ? "mt-2 inbox_bulk" : "mt-2"}>
             <BulkBar count={selected.size} canAssign={canBulkReassign} canChangeStatus={canManageLeads}
               busy={scopeLoading} exporting={bulkExporting} onAction={bulkAction} onClose={stopSelecting} />
             <BulkScope scope={scope} count={selected.size} pageCount={leads.length} perPage={pagination.itemsPerPage || 10}
@@ -1993,6 +2010,7 @@ useImperativeHandle(ref, () => ({
                 <ListGroup.Item as="li" key={lead._id} className={`lead-item ${activeLeadId === lead._id ? 'active-lead' : ''} w_card_list_box d-flex align-items-center${selectMode && selected.has(String(lead._id)) ? ' bulk_picked' : ''}`} onClick={(e) => {
                   // Don't trigger if clicking on buttons or interactive elements
                   if (e.target.closest('button') || e.target.closest('select') || e.target.closest('input')) return;
+                  if (compact && selectMode) { toggleLead(lead); return; }
                   handleLeadClick(lead);
                 }}>
                   {compact ? (
@@ -2000,12 +2018,21 @@ useImperativeHandle(ref, () => ({
                     <div className="position-relative w-100">
                       {/* Inbox row, like WhatsApp (the user, 27 Nov 2026): who, the last message, when, unread. */}
                       <div className="inbox_row">
-                        <span className="inbox_avatar" aria-hidden="true">
-                          {String(lead.name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?"}
+                        {selectMode && (
+                          <span className="inbox_tick" onClick={(e) => e.stopPropagation()}>
+                            <Form.Check type="checkbox" aria-label={`Select ${lead.name || "lead"}`}
+                              checked={selected.has(String(lead._id))} onChange={() => toggleLead(lead)} />
+                          </span>
+                        )}
+                        <span className="inbox_avatar" aria-hidden="true" style={avatarStyle(lead.name)}>
+                          {initialsOf(lead.name)}
+                          {lead.inbox?.last?.from === "ai" && <span className="inbox_avatar_badge ai" title="The AI wrote last"><i className="fa-solid fa-robot"></i></span>}
+                          {lead.inbox?.last?.from === "customer" && <span className="inbox_avatar_badge cust" title="The customer wrote last"></span>}
                         </span>
                         <span className="inbox_main">
                           <span className="inbox_top">
                             <span className={`inbox_title${lead.inbox?.unread ? " unread" : ""}`}>{lead.name || "No name"}</span>
+                            {lead.hot === true && <span className="inbox_hot" title="Marked hot"><i className="fa-solid fa-fire" aria-hidden="true"></i></span>}
                             <span className="inbox_time">{inboxTime(lead.inbox?.last?.at || lead.createdAt, dealerTimezone)}</span>
                           </span>
                           <span className="inbox_bottom">
@@ -2020,6 +2047,8 @@ useImperativeHandle(ref, () => ({
                                 </>
                               ) : <span className="text-muted">{statusLabel(lead.fe_lead_status) || "New lead"}</span>}
                             </span>
+                            {waitingFor(lead.inbox?.last) && <span className="inbox_wait" title="The customer is waiting for an answer">
+                              <i className="fa-regular fa-hourglass-half me-1" aria-hidden="true"></i>{waitingFor(lead.inbox.last)}</span>}
                             {lead.inbox?.unread > 0 && <span className="inbox_unread">{lead.inbox.unread}</span>}
                           </span>
                         </span>
@@ -2209,7 +2238,7 @@ useImperativeHandle(ref, () => ({
             )}
           </ListGroup>
 
-          {compact && pagination.totalPages > 1 && (
+          {compact && leads.length > 0 && (
             // Beside the conversation the list pages like an inbox: one line, Previous / page of pages / Next.
             <div className="inbox_pager">
               <Button variant="outline-custom" size="sm" aria-label="Previous page" disabled={pagination.currentPage === 1}
@@ -2278,14 +2307,14 @@ useImperativeHandle(ref, () => ({
       </div>
 
       {/* Bulk actions (24 Nov 2026): the side panel, and the notice after saving */}
-      {!compact && bulkPanel && (
+      {bulkPanel && (
         bulkPanel === "source" ? <LeadDetailsPanel show dealerId={dealerParent?.id || activeEntity?.id} leads={[...selected.values()]} onHide={() => setBulkPanel(null)} onSaved={bulkSaved} /> : (
         <BulkPanel key={bulkPanel} kind={bulkPanel} show={Boolean(bulkPanel)} dealerId={dealerParent?.id || activeEntity?.id}
           leads={[...selected.values()]} staffList={staffList} timezone={dealerTimezone} userName={user?.name}
           onHide={() => setBulkPanel(null)} onSaved={bulkSaved} />
         )
       )}
-      {!compact && <BulkNotice result={bulkResult} onClose={closeBulkNotice} onUndo={bulkUndo} onRetry={bulkRetry} />}
+      <BulkNotice result={bulkResult} onClose={closeBulkNotice} onUndo={bulkUndo} onRetry={bulkRetry} />
 
       {/* Lead Details Sidebar */}
       <LeadDetailsSidebar

@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-27T00:01:40.948Z",
+ "generatedAt": "2026-11-27T02:25:56.729Z",
  "app": {
   "name": "AutoPulse CRM",
   "url": "https://www.autopulse.ai",
@@ -40,10 +40,10 @@
    "title": "Sign-in & public pages"
   }
  ],
- "inventoryAt": "2026-11-26T23:47:45.000Z",
+ "inventoryAt": "2026-11-27T02:25:49.006Z",
  "totals": {
   "sections": 81,
-  "features": 213,
+  "features": 223,
   "buttons": 787,
   "fields": 319
  },
@@ -181,10 +181,10 @@
      "code": "DMA-B01"
     },
     {
-     "id": "dealer/_menu.b.x.react-aria1954031804-r-2",
+     "id": "dealer/_menu.b.x.react-aria2044341902-r-2",
      "label": "Switch store",
      "kind": "button",
-     "el": "#react-aria1954031804-_r_2_",
+     "el": "#react-aria2044341902-_r_2_",
      "href": null,
      "panel": "",
      "about": "Switch store.",
@@ -194,10 +194,10 @@
      "code": "DMA-B02"
     },
     {
-     "id": "dealer/_menu.b.x.react-aria1954031804-r-0",
+     "id": "dealer/_menu.b.x.react-aria2044341902-r-0",
      "label": "Notifications",
      "kind": "button",
-     "el": "#react-aria1954031804-_r_0_",
+     "el": "#react-aria2044341902-_r_0_",
      "href": null,
      "panel": "",
      "about": "Opens the notifications list.",
@@ -1294,10 +1294,10 @@
      "code": "DAS-B01"
     },
     {
-     "id": "dealer/dashboard.b.x.react-aria3846846543-r-5",
+     "id": "dealer/dashboard.b.x.react-aria9582763294-r-3",
      "label": "Download report",
      "kind": "button",
-     "el": "#react-aria3846846543-_r_5_",
+     "el": "#react-aria9582763294-_r_3_",
      "href": null,
      "panel": "Leads Dashboard",
      "about": "Download report.",
@@ -1338,7 +1338,7 @@
      "kind": "link",
      "el": null,
      "href": "/dealer/leads?messages=sent&startDate=:date&endDate=:date",
-     "panel": "0",
+     "panel": "1",
      "about": "Goes to /dealer/leads?messages=sent&startDate=:date&endDate=:date.",
      "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
      "status": "live",
@@ -1416,7 +1416,7 @@
      "kind": "link",
      "el": null,
      "href": "/dealer/leads?status=Contacted&reply_age=new&startDate=:date&endDate=:date",
-     "panel": "CUSTOMER REPLIES BY LEAD AGE0 + 0 = 0 customer replied",
+     "panel": "CUSTOMER REPLIES BY LEAD AGE0 + 1 = 1 customer replied",
      "about": "Goes to /dealer/leads?status=Contacted&reply_age=new&startDate=:date&endDate=:date.",
      "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
      "status": "live",
@@ -1442,7 +1442,7 @@
      "kind": "link",
      "el": null,
      "href": "/dealer/leads?status=Contacted&reply_age=d1_7&startDate=:date&endDate=:date",
-     "panel": "0",
+     "panel": "1",
      "about": "Goes to /dealer/leads?status=Contacted&reply_age=d1_7&startDate=:date&endDate=:date.",
      "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
      "status": "live",
@@ -1481,7 +1481,7 @@
      "kind": "link",
      "el": null,
      "href": "/dealer/leads?status=Contacted&reply_age=d31_60&startDate=:date&endDate=:date",
-     "panel": "0",
+     "panel": "1",
      "about": "Goes to /dealer/leads?status=Contacted&reply_age=d31_60&startDate=:date&endDate=:date.",
      "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
      "status": "live",
@@ -1710,10 +1710,10 @@
      "code": "DAS-B33"
     },
     {
-     "id": "dealer/dashboard.b.after-pressing-lead-sources.react-aria3434872396-r-6",
+     "id": "dealer/dashboard.b.after-pressing-lead-sources.react-aria6261571160-r-4",
      "label": "Download",
      "kind": "button",
-     "el": "#react-aria3434872396-_r_6_",
+     "el": "#react-aria6261571160-_r_4_",
      "href": null,
      "panel": "Where leads come from · after pressing 'Lead sources'",
      "about": "Download. (after pressing 'Lead sources')",
@@ -2367,7 +2367,7 @@
    ],
    "panels": [
     "Leads Dashboard",
-    "CUSTOMER REPLIES BY LEAD AGE0 + 0 = 0 customer replied",
+    "CUSTOMER REPLIES BY LEAD AGE0 + 1 = 1 customer replied",
     "Lead Sources",
     "Lead Status",
     "Lead Received",
@@ -2490,13 +2490,14 @@
     },
     {
      "id": "dealer/leads.f.lead-tabs",
-     "title": "Open lead: header with tabs (Conversation / Lead details / AI Assistant)",
-     "about": "The user, 27 Nov 2026: one inbox screen instead of a middle column.",
+     "title": "Open lead: lead list + inbox; Lead settings (gear) slides out",
+     "about": "The user, 27 Nov 2026.",
      "steps": [
       "Open a test lead.",
-      "Press each tab; use the < > arrows, Customer profile and Back to list in the header."
+      "Read the top band; use Call, Add note, Update status, Check in, Customer profile.",
+      "Press Lead settings; edit something; use the ... menu (View ADF); Manager override; close it."
      ],
-     "expect": "The header shows the name, status, phone and email; Conversation fills the screen with the message box pinned at the bottom and only the messages scrolling; Lead details holds the lead card (edit, status, source, journey, manager override); AI Assistant holds the AI panel; Call, Add note, Update status and Check in are only in the message box's + menu.",
+     "expect": "Two columns: the lead list with all its filters, and the inbox. The top band shows status, up type, department, source, sub-source, owner, phone, email, the next step with AI type and vehicle wanted, the actions in this order - Call, Add note, Update status, Check in, Customer profile, Lead settings - and the journey bar after them at the right; Text / Email are in the message box. Lead settings opens from the right with Edit, the ... menu, vehicle, lead date, owner, Manager override, booking and the AI Assistant; windows it opens show on top of it.",
      "status": "live",
      "auto": [],
      "access": null,
@@ -2507,14 +2508,97 @@
      "title": "Chat-style conversation: oldest at the top, newest at the bottom",
      "about": "The user, 27 Nov 2026.",
      "steps": [
-      "Open a test lead with several messages.",
+      "Open a test lead with several messages over several days.",
       "Scroll up; press Load older messages at the top if shown."
      ],
-     "expect": "The conversation opens at the newest message, right above the message box; the customer's messages are white bubbles on the left, the AI's green and staff's blue on the right, notes and status changes in the middle; each message has one short line (who, when, delivered) and From / To show on hover.",
+     "expect": "It opens at the newest message above the message box; a day chip (e.g. Thu, Nov 26, 2026) starts each day; the customer's messages are white bubbles on the left, the AI's green and staff's blue on the right, each with the sender on top and the time with ✓ / ✓✓ (delivered) or a red Failed at the bottom right; a status change is one small line in the middle (old → new status, by whom, why, time); notes are small yellow cards with a pencil to edit; From / To show on hover.",
      "status": "live",
      "auto": [],
      "access": null,
      "code": "LEA-06"
+    },
+    {
+     "id": "dealer/leads.f.inbox-list",
+     "title": "Lead list as an inbox",
+     "steps": [
+      "Look at the list beside the conversation and its filters.",
+      "Press a lead's ⋮.",
+      "Use the page arrows at the bottom of the list."
+     ],
+     "expect": "The filters (status, lead source, department, source type, dates, Search / Clear) are hidden until the filter button is pressed (it shows how many are on); each lead has a coloured round icon with its initials (a green robot dot when the AI wrote last, an orange dot when the customer did), and the open lead is highlighted; each lead shows initials, name, the last message (AI: / You: when it was ours, an envelope for email, a red mark when it failed), its time and a green count of unread customer messages; ⋮ opens a small box under the row with Assigned to and Delete; the bottom always shows ‹ Page N of M › with the number of leads (also when there is only one page); a lead the customer is waiting on (customer wrote last, 5+ minutes unanswered) shows an orange ⏳ badge with how long (e.g. 8m, 2h, 1d); a lead marked hot shows 🔥 next to the name.",
+     "status": "live",
+     "auto": [],
+     "access": null,
+     "code": "LEA-07"
+    },
+    {
+     "id": "dealer/leads.f.inbox-bulk",
+     "title": "Bulk actions in the side lead list (managers)",
+     "steps": [
+      "Open a test lead.",
+      "Press the Select button (checklist icon) between the filter button and the search box.",
+      "Untick some rows (click a row or its box); pick All matching / This page / How many; press Review.",
+      "Use Reassign, Change status, Department, Lead details, Add note, Call task or Export on test leads.",
+      "Press ✕ or Select again."
+     ],
+     "expect": "Tick boxes appear on every row with the page ticked first; clicking a row ticks it instead of opening it; the bulk bar and its side panels work exactly as on the full Leads list (Bulk history keeps Undo); ✕ leaves select mode; staff who cannot assign or manage leads do not see Select.",
+     "status": "live",
+     "auto": [],
+     "access": null,
+     "code": "LEA-08"
+    },
+    {
+     "id": "dealer/leads.f.what-we-know",
+     "title": "What we know strip and AI summary",
+     "about": "Stored facts the AI already learned; no AI call.",
+     "steps": [
+      "Open a test lead the AI has talked to (it knows the car, payment or trade-in).",
+      "Read the strip above the conversation; scroll it sideways if it is longer than the screen.",
+      "Press AI summary, then Hide summary.",
+      "Open a brand-new lead with no conversation."
+     ],
+     "expect": "Chips show what is known: Here for, Wants, Monthly, Budget, Timeline, Service, Trade-in (with miles), Payoff, Drives, Appointment, Best time, Prefers - the same values as Vehicle wanted on the top band; AI summary shows the AI's summary of a long conversation; a lead with nothing known shows no strip.",
+     "status": "live",
+     "auto": [],
+     "access": null,
+     "code": "LEA-09"
+    },
+    {
+     "id": "dealer/leads.f.ai-working",
+     "title": "AI is working on a reply (dots)",
+     "steps": [
+      "With the AI on for a test lead, text it from your test phone.",
+      "Watch the bottom of the conversation."
+     ],
+     "expect": "Within the 3 minutes after the customer's message, three moving dots with \"AI is working on a reply\" show at the bottom until the reply arrives; with the AI off or paused for that lead they never show.",
+     "status": "live",
+     "auto": [],
+     "access": null,
+     "code": "LEA-10"
+    },
+    {
+     "id": "dealer/leads.f.grouped-bubbles",
+     "title": "Messages close together are grouped",
+     "steps": [
+      "Open a test lead where the customer sent two texts within 2 minutes."
+     ],
+     "expect": "The second bubble sits right under the first without repeating the sender line; clicking it still shows From / To / language.",
+     "status": "live",
+     "auto": [],
+     "access": null,
+     "code": "LEA-11"
+    },
+    {
+     "id": "dealer/leads.f.responsive",
+     "title": "Lead page fits the screen",
+     "steps": [
+      "Open a test lead on a large desktop screen, a laptop, a tablet (or narrow the browser to about 800 px) and a phone (about 390 px)."
+     ],
+     "expect": "Desktop / laptop: the lead list and the conversation fill the screen down to the bottom - the list scrolls inside with its pager at the bottom, the chat grows down to the message box, no empty space below; on a short laptop the page scrolls a little rather than squeezing the chat. Tablet / phone: the lead list opens with the Lead List button and slides in; the lead's band, actions (journey on its own line) and chat stack down the page with no sideways scrolling.",
+     "status": "live",
+     "auto": [],
+     "access": null,
+     "code": "LEA-12"
     },
     {
      "id": "dealer/leads.f.chat-plus",
@@ -2528,7 +2612,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-07"
+     "code": "LEA-13"
     },
     {
      "id": "dealer/leads.f.vehicle-photos",
@@ -2542,7 +2626,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-08"
+     "code": "LEA-14"
     },
     {
      "id": "dealer/leads.f.dealer-links",
@@ -2554,7 +2638,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-09"
+     "code": "LEA-15"
     },
     {
      "id": "dealer/leads.f.open-lead",
@@ -2568,7 +2652,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-10"
+     "code": "LEA-16"
     },
     {
      "id": "dealer/leads.f.reply",
@@ -2580,7 +2664,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-11"
+     "code": "LEA-17"
     },
     {
      "id": "dealer/leads.f.edit-lead",
@@ -2593,7 +2677,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-12"
+     "code": "LEA-18"
     },
     {
      "id": "dealer/leads.f.actions-menu",
@@ -2608,7 +2692,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-13"
+     "code": "LEA-19"
     },
     {
      "id": "dealer/leads.f.staff-opted-out",
@@ -2623,7 +2707,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-14"
+     "code": "LEA-20"
     },
     {
      "id": "dealer/leads.f.stopped",
@@ -2635,7 +2719,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-15"
+     "code": "LEA-21"
     },
     {
      "id": "dealer/leads.t.G-006",
@@ -2649,7 +2733,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-16"
+     "code": "LEA-22"
     },
     {
      "id": "dealer/leads.t.G-009",
@@ -2663,7 +2747,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-17"
+     "code": "LEA-23"
     },
     {
      "id": "dealer/leads.t.G-010",
@@ -2677,7 +2761,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-18"
+     "code": "LEA-24"
     },
     {
      "id": "dealer/leads.t.G-027",
@@ -2691,7 +2775,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-19"
+     "code": "LEA-25"
     },
     {
      "id": "dealer/leads.t.G-082",
@@ -2705,7 +2789,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-20"
+     "code": "LEA-26"
     },
     {
      "id": "dealer/leads.t.G-083",
@@ -2719,7 +2803,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-21"
+     "code": "LEA-27"
     },
     {
      "id": "dealer/leads.t.M25-03",
@@ -2733,7 +2817,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-22"
+     "code": "LEA-28"
     },
     {
      "id": "dealer/leads.t.M25-07",
@@ -2747,7 +2831,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-23"
+     "code": "LEA-29"
     },
     {
      "id": "dealer/leads.t.M25-10",
@@ -2761,7 +2845,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-24"
+     "code": "LEA-30"
     },
     {
      "id": "dealer/leads.t.M25-11",
@@ -2775,7 +2859,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-25"
+     "code": "LEA-31"
     },
     {
      "id": "dealer/leads.t.M25-12",
@@ -2789,7 +2873,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-26"
+     "code": "LEA-32"
     },
     {
      "id": "dealer/leads.t.M25-16",
@@ -2803,7 +2887,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-27"
+     "code": "LEA-33"
     },
     {
      "id": "dealer/leads.t.M25-17",
@@ -2817,7 +2901,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-28"
+     "code": "LEA-34"
     },
     {
      "id": "dealer/leads.t.M25-18",
@@ -2831,7 +2915,63 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-29"
+     "code": "LEA-35"
+    },
+    {
+     "id": "dealer/leads.t.M25-31",
+     "title": "M25-31 · Lead page as an inbox: lead list + conversation, top band, Lead settings after Customer profile",
+     "about": "SOW v6 item (Meeting 25 Nov): Done · live: After merge.",
+     "steps": [
+      "Go to: Leads > open a lead",
+      "Use it as described there."
+     ],
+     "expect": "Works as described in 'Go to'; numbers match their lists; no error message.",
+     "status": "live",
+     "access": null,
+     "auto": [],
+     "code": "LEA-36"
+    },
+    {
+     "id": "dealer/leads.t.M25-32",
+     "title": "M25-32 · Inbox extras: What we know strip + AI summary, AI working dots, grouped bubbles, Waiting and Hot badges",
+     "about": "SOW v6 item (Meeting 25 Nov): Done · live: After merge.",
+     "steps": [
+      "Go to: Leads > open a lead",
+      "Use it as described there."
+     ],
+     "expect": "Works as described in 'Go to'; numbers match their lists; no error message.",
+     "status": "live",
+     "access": null,
+     "auto": [],
+     "code": "LEA-37"
+    },
+    {
+     "id": "dealer/leads.t.M25-33",
+     "title": "M25-33 · Bulk select and pager in the side lead list",
+     "about": "SOW v6 item (Meeting 25 Nov): Done · live: After merge.",
+     "steps": [
+      "Go to: Leads > open a lead > list",
+      "Use it as described there."
+     ],
+     "expect": "Works as described in 'Go to'; numbers match their lists; no error message.",
+     "status": "live",
+     "access": null,
+     "auto": [],
+     "code": "LEA-38"
+    },
+    {
+     "id": "dealer/leads.t.M25-34",
+     "title": "M25-34 · Lead page fits the screen (desktop, laptop, tablet, phone)",
+     "about": "SOW v6 item (Meeting 25 Nov): Done · live: After merge.",
+     "steps": [
+      "Go to: Leads > open a lead",
+      "Use it as described there."
+     ],
+     "expect": "Works as described in 'Go to'; numbers match their lists; no error message.",
+     "status": "live",
+     "access": null,
+     "auto": [],
+     "code": "LEA-39"
     }
    ],
    "buttons": [
@@ -4359,10 +4499,10 @@
      "code": "CUP-B23"
     },
     {
-     "id": "dealer/customers/[id].b.x.react-aria536487848-r-3",
+     "id": "dealer/customers/[id].b.x.react-aria8360362428-r-3",
      "label": "Forms",
      "kind": "button",
-     "el": "#react-aria536487848-_r_3_",
+     "el": "#react-aria8360362428-_r_3_",
      "href": null,
      "panel": "Customer Details",
      "about": "Forms.",
@@ -5884,10 +6024,10 @@
      "code": "DEL-B03"
     },
     {
-     "id": "dealer/desk-log.b.x.react-aria8843040948-r-2",
+     "id": "dealer/desk-log.b.x.react-aria1956464170-r-2",
      "label": "More: check in, today's appointments, settings",
      "kind": "button",
-     "el": "#react-aria8843040948-_r_2_",
+     "el": "#react-aria1956464170-_r_2_",
      "href": null,
      "panel": "Desk Log",
      "about": "Filter: More: check in, today's appointments, settings.",
@@ -6794,26 +6934,26 @@
      "code": "AIM-B01"
     },
     {
-     "id": "dealer/ai/messages.b.x.cr-carla-reyes-43-minutes-ago-you-composer-test-from-the-new",
-     "label": "CR Carla Reyes 43 minutes ago You: Composer test from the new box 1 3 +121755580",
+     "id": "dealer/ai/messages.b.x.cr-carla-reyes-32-minutes-ago-around-11am-works-for-me-2-5-1",
+     "label": "CR Carla Reyes 32 minutes ago Around 11am works for me 2 5 +12175558045",
      "kind": "button",
      "el": null,
      "href": null,
      "panel": "AI Messages",
-     "about": "CR Carla Reyes 43 minutes ago You: Composer test from the new box 1 3 +121755580.",
+     "about": "CR Carla Reyes 32 minutes ago Around 11am works for me 2 5 +12175558045.",
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
      "code": "AIM-B02"
     },
     {
-     "id": "dealer/ai/messages.b.x.rl-roberto-lazu-1-day-ago-trade-in-question-2-1-1-1914224100",
-     "label": "RL Roberto Lazu 1 day ago Trade-in question 2 1 1 +19142241002",
+     "id": "dealer/ai/messages.b.x.rl-roberto-lazu-2-days-ago-trade-in-question-1-1-19142241002",
+     "label": "RL Roberto Lazu 2 days ago Trade-in question 1 1 +19142241002",
      "kind": "button",
      "el": null,
      "href": null,
      "panel": "AI Messages",
-     "about": "RL Roberto Lazu 1 day ago Trade-in question 2 1 1 +19142241002.",
+     "about": "RL Roberto Lazu 2 days ago Trade-in question 1 1 +19142241002.",
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
@@ -6821,12 +6961,12 @@
     },
     {
      "id": "dealer/ai/messages.b.x.vs-victor-stone-17-days-ago-my-camry-needs-its-30k-service-c",
-     "label": "VS Victor Stone 17 days ago My Camry needs its 30k service, can I book it? 1 1 +",
+     "label": "VS Victor Stone 17 days ago My Camry needs its 30k service, can I book it? 1 +12",
      "kind": "button",
      "el": null,
      "href": null,
      "panel": "AI Messages",
-     "about": "Filter: VS Victor Stone 17 days ago My Camry needs its 30k service, can I book it? 1 1 +.",
+     "about": "Filter: VS Victor Stone 17 days ago My Camry needs its 30k service, can I book it? 1 +12.",
      "expect": "The list / numbers narrow to it; the active choice is highlighted; refresh keeps it.",
      "status": "live",
      "access": null,
@@ -6834,12 +6974,12 @@
     },
     {
      "id": "dealer/ai/messages.b.x.lc-lily-chen-17-days-ago-looking-for-a-family-minivan-under-",
-     "label": "LC Lily Chen 17 days ago Looking for a family minivan under $32k. 1 1 +121755538",
+     "label": "LC Lily Chen 17 days ago Looking for a family minivan under $32k. 1 +12175553844",
      "kind": "button",
      "el": null,
      "href": null,
      "panel": "AI Messages",
-     "about": "LC Lily Chen 17 days ago Looking for a family minivan under $32k. 1 1 +121755538.",
+     "about": "LC Lily Chen 17 days ago Looking for a family minivan under $32k. 1 +12175553844.",
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
@@ -6847,12 +6987,12 @@
     },
     {
      "id": "dealer/ai/messages.b.x.gk-grace-kim-17-days-ago-is-the-2023-tacoma-sr5-still-availa",
-     "label": "GK Grace Kim 17 days ago Is the 2023 Tacoma SR5 still available? 1 1 +1217555434",
+     "label": "GK Grace Kim 17 days ago Is the 2023 Tacoma SR5 still available? 1 +12175554343",
      "kind": "button",
      "el": null,
      "href": null,
      "panel": "AI Messages",
-     "about": "GK Grace Kim 17 days ago Is the 2023 Tacoma SR5 still available? 1 1 +1217555434.",
+     "about": "GK Grace Kim 17 days ago Is the 2023 Tacoma SR5 still available? 1 +12175554343.",
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
@@ -7559,10 +7699,10 @@
      "code": "REP-B01"
     },
     {
-     "id": "dealer/reports.b.x.react-aria5676538120-r-3",
+     "id": "dealer/reports.b.x.react-aria2869994027-r-3",
      "label": "Download report",
      "kind": "button",
-     "el": "#react-aria5676538120-_r_3_",
+     "el": "#react-aria2869994027-_r_3_",
      "href": null,
      "panel": "Leads Dashboard",
      "about": "Download report.",
@@ -7603,7 +7743,7 @@
      "kind": "link",
      "el": null,
      "href": "/dealer/leads?messages=sent&startDate=:date&endDate=:date",
-     "panel": "0",
+     "panel": "1",
      "about": "Goes to /dealer/leads?messages=sent&startDate=:date&endDate=:date.",
      "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
      "status": "live",
@@ -7681,7 +7821,7 @@
      "kind": "link",
      "el": null,
      "href": "/dealer/leads?status=Contacted&reply_age=new&startDate=:date&endDate=:date",
-     "panel": "CUSTOMER REPLIES BY LEAD AGE0 + 0 = 0 customer replied",
+     "panel": "CUSTOMER REPLIES BY LEAD AGE0 + 1 = 1 customer replied",
      "about": "Goes to /dealer/leads?status=Contacted&reply_age=new&startDate=:date&endDate=:date.",
      "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
      "status": "live",
@@ -7707,7 +7847,7 @@
      "kind": "link",
      "el": null,
      "href": "/dealer/leads?status=Contacted&reply_age=d1_7&startDate=:date&endDate=:date",
-     "panel": "0",
+     "panel": "1",
      "about": "Goes to /dealer/leads?status=Contacted&reply_age=d1_7&startDate=:date&endDate=:date.",
      "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
      "status": "live",
@@ -7746,7 +7886,7 @@
      "kind": "link",
      "el": null,
      "href": "/dealer/leads?status=Contacted&reply_age=d31_60&startDate=:date&endDate=:date",
-     "panel": "0",
+     "panel": "1",
      "about": "Goes to /dealer/leads?status=Contacted&reply_age=d31_60&startDate=:date&endDate=:date.",
      "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
      "status": "live",
@@ -8218,7 +8358,7 @@
    ],
    "panels": [
     "Leads Dashboard",
-    "CUSTOMER REPLIES BY LEAD AGE0 + 0 = 0 customer replied",
+    "CUSTOMER REPLIES BY LEAD AGE0 + 1 = 1 customer replied",
     "How each number is counted",
     "Lead Sources",
     "Lead Status",
@@ -9551,10 +9691,10 @@
    ],
    "buttons": [
     {
-     "id": "dealer/forms.b.x.react-aria4700236167-r-3",
+     "id": "dealer/forms.b.x.react-aria6654779491-r-3",
      "label": "Add a standard form",
      "kind": "button",
-     "el": "#react-aria4700236167-_r_3_",
+     "el": "#react-aria6654779491-_r_3_",
      "href": null,
      "panel": "Forms Library",
      "about": "Add a standard form.",
@@ -10674,10 +10814,10 @@
    ],
    "buttons": [
     {
-     "id": "dealer/subscribe.b.x.react-aria9669964472-r-2-tab-currentplan",
+     "id": "dealer/subscribe.b.x.react-aria1700727277-r-2-tab-currentplan",
      "label": "My Current Plan",
      "kind": "tab",
-     "el": "#react-aria9669964472-_r_2_-tab-currentplan",
+     "el": "#react-aria1700727277-_r_2_-tab-currentplan",
      "href": null,
      "panel": "My Subscription",
      "about": "Tab: shows the 'My Current Plan' part of My subscription.",
@@ -10687,10 +10827,10 @@
      "code": "MYS-B01"
     },
     {
-     "id": "dealer/subscribe.b.x.react-aria9669964472-r-2-tab-subscriptionplan",
+     "id": "dealer/subscribe.b.x.react-aria1700727277-r-2-tab-subscriptionplan",
      "label": "Subscription Plans",
      "kind": "tab",
-     "el": "#react-aria9669964472-_r_2_-tab-subscriptionplan",
+     "el": "#react-aria1700727277-_r_2_-tab-subscriptionplan",
      "href": null,
      "panel": "My Subscription",
      "about": "Tab: shows the 'Subscription Plans' part of My subscription.",
@@ -11872,10 +12012,10 @@
      "code": "AAI-B19"
     },
     {
-     "id": "admin/ai-studio.b.x.react-aria3970110091-r-1-tab-edit",
+     "id": "admin/ai-studio.b.x.react-aria2457122468-r-1-tab-edit",
      "label": "Edit",
      "kind": "tab",
-     "el": "#react-aria3970110091-_r_1_-tab-edit",
+     "el": "#react-aria2457122468-_r_1_-tab-edit",
      "href": null,
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "about": "Tab: shows the 'Edit' part of AI Studio.",
@@ -11885,10 +12025,10 @@
      "code": "AAI-B20"
     },
     {
-     "id": "admin/ai-studio.b.x.react-aria3970110091-r-1-tab-live",
+     "id": "admin/ai-studio.b.x.react-aria2457122468-r-1-tab-live",
      "label": "Live (v1)",
      "kind": "tab",
-     "el": "#react-aria3970110091-_r_1_-tab-live",
+     "el": "#react-aria2457122468-_r_1_-tab-live",
      "href": null,
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "about": "Tab: shows the 'Live (v1)' part of AI Studio.",
@@ -11898,10 +12038,10 @@
      "code": "AAI-B21"
     },
     {
-     "id": "admin/ai-studio.b.x.react-aria3970110091-r-1-tab-history",
+     "id": "admin/ai-studio.b.x.react-aria2457122468-r-1-tab-history",
      "label": "History (1)",
      "kind": "tab",
-     "el": "#react-aria3970110091-_r_1_-tab-history",
+     "el": "#react-aria2457122468-_r_1_-tab-history",
      "href": null,
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "about": "Tab: shows the 'History (1)' part of AI Studio.",
@@ -14405,10 +14545,10 @@
      "code": "APA-B05"
     },
     {
-     "id": "admin/package.b.in-the-window-menu-that-add-package-opens.react-aria1709024534-r-1-tab-general",
+     "id": "admin/package.b.in-the-window-menu-that-add-package-opens.react-aria8851638534-r-1-tab-general",
      "label": "General",
      "kind": "tab",
-     "el": "#react-aria1709024534-_r_1_-tab-general",
+     "el": "#react-aria8851638534-_r_1_-tab-general",
      "href": null,
      "panel": "Add Package · in the window / menu that 'Add Package' opens",
      "about": "Tab: shows the 'General' part of Packages. (in the window / menu that 'Add Package' opens)",
@@ -14418,10 +14558,10 @@
      "code": "APA-B06"
     },
     {
-     "id": "admin/package.b.in-the-window-menu-that-add-package-opens.react-aria1709024534-r-1-tab-features",
+     "id": "admin/package.b.in-the-window-menu-that-add-package-opens.react-aria8851638534-r-1-tab-features",
      "label": "Features",
      "kind": "tab",
-     "el": "#react-aria1709024534-_r_1_-tab-features",
+     "el": "#react-aria8851638534-_r_1_-tab-features",
      "href": null,
      "panel": "Add Package · in the window / menu that 'Add Package' opens",
      "about": "Tab: shows the 'Features' part of Packages. (in the window / menu that 'Add Package' opens)",
