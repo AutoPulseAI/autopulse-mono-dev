@@ -8,6 +8,13 @@
   <link rel="stylesheet" href="assets/sheet.css" />
 </head>
 <body>
+  <!-- Loaders (the user, 28 Nov 2026): a progress bar on top while anything saves or uploads, and a cover while the
+       sheet first loads. -->
+  <div id="busy-bar" class="busy-bar" hidden aria-hidden="true"><span></span></div>
+  <div id="page-loader" class="page-loader" role="status" aria-live="polite">
+    <div class="spinner big" aria-hidden="true"></div>
+    <div>Loading the test sheet…</div>
+  </div>
   <header class="top">
     <div class="wrap top-row">
       <div class="brand">
