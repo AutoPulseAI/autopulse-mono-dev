@@ -30,7 +30,7 @@ import { throwIfStatusFailed } from "../../../lib/bookingConflict"; // stream R:
 import MessagePhotos from "../../components/MessagePhotos"; // stream R: AI photos
 import { hasAiPhotos } from "../../../lib/ai/messagePhotos";
 import AdfLead, { looksLikeAdf } from "../../ai/components/AdfLead";
-import { messageAuthor, noteAuthor, AUTHOR_BADGE, isStatusNote, staffBookedTexts, messageStatusLabel } from "../../../lib/messageAuthor";
+import { messageAuthor, noteAuthor, AUTHOR_BADGE, isStatusNote, staffBookedTexts, messageStatusLabel, statusNoteParts } from "../../../lib/messageAuthor";
 import { aiFetch } from "../../ai/components/aiShared";
 
 // SMS is the default reply channel; email is only used when explicitly
@@ -1177,7 +1177,7 @@ export default function ViewConversations({
                       ))}
                     </details>
                   )}
-                  {[...activeChannelEmails].reverse().map((email) => {
+                  {[...activeChannelEmails].reverse().map((email, idx, ordered) => {
                       const cleaned = cleanEmailContent(email.mail_content || "");
                       const originalText = getMessageTextForTranslation(email);
                       const translationKey = getTranslationKey(email, agentViewLanguage, originalText);
@@ -1186,8 +1186,38 @@ export default function ViewConversations({
                       const author = messageAuthor(email, lead, dealerParent?.dealer_account_information?.ai_bot_name);
                   const bookedBy = staffBooked[String(email._id)];
                       const isNote = email.is_note || email.status === 'note';
-                      
-                      return (
+                      // A day chip when the day changes, like WhatsApp (dealer's time zone).
+                      const dayOf = (m) => (m?.timestamp ? new Date(m.timestamp).toLocaleDateString("en-US",
+                        { timeZone: dealerTimezone || undefined, weekday: "short", month: "short", day: "numeric", year: "numeric" }) : "");
+                      const day = dayOf(email);
+                      const dayChip = day && day !== dayOf(ordered[idx - 1])
+                        ? <div className="chat_day" key={`day-${email._id}`}>{day}</div> : null;
+                      const clock = email.timestamp ? new Date(email.timestamp).toLocaleTimeString("en-US",
+                        { timeZone: dealerTimezone || undefined, hour: "numeric", minute: "2-digit" }) : "";
+                      // A status change is one quiet line in the middle (the user, 27 Nov 2026: "how can we arrange it
+                      // in a much better way") - the new status in bold, who and why in small grey.
+                      const sn = isNote && isStatusNote(email) ? statusNoteParts(cleaned.content) : null;
+                      if (sn) {
+                        return [dayChip, (
+                          <div key={email._id} className="chat_system" title={cleaned.content}>
+                            <i className="fa-solid fa-arrow-right-arrow-left" aria-hidden="true"></i>
+                            <span>
+                              {sn.from ? <>{sn.from} <i className="fa-solid fa-arrow-right mx-1" aria-hidden="true"></i></> : "Status: "}
+                              <strong>{sn.to}</strong>
+                              <span className="chat_system_by"> · {sn.by === "AI" ? "by the AI" : `by ${sn.by}`}{sn.why ? ` · ${sn.why}` : ""} · {clock}</span>
+                            </span>
+                          </div>
+                        )];
+                      }
+                      const st = String(email.status || "").toLowerCase();
+                      const tick = ["received", "incoming"].includes(st) ? null
+                        : ["failed", "undelivered", "bounced", "error"].includes(st)
+                          ? <span className="chat_tick failed" title={messageStatusLabel(email)}><i className="fa-solid fa-circle-exclamation me-1"></i>{messageStatusLabel(email)}</span>
+                          : st === "delivered" || /deliver|read|open/i.test(messageStatusLabel(email))
+                            ? <span className="chat_tick read" title={messageStatusLabel(email)}><i className="fa-solid fa-check-double"></i></span>
+                            : <span className="chat_tick" title={messageStatusLabel(email)}><i className="fa-solid fa-check"></i></span>;
+
+                      return [dayChip, (
                         <div
                           key={email._id}
                           className={`w_card conversation-item ${
@@ -1195,39 +1225,26 @@ export default function ViewConversations({
                           } ${isNote ? 'note-item' : ["received", "incoming"].includes(email.status) ? 'chat_in'
                             : `chat_out ${author.kind === 'ai' ? 'chat_ai' : 'chat_staff'}${["failed", "undelivered", "bounced", "error"].includes(email.status) ? ' chat_failed' : ''}`}`}
                           onClick={() => setSelectedConversation(email)}
-                          style={isNote ? (isAiNote(email) ? {
-                            borderLeft: '4px solid #2196f3',
-                            backgroundColor: '#e3f2fd',
-                            border: '1px solid #2196f3'
-                          } : {
-                            borderLeft: '4px solid #ffc107',
-                            backgroundColor: '#fff8e1',
-                            border: '1px solid #ffc107'
-                          }) : undefined}
+                          style={undefined}
                         >
-                          {/* One short line: who, when, how it went (From / To / language on hover). */}
+                          {/* Who wrote it on top; the time and the delivery ticks at the bottom, like WhatsApp
+                              (From / To / language on hover). */}
                           <div className="chat_meta" title={isNote ? `User language: ${msgUserLanguageLabel}`
                             : `From: ${email.sender || "-"}\nTo: ${email.recipient || "-"}\nUser language: ${msgUserLanguageLabel}`}>
-                            {isNote && (
-                              <strong className="text-dark">
-                                <i className={`fa-solid fa-sticky-note me-1 ${email.internal_use === true ? 'text-info' : 'text-warning'}`}></i>
-                                {isStatusNote(email) ? 'Status change' : email.internal_use === true ? 'Internal note' : 'Lead note'}
-                              </strong>
-                            )}
-                            <span className={`badge ${isNote ? (isAiNote(email) || email.ai_generated ? "bg-primary" : "bg-warning text-dark") : AUTHOR_BADGE[author.kind]}`}>
-                              {isNote ? noteAuthor(email, isAiNote(email)) : author.label}</span>
-                            <span>{formatTimestamp(email.timestamp, dealerTimezone)}</span>
-                            {!isNote && (
-                              <span className={`badge ${["received", "incoming"].includes(email.status) ? "bg-success"
-                                : ["failed", "undelivered", "bounced", "error"].includes(email.status) ? "bg-secondary" : "bg-danger"}`}>
-                                {messageStatusLabel(email)}</span>
+                            {isNote ? (
+                              <span className="chat_note_head">
+                                <i className="fa-solid fa-note-sticky me-1" aria-hidden="true"></i>
+                                {email.internal_use === true ? "Internal note" : "Lead note"} · {noteAuthor(email, isAiNote(email))}
+                              </span>
+                            ) : (
+                              <span className={`chat_who ${author.kind}`}>{author.label}</span>
                             )}
                             {bookedBy && <span className="badge bg-warning text-dark">Appointment set by staff: {bookedBy}</span>}
                             {isNote && (
-                              <Button variant={email.internal_use === true ? "outline-info" : "outline-warning"} size="xs"
-                                className="text-nowrap ms-auto" onClick={(e) => { e.stopPropagation(); handleEditNote(email); }}>
-                                <i className="fa-regular fa-pen-to-square me-1"></i>Edit
-                              </Button>
+                              <button type="button" className="chat_note_edit ms-auto" aria-label="Edit note" title="Edit note"
+                                onClick={(e) => { e.stopPropagation(); handleEditNote(email); }}>
+                                <i className="fa-regular fa-pen-to-square"></i>
+                              </button>
                             )}
                           </div>
                           {!isNote && email.communication_type === "email" && email.subject && (
@@ -1347,8 +1364,13 @@ export default function ViewConversations({
                               </div>
                             );
                           })} 
+                          {/* Time and delivery, bottom right of the bubble (WhatsApp style). */}
+                          <div className="chat_foot">
+                            {!isNote && email.ai_generated && <span className="chat_foot_tag">AI</span>}
+                            <span>{clock}</span>{!isNote && tick}
+                          </div>
                         </div>
-                      );
+                      )];
                     })}
                 </div>
               ) : (

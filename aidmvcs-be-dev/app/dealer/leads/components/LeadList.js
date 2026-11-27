@@ -18,6 +18,18 @@ import DeleteConfirmModal from "../../components/DeleteConfirmModal";
 import { BulkBar, BulkScope, BulkPanel, BulkNotice, undoBulk, exportBulk } from "./BulkAssign";
 import LeadDetailsPanel from "./LeadDetailsPanel";
 // Source type (24 Nov 2026: it listed the same names as Lead source): how the lead came in, as on each row.
+// Inbox time: today = the time, this week = the day, else the date (dealer time zone).
+function inboxTime(at, tz) {
+  if (!at) return "";
+  const d = new Date(at);
+  const opt = (o) => d.toLocaleString("en-US", { timeZone: tz || undefined, ...o });
+  const day = (x) => x.toLocaleDateString("en-US", { timeZone: tz || undefined });
+  const now = new Date();
+  if (day(d) === day(now)) return opt({ hour: "numeric", minute: "2-digit" });
+  if (now - d < 6 * 864e5) return opt({ weekday: "short" });
+  return opt({ month: "numeric", day: "numeric", year: "2-digit" });
+}
+
 const UP_TYPE_OPTIONS = [["up:internet", "Internet"], ["up:phone", "Phone-up"], ["up:walk_in", "Walk-in"], ["up:not_set", "Not set"]];
 const DEPT_TABS = [["", "All departments", "fa-layer-group"], ["sales", "Sales", "fa-car"], ["service", "Service", "fa-screwdriver-wrench"], ["parts", "Parts", "fa-gears"]];
 
@@ -265,7 +277,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       if (!silent) setLoading(true);
 
       // Build query parameters including page
-      let queryParams = `dealer_id=${activeEntity.id}&page=${page}&limit=${pagination.itemsPerPage}`;
+      let queryParams = `dealer_id=${activeEntity.id}&page=${page}&limit=${pagination.itemsPerPage}${compact ? '&preview=1' : ''}`;
 
       // Add assignment filter (only when not 'all')
       if (assignmentFilter && assignmentFilter !== 'all') {
@@ -1037,7 +1049,7 @@ const LeadList = forwardRef(({ setEditLead, onLeadSelected, activeLeadId, select
       setLoading(true);
       
       // Build query parameters including page
-      let queryParams = `dealer_id=${activeEntity.id}&page=${page}&limit=${pagination.itemsPerPage}`;
+      let queryParams = `dealer_id=${activeEntity.id}&page=${page}&limit=${pagination.itemsPerPage}${compact ? '&preview=1' : ''}`;
       
       // Add assignment filter (only when not 'all')
       if (assignmentFilter && assignmentFilter !== 'all') {
@@ -1638,9 +1650,15 @@ useImperativeHandle(ref, () => ({
       {compact ? (
         <Row className="align-items-center g-0">
           <Col lg={12}>
-            {/* Filter Controls */}
-            <Row className="search_filters gx-1 gy-1">
-              <Col xxl={12} xl={12} lg={12} md={12}>
+            {/* Inbox list (27 Nov 2026): the search box stays; the other filters fold behind Filters so the list of
+                conversations gets the height. */}
+            <Row className={`search_filters gx-1 gy-1${filtersOpen ? "" : " inbox_filters_closed"}`}>
+              <Col xxl={12} xl={12} lg={12} md={12} className="d-flex gap-1">
+                <Button variant={filtersOpen ? "custom" : "outline-custom"} size="sm" aria-expanded={filtersOpen}
+                  onClick={() => setFiltersOpen(!filtersOpen)} title="Status, source, department, dates">
+                  <i className="fa-solid fa-filter" aria-hidden="true"></i>
+                  {filterChips.length > 0 && <span className="ms-1">{filterChips.length}</span>}
+                </Button>
                 <Form.Control
                   type="search"
                   placeholder="Search name, phone, email or stock #"
@@ -1979,8 +1997,33 @@ useImperativeHandle(ref, () => ({
                   {compact ? (
                     // ✅ Compact view (used in ViewConversations)
                     <div className="position-relative w-100">
-                      <p className="fw-semibold d-flex align-items-center">
-                        <span>{lead.name}</span>
+                      {/* Inbox row, like WhatsApp (the user, 27 Nov 2026): who, the last message, when, unread. */}
+                      <div className="inbox_row">
+                        <span className="inbox_avatar" aria-hidden="true">
+                          {String(lead.name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?"}
+                        </span>
+                        <span className="inbox_main">
+                          <span className="inbox_top">
+                            <span className={`inbox_title${lead.inbox?.unread ? " unread" : ""}`}>{lead.name || "No name"}</span>
+                            <span className="inbox_time">{inboxTime(lead.inbox?.last?.at || lead.createdAt, dealerTimezone)}</span>
+                          </span>
+                          <span className="inbox_bottom">
+                            <span className="inbox_snip">
+                              {lead.inbox?.last ? (
+                                <>
+                                  {lead.inbox.last.from === "ai" && <b>AI: </b>}
+                                  {lead.inbox.last.from === "staff" && <b>You: </b>}
+                                  {lead.inbox.last.failed && <i className="fa-solid fa-circle-exclamation text-danger me-1" aria-hidden="true"></i>}
+                                  {lead.inbox.last.channel === "email" && <i className="fa-regular fa-envelope me-1" aria-hidden="true"></i>}
+                                  {lead.inbox.last.text || "(no text)"}
+                                </>
+                              ) : <span className="text-muted">{statusLabel(lead.fe_lead_status) || "New lead"}</span>}
+                            </span>
+                            {lead.inbox?.unread > 0 && <span className="inbox_unread">{lead.inbox.unread}</span>}
+                          </span>
+                        </span>
+                      </div>
+                      <p className="fw-semibold d-flex align-items-center mb-0 inbox_menu">
                         <Button variant="outline-secondary" size="xs" className="ms-auto"
                           onClick={(e) => {
                             e.stopPropagation(); // prevent triggering onLeadSelected

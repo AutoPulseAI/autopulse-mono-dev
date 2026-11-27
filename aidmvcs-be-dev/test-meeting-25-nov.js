@@ -50,6 +50,9 @@ const { upType } = await import('./app/lib/reporting/normalize.js');
 const { canReassign, ensureBulkReassignPermission, BULK_REASSIGN } = await import('./app/lib/bulkPermission.js');
 const { default: Permission } = await import('./app/models/Permission.js');
 const { default: Role } = await import('./app/models/Role.js');
+const { attachInboxPreview } = await import('./app/lib/leadInbox.js');
+const { statusNoteParts } = await import('./app/lib/messageAuthor.js');
+const { default: EmailModel } = await import('./app/models/Email.js');
 const { staffOptedOut } = await import('./app/lib/compliance/eligibility.js');
 const { closedStatusConflict } = await import('./app/lib/ai/aiDnd.js');
 const { STAFF_OWNED_STATUSES } = await import('./app/lib/ai/aiStaff.js');
@@ -316,4 +319,32 @@ db('staff Opted Out stops sends even in log-only mode (campaigns, automations)',
   assert.equal((await contactGate({ dealerId: String(shop._id), channel: 'sms', to: '7185550177' })).stop, true);
   assert.equal((await contactGate({ dealerId: String(shop._id), channel: 'sms', to: '7185550166' })).stop, false,
     'the AI\'s per-channel Opted Out is not turned into a full stop');
+});
+
+db('inbox side list: each lead\'s last message (notes left out) and its unread customer messages', async () => {
+  const a = await newLead({ name: 'Inbox A' });
+  const b = await newLead({ name: 'Inbox B' });
+  const t = (m) => new Date(Date.UTC(2026, 10, 26, 10, m));
+  await EmailModel.collection.insertMany([
+    { lead_id: a._id, communication_type: 'sms', status: 'received', mail_content: 'Is it still there?', timestamp: t(1) },
+    { lead_id: a._id, communication_type: 'sms', status: 'received', mail_content: 'Hello?', timestamp: t(2), read: false },
+    { lead_id: a._id, communication_type: 'sms', status: 'note', is_note: true, mail_content: 'note', timestamp: t(3) },
+    { lead_id: b._id, communication_type: 'sms', status: 'delivered', ai_generated: true, mail_content: '<p>Hi from Nicole</p>', timestamp: t(1) },
+  ]);
+  const leads = [{ _id: a._id }, { _id: b._id }, { _id: new mongoose.Types.ObjectId() }];
+  await attachInboxPreview(leads);
+  assert.equal(leads[0].inbox.last.text, 'Hello?');
+  assert.equal(leads[0].inbox.last.from, 'customer');
+  assert.equal(leads[0].inbox.unread, 2);
+  assert.equal(leads[1].inbox.last.text, 'Hi from Nicole');
+  assert.equal(leads[1].inbox.last.from, 'ai');
+  assert.equal(leads[2].inbox.last, null);
+});
+
+test('status notes split for the conversation\'s system line', () => {
+  assert.deepEqual(statusNoteParts('Status changed from New Lead to Unsold by Mercy (visit outcome: Unsold)'),
+    { from: 'New Lead', to: 'Unsold', by: 'Mercy', why: 'visit outcome: Unsold' });
+  assert.deepEqual(statusNoteParts('Set to Contacted - No Next Action by the AI: The customer replied'),
+    { from: null, to: 'Contacted - No Next Action', by: 'AI', why: 'The customer replied' });
+  assert.equal(statusNoteParts('just a note'), null);
 });
