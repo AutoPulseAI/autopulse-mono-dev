@@ -6,7 +6,7 @@ A private page for the testing team. It lists every page of the CRM. For each pa
 - the SOW v6 items the page delivers;
 - every button, link, tab and field on the page, including the ones inside its menus, pop-ups and show/hide parts.
 
-Each tester marks each row **Pass**, **Fail** or **Blocked**. A row can also carry a note and screenshots. Screenshots can be pasted (Ctrl+V), dragged in or chosen from a file, in the screenshot box or straight into the note. **Cancel** takes a result back: nothing stays recorded for that row (no result, note, screenshots or issue). Once someone else has worked on the issue it opened, Cancel is refused and the tester re-tests instead.
+Each tester marks each row **Pass**, **Fail** or **Blocked**. A row can also carry a note and screenshots. Screenshots: click anywhere on a test (it gets a blue edge and says "Ready - press Ctrl+V") and press Ctrl+V; or drag an image onto its box; or use "choose a file". Clicking the box never opens the file window. **Cancel** takes a result back: nothing stays recorded for that row (no result, note, screenshots or issue). Once someone else has worked on the issue it opened, Cancel is refused and the tester re-tests instead.
 
 A Fail opens an issue. The issue goes through these states:
 

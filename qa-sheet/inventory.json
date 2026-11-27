@@ -1,5 +1,5 @@
 {
- "crawledAt": "2026-11-27T12:52:24.883Z",
+ "crawledAt": "2026-11-27T13:30:18.740Z",
  "app": "http://127.0.0.1:3137",
  "screens": {
   "admin/ai-studio": {
@@ -157,21 +157,21 @@
     },
     {
      "label": "Edit",
-     "id": "react-aria5196107085-_r_1_-tab-edit",
+     "id": "react-aria2947655062-_r_1_-tab-edit",
      "kind": "tab",
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "href": null
     },
     {
      "label": "Live (v1)",
-     "id": "react-aria5196107085-_r_1_-tab-live",
+     "id": "react-aria2947655062-_r_1_-tab-live",
      "kind": "tab",
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "href": null
     },
     {
      "label": "History (1)",
-     "id": "react-aria5196107085-_r_1_-tab-history",
+     "id": "react-aria2947655062-_r_1_-tab-history",
      "kind": "tab",
      "panel": "Buyer's order: if the customer insists Live v1 · published N",
      "href": null
@@ -2258,14 +2258,14 @@
     },
     {
      "label": "General",
-     "id": "react-aria4449317401-_r_1_-tab-general",
+     "id": "react-aria7683026599-_r_1_-tab-general",
      "kind": "tab",
      "panel": "Add Package",
      "href": null
     },
     {
      "label": "Features",
-     "id": "react-aria4449317401-_r_1_-tab-features",
+     "id": "react-aria7683026599-_r_1_-tab-features",
      "kind": "tab",
      "panel": "Add Package",
      "href": null
@@ -3501,14 +3501,14 @@
     },
     {
      "label": "Switch store",
-     "id": "react-aria7970780242-_r_2_",
+     "id": "react-aria6064960235-_r_2_",
      "kind": "button",
      "panel": "",
      "href": null
     },
     {
      "label": "Notifications",
-     "id": "react-aria7970780242-_r_0_",
+     "id": "react-aria6064960235-_r_0_",
      "kind": "button",
      "panel": "",
      "href": null
@@ -4184,7 +4184,7 @@
      "href": null
     },
     {
-     "label": "CR Carla Reyes 11 hours ago Around 11am works for me 2 5 +12175558045",
+     "label": "CR Carla Reyes 12 hours ago Around 11am works for me 2 5 +12175558045",
      "id": null,
      "kind": "button",
      "panel": "AI Messages",
@@ -5102,7 +5102,7 @@
     },
     {
      "label": "Download report",
-     "id": "react-aria3974277518-_r_5_",
+     "id": "react-aria4353062776-_r_3_",
      "kind": "button",
      "panel": "Leads Dashboard",
      "href": null
@@ -5348,7 +5348,7 @@
     },
     {
      "label": "Download",
-     "id": "react-aria6625443543-_r_4_",
+     "id": "react-aria3176300042-_r_4_",
      "kind": "button",
      "panel": "Where leads come from",
      "href": null
@@ -5958,7 +5958,7 @@
     },
     {
      "label": "More: check in, today's appointments, settings",
-     "id": "react-aria2668345978-_r_2_",
+     "id": "react-aria7860135920-_r_2_",
      "kind": "button",
      "panel": "Desk Log",
      "href": null
@@ -6282,7 +6282,7 @@
    "buttons": [
     {
      "label": "Add a standard form",
-     "id": "react-aria3024104987-_r_3_",
+     "id": "react-aria7334771725-_r_3_",
      "kind": "button",
      "panel": "Forms Library",
      "href": null
@@ -7044,7 +7044,7 @@
     },
     {
      "label": "Download report",
-     "id": "react-aria4424570103-_r_3_",
+     "id": "react-aria6473581665-_r_3_",
      "kind": "button",
      "panel": "Leads Dashboard",
      "href": null
@@ -8043,14 +8043,14 @@
    "buttons": [
     {
      "label": "My Current Plan",
-     "id": "react-aria4311678344-_r_2_-tab-currentplan",
+     "id": "react-aria7206961540-_r_2_-tab-currentplan",
      "kind": "tab",
      "panel": "My Subscription",
      "href": null
     },
     {
      "label": "Subscription Plans",
-     "id": "react-aria4311678344-_r_2_-tab-subscriptionplan",
+     "id": "react-aria7206961540-_r_2_-tab-subscriptionplan",
      "kind": "tab",
      "panel": "My Subscription",
      "href": null
@@ -9474,7 +9474,7 @@
     },
     {
      "label": "Forms",
-     "id": "react-aria7876639863-_r_3_",
+     "id": "react-aria9996607002-_r_5_",
      "kind": "button",
      "panel": "Customer Details",
      "href": null

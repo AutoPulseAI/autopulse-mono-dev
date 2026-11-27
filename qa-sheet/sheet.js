@@ -99,12 +99,17 @@ function imagesFrom(list) {
   }
   return out;
 }
-function dropZone(onFiles, { label = "Paste (Ctrl+V), drop or click to add screenshots" } = {}) {
+// The screenshot box (the user, 28 Nov 2026): clicking it never opens the file window - it picks this test, so
+// Ctrl+V pastes here. "choose a file" is a separate small link. Dropping a file on it works too.
+function dropZone(onFiles, { label = "Click this test, then Ctrl+V - or drop a screenshot here" } = {}) {
   const input = h("input", { type: "file", accept: "image/png,image/jpeg,image/webp", hidden: true });
   input.multiple = true;
-  const zone = h("div", { class: "dropzone", tabindex: "0", role: "button", "aria-label": label },
-    h("span", { class: "dz-ico", "aria-hidden": "true", text: "\u{1F4CB}" }), h("span", { class: "spinner", "aria-hidden": "true" }), h("span", { text: label }), input);
-  const text = zone.querySelector("span:not(.dz-ico)");
+  const text = h("span", { class: "dz-text", text: label });
+  const choose = h("button", { type: "button", class: "link dz-choose", text: "choose a file",
+    onclick: (e) => { e.stopPropagation(); input.click(); } });
+  const zone = h("div", { class: "dropzone", tabindex: "0", "aria-label": `${label}, or choose a file` },
+    h("span", { class: "dz-ico", "aria-hidden": "true", text: "\u{1F4CB}" }), h("span", { class: "spinner", "aria-hidden": "true" }),
+    text, h("span", { class: "dz-ready", text: "Ready - press Ctrl+V to paste your screenshot here" }), h("span", { class: "dz-or", text: "·" }), choose, input);
   const take = async (files) => {
     const list = imagesFrom(files);
     if (!list.length) { toast("Paste or drop an image (PNG, JPEG or WebP)", true); return; }
@@ -113,8 +118,8 @@ function dropZone(onFiles, { label = "Paste (Ctrl+V), drop or click to add scree
     text.textContent = `Adding ${list.length} screenshot${list.length > 1 ? "s" : ""}…`;
     try { await onFiles(list); } finally { zone.classList.remove("busy"); text.textContent = label; }
   };
-  zone.addEventListener("click", (e) => { if (e.target !== input) input.click(); });
-  zone.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); } });
+  zone.__take = take;
+  zone.addEventListener("click", () => zone.focus());
   input.addEventListener("change", () => { take([...(input.files || [])]); input.value = ""; });
   zone.addEventListener("paste", (e) => { const items = [...(e.clipboardData?.items || [])]; if (items.some((i) => i.kind === "file")) { e.preventDefault(); take(items); } });
   zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("over"); });
@@ -122,6 +127,28 @@ function dropZone(onFiles, { label = "Paste (Ctrl+V), drop or click to add scree
   zone.addEventListener("drop", (e) => { e.preventDefault(); zone.classList.remove("over"); take([...(e.dataTransfer?.files || [])]); });
   return zone;
 }
+// Paste anywhere: clicking a test (or a problem report) makes it the one Ctrl+V pastes into, shown with a blue edge
+// and "Ctrl+V pastes here". Pasting text into a text box is never taken over.
+const PASTE_HOSTS = ".test, .report, .report-form";
+let pasteHost = null;
+function setPasteHost(el) {
+  if (pasteHost === el) return;
+  pasteHost?.classList.remove("paste-active");
+  pasteHost = el && el.querySelector(".dropzone") ? el : null;
+  pasteHost?.classList.add("paste-active");
+}
+document.addEventListener("pointerdown", (e) => setPasteHost(e.target.closest?.(PASTE_HOSTS) || null));
+document.addEventListener("focusin", (e) => { const host = e.target.closest?.(PASTE_HOSTS); if (host) setPasteHost(host); });
+document.addEventListener("paste", (e) => {
+  if (e.defaultPrevented) return; // the box or a note already took it
+  const items = [...(e.clipboardData?.items || [])];
+  if (!items.some((i) => i.kind === "file" && /^image\//.test(i.type))) return; // text pastes as text
+  const host = pasteHost && document.contains(pasteHost) ? pasteHost : null;
+  const zone = host?.querySelector(".dropzone");
+  e.preventDefault();
+  if (!zone?.__take) { toast("Click the test you want the screenshot on first, then press Ctrl+V", true); return; }
+  zone.__take(items);
+});
 // Pasting or dropping an image while typing a note attaches it too; pasting text still pastes text.
 function pasteImagesInto(el, onFiles) {
   el.addEventListener("paste", (e) => {

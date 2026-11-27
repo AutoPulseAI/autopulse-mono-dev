@@ -333,3 +333,16 @@ details.timeline .pill { margin-left: 6px; }
   border: 2px solid rgba(0,0,0,0.15); border-top-color: var(--ok, #22a05a); border-radius: 50%; animation: qa-spin 0.8s linear infinite; }
 .btn.busy { opacity: 0.7; cursor: progress; }
 @media (prefers-reduced-motion: reduce) { .spinner, .busy-bar span, .test.saving .choice::after { animation-duration: 3s; } }
+/* The test Ctrl+V pastes into (28 Nov 2026). */
+.dropzone { cursor: default; flex-wrap: wrap; }
+.dropzone .dz-choose { font-size: 12.5px; padding: 0; }
+.dropzone .dz-or { opacity: 0.5; }
+.paste-active { box-shadow: 0 0 0 2px #2563eb inset, 0 1px 3px rgba(0,0,0,0.06); }
+.paste-active .dropzone { border-color: #2563eb; color: var(--text); background: rgba(37, 99, 235, 0.05); }
+.dropzone .dz-ready { display: none; font-weight: 700; color: #2563eb; }
+.paste-active .dropzone:not(.busy) .dz-ready { display: inline; }
+.paste-active .dropzone:not(.busy) .dz-text { display: none; }
+.dropzone { display: flex; flex-wrap: nowrap; width: 100%; box-sizing: border-box; }
+.dropzone .dz-text, .dropzone .dz-ready { flex: 1 1 auto; min-width: 0; line-height: 1.35; }
+.dropzone .dz-or { display: none; }
+.dropzone .dz-choose { flex: none; white-space: nowrap; }
