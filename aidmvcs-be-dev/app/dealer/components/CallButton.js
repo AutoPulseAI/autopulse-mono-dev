@@ -6,19 +6,17 @@
 // Calls from the Call Tasks page keep their own outcome flow (ai/components/CallOutcomeModal.js).
 // logOnly (19 Nov 2026, SOW B3 "Log > Phone Call"): a call already made from another phone - no dialing, the same
 // "how did it go" box and the same note, so it counts the same everywhere.
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Alert, Button, Form, Modal, Spinner } from "react-bootstrap";
 import { CALL_OUTCOMES, aiFetch, callOutcomeLabel, telHref } from "../ai/components/aiShared";
 
 export default function CallButton({ phone, leadId, dealerId, size = "sm", variant = "outline-custom", label = "Call",
-  className = "", iconOnly = false, onLogged, logOnly = false, icon = null, openSignal = 0, hideButton = false }) {
+  className = "", iconOnly = false, onLogged, logOnly = false, icon = null }) {
   const [show, setShow] = useState(false);
   const [outcome, setOutcome] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  // openSignal (logOnly, from a menu item such as the lead's More menu): each new value opens the "how did it go" box.
-  useEffect(() => { if (openSignal) { setOutcome(""); setNotes(""); setError(""); setShow(true); } }, [openSignal]);
   const href = telHref(phone);
   if (!href && !logOnly) return null;
 
@@ -47,7 +45,7 @@ export default function CallButton({ phone, leadId, dealerId, size = "sm", varia
 
   return (
     <>
-      {hideButton ? null : logOnly ? (
+      {logOnly ? (
         <Button size={size} variant={variant} className={className} title="Log a call made from another phone"
           onClick={() => { setOutcome(""); setNotes(""); setError(""); setShow(true); }}>
           <i className={`${icon || "fa-solid fa-phone-volume"}${iconOnly ? "" : " me-1"}`} />{iconOnly ? null : label}

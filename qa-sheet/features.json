@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-27T23:40:47.663Z",
+ "generatedAt": "2026-11-27T13:30:18.811Z",
  "app": {
   "name": "AutoPulse CRM",
   "url": "https://www.autopulse.ai",
@@ -40,12 +40,12 @@
    "title": "Sign-in & public pages"
   }
  ],
- "inventoryAt": "2026-11-27T23:18:22.912Z",
+ "inventoryAt": "2026-11-27T13:30:18.740Z",
  "totals": {
   "sections": 81,
-  "features": 229,
-  "buttons": 767,
-  "fields": 312
+  "features": 223,
+  "buttons": 787,
+  "fields": 319
  },
  "sections": [
   {
@@ -181,10 +181,10 @@
      "code": "DMA-B01"
     },
     {
-     "id": "dealer/_menu.b.x.react-aria5396244803-r-2",
+     "id": "dealer/_menu.b.x.react-aria6064960235-r-2",
      "label": "Switch store",
      "kind": "button",
-     "el": "#react-aria5396244803-_r_2_",
+     "el": "#react-aria6064960235-_r_2_",
      "href": null,
      "panel": "",
      "about": "Switch store.",
@@ -194,10 +194,10 @@
      "code": "DMA-B02"
     },
     {
-     "id": "dealer/_menu.b.x.react-aria5396244803-r-0",
+     "id": "dealer/_menu.b.x.react-aria6064960235-r-0",
      "label": "Notifications",
      "kind": "button",
-     "el": "#react-aria5396244803-_r_0_",
+     "el": "#react-aria6064960235-_r_0_",
      "href": null,
      "panel": "",
      "about": "Opens the notifications list.",
@@ -520,97 +520,6 @@
      "code": "DMA-B27"
     },
     {
-     "id": "dealer/_menu.b.x.administration.dealer-admin",
-     "label": "Administration",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/admin",
-     "panel": "",
-     "about": "Goes to /dealer/admin.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "DMA-B28"
-    },
-    {
-     "id": "dealer/_menu.b.x.employee-roles.dealer-roles",
-     "label": "Employee Roles",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/roles",
-     "panel": "",
-     "about": "Goes to /dealer/roles.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "DMA-B29"
-    },
-    {
-     "id": "dealer/_menu.b.x.employee-management.dealer-staff",
-     "label": "Employee Management",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/staff",
-     "panel": "",
-     "about": "Goes to /dealer/staff.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "DMA-B30"
-    },
-    {
-     "id": "dealer/_menu.b.x.email-setup.dealer-email-accounts",
-     "label": "Email Setup",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/email-accounts",
-     "panel": "",
-     "about": "Goes to /dealer/email-accounts.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "DMA-B31"
-    },
-    {
-     "id": "dealer/_menu.b.x.settings.dealer-settings",
-     "label": "Settings",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/settings",
-     "panel": "",
-     "about": "Goes to /dealer/settings.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "DMA-B32"
-    },
-    {
-     "id": "dealer/_menu.b.x.forms-library.dealer-forms",
-     "label": "Forms Library",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/forms",
-     "panel": "",
-     "about": "Goes to /dealer/forms.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "DMA-B33"
-    },
-    {
-     "id": "dealer/_menu.b.x.report-scheduling.dealer-report-schedule",
-     "label": "Report Scheduling",
-     "kind": "link",
-     "el": null,
-     "href": "/dealer/report-schedule",
-     "panel": "",
-     "about": "Goes to /dealer/report-schedule.",
-     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
-     "status": "live",
-     "access": null,
-     "code": "DMA-B34"
-    },
-    {
      "id": "dealer/_menu.b.in-the-window-menu-that-switch-store-opens.autopulse-demo-motorsspringfield",
      "label": "Autopulse Demo MotorsSpringfield",
      "kind": "link",
@@ -621,7 +530,7 @@
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
-     "code": "DMA-B35"
+     "code": "DMA-B28"
     },
     {
      "id": "dealer/_menu.b.in-the-window-menu-that-switch-store-opens.sign-up-test",
@@ -634,7 +543,7 @@
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
-     "code": "DMA-B36"
+     "code": "DMA-B29"
     },
     {
      "id": "dealer/_menu.b.in-the-window-menu-that-notifications-opens.see-all.dealer-leads-assignment-unassigned",
@@ -647,7 +556,7 @@
      "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
      "status": "live",
      "access": null,
-     "code": "DMA-B37"
+     "code": "DMA-B30"
     },
     {
      "id": "dealer/_menu.b.in-the-window-menu-that-autopulse-demo-motors-opens.update-profile",
@@ -660,7 +569,7 @@
      "expect": "Saves; a success message shows and the value stays after a refresh; a wrong value is refused with a message.",
      "status": "live",
      "access": null,
-     "code": "DMA-B38"
+     "code": "DMA-B31"
     },
     {
      "id": "dealer/_menu.b.in-the-window-menu-that-autopulse-demo-motors-opens.change-password",
@@ -673,7 +582,7 @@
      "expect": "The edit form opens with the current values; saving keeps the change after a refresh.",
      "status": "live",
      "access": null,
-     "code": "DMA-B39"
+     "code": "DMA-B32"
     },
     {
      "id": "dealer/_menu.b.in-the-window-menu-that-autopulse-demo-motors-opens.dealer-setup",
@@ -686,7 +595,7 @@
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
-     "code": "DMA-B40"
+     "code": "DMA-B33"
     },
     {
      "id": "dealer/_menu.b.in-the-window-menu-that-autopulse-demo-motors-opens.email-branding-setup",
@@ -699,7 +608,7 @@
      "expect": "Only to a test contact: it is sent once, shows in the conversation, in the customer's language.",
      "status": "live",
      "access": null,
-     "code": "DMA-B41"
+     "code": "DMA-B34"
     },
     {
      "id": "dealer/_menu.b.in-the-window-menu-that-autopulse-demo-motors-opens.logout",
@@ -712,7 +621,7 @@
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
-     "code": "DMA-B42"
+     "code": "DMA-B35"
     }
    ],
    "fields": [
@@ -2580,34 +2489,6 @@
      "code": "LEA-04"
     },
     {
-     "id": "dealer/leads.f.older-messages",
-     "title": "Older messages load as you scroll up",
-     "about": "The user, 28 Nov 2026: infinite scroll inside the conversation (also on the customer profile).",
-     "steps": [
-      "Open a test lead with a long conversation (more than 50 messages).",
-      "Scroll the conversation up to its top; keep scrolling."
-     ],
-     "expect": "Older messages appear by themselves at the top while the message you were reading stays in place; the Load older messages button still works; the page itself does not scroll.",
-     "status": "live",
-     "auto": [],
-     "access": null,
-     "code": "LEA-05"
-    },
-    {
-     "id": "dealer/leads.f.delete-logged",
-     "title": "Deleting a lead is on the customer's Activity",
-     "about": "The user, 28 Nov 2026: a track record of who did what.",
-     "steps": [
-      "Delete a test lead from the list (trash).",
-      "Open its customer > Activity."
-     ],
-     "expect": "An entry 'Lead deleted' says who deleted it, with the lead's name, source and car.",
-     "status": "live",
-     "auto": [],
-     "access": null,
-     "code": "LEA-06"
-    },
-    {
      "id": "dealer/leads.f.lead-tabs",
      "title": "Open lead: lead list + inbox; Lead settings (gear) slides out",
      "about": "The user, 27 Nov 2026.",
@@ -2620,7 +2501,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-07"
+     "code": "LEA-05"
     },
     {
      "id": "dealer/leads.f.chat-reply",
@@ -2634,7 +2515,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-08"
+     "code": "LEA-06"
     },
     {
      "id": "dealer/leads.f.inbox-list",
@@ -2648,7 +2529,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-09"
+     "code": "LEA-07"
     },
     {
      "id": "dealer/leads.f.inbox-bulk",
@@ -2664,7 +2545,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-10"
+     "code": "LEA-08"
     },
     {
      "id": "dealer/leads.f.what-we-know",
@@ -2680,7 +2561,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-11"
+     "code": "LEA-09"
     },
     {
      "id": "dealer/leads.f.ai-working",
@@ -2693,7 +2574,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-12"
+     "code": "LEA-10"
     },
     {
      "id": "dealer/leads.f.grouped-bubbles",
@@ -2705,7 +2586,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-13"
+     "code": "LEA-11"
     },
     {
      "id": "dealer/leads.f.responsive",
@@ -2717,7 +2598,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-14"
+     "code": "LEA-12"
     },
     {
      "id": "dealer/leads.f.chat-plus",
@@ -2731,7 +2612,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-15"
+     "code": "LEA-13"
     },
     {
      "id": "dealer/leads.f.vehicle-photos",
@@ -2745,7 +2626,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-16"
+     "code": "LEA-14"
     },
     {
      "id": "dealer/leads.f.dealer-links",
@@ -2757,7 +2638,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-17"
+     "code": "LEA-15"
     },
     {
      "id": "dealer/leads.f.open-lead",
@@ -2771,7 +2652,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-18"
+     "code": "LEA-16"
     },
     {
      "id": "dealer/leads.f.reply",
@@ -2783,7 +2664,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-19"
+     "code": "LEA-17"
     },
     {
      "id": "dealer/leads.f.edit-lead",
@@ -2796,7 +2677,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-20"
+     "code": "LEA-18"
     },
     {
      "id": "dealer/leads.f.actions-menu",
@@ -2811,7 +2692,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-21"
+     "code": "LEA-19"
     },
     {
      "id": "dealer/leads.f.staff-opted-out",
@@ -2826,7 +2707,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-22"
+     "code": "LEA-20"
     },
     {
      "id": "dealer/leads.f.stopped",
@@ -2838,7 +2719,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "LEA-23"
+     "code": "LEA-21"
     },
     {
      "id": "dealer/leads.t.G-006",
@@ -2852,7 +2733,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-24"
+     "code": "LEA-22"
     },
     {
      "id": "dealer/leads.t.G-009",
@@ -2866,7 +2747,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-25"
+     "code": "LEA-23"
     },
     {
      "id": "dealer/leads.t.G-010",
@@ -2880,7 +2761,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-26"
+     "code": "LEA-24"
     },
     {
      "id": "dealer/leads.t.G-027",
@@ -2894,7 +2775,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-27"
+     "code": "LEA-25"
     },
     {
      "id": "dealer/leads.t.G-082",
@@ -2908,7 +2789,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-28"
+     "code": "LEA-26"
     },
     {
      "id": "dealer/leads.t.G-083",
@@ -2922,7 +2803,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-29"
+     "code": "LEA-27"
     },
     {
      "id": "dealer/leads.t.M25-03",
@@ -2936,7 +2817,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-30"
+     "code": "LEA-28"
     },
     {
      "id": "dealer/leads.t.M25-07",
@@ -2950,7 +2831,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-31"
+     "code": "LEA-29"
     },
     {
      "id": "dealer/leads.t.M25-10",
@@ -2964,7 +2845,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-32"
+     "code": "LEA-30"
     },
     {
      "id": "dealer/leads.t.M25-11",
@@ -2978,7 +2859,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-33"
+     "code": "LEA-31"
     },
     {
      "id": "dealer/leads.t.M25-12",
@@ -2992,7 +2873,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-34"
+     "code": "LEA-32"
     },
     {
      "id": "dealer/leads.t.M25-16",
@@ -3006,7 +2887,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-35"
+     "code": "LEA-33"
     },
     {
      "id": "dealer/leads.t.M25-17",
@@ -3020,7 +2901,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-36"
+     "code": "LEA-34"
     },
     {
      "id": "dealer/leads.t.M25-18",
@@ -3034,7 +2915,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-37"
+     "code": "LEA-35"
     },
     {
      "id": "dealer/leads.t.M25-31",
@@ -3048,7 +2929,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-38"
+     "code": "LEA-36"
     },
     {
      "id": "dealer/leads.t.M25-32",
@@ -3062,7 +2943,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-39"
+     "code": "LEA-37"
     },
     {
      "id": "dealer/leads.t.M25-33",
@@ -3076,7 +2957,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-40"
+     "code": "LEA-38"
     },
     {
      "id": "dealer/leads.t.M25-34",
@@ -3090,7 +2971,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "LEA-41"
+     "code": "LEA-39"
     }
    ],
    "buttons": [
@@ -3699,33 +3580,16 @@
    "features": [
     {
      "id": "dealer/customers.f.list",
-     "title": "Customer list laid out like the Leads list",
+     "title": "Customer list and search",
      "steps": [
-      "Use Sort (latest activity, customer since newest / oldest, last name A-Z).",
-      "Press All / Mine / Unassigned.",
-      "Type a name, then a phone number, then an email in the one search box.",
-      "Pick a source, an Assigned to person and a date range; press Clear.",
-      "Change a test customer's Assigned To in its row.",
-      "Open a customer with the row or the eye button."
+      "Search by name, phone and email.",
+      "Open a customer."
      ],
-     "expect": "Columns Name, Email, Phone (+N more contacts), Source, Assigned To, Customer since, Leads, Action; each filter narrows the list and Clear resets it; the assignment saves and also moves that customer's leads; the profile opens with the same list beside it.",
+     "expect": "Matching customers list; the profile opens.",
      "status": "live",
      "auto": [],
      "access": null,
      "code": "CUS-01"
-    },
-    {
-     "id": "dealer/customers.f.add-logged",
-     "title": "Adding a customer by hand is on their Activity",
-     "steps": [
-      "Press Add Customer; save a test customer.",
-      "Open them > Activity."
-     ],
-     "expect": "An entry 'Customer added' says who added them.",
-     "status": "live",
-     "auto": [],
-     "access": null,
-     "code": "CUS-02"
     },
     {
      "id": "dealer/customers.f.duplicates",
@@ -3737,7 +3601,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "CUS-03"
+     "code": "CUS-02"
     },
     {
      "id": "dealer/customers.t.G-004",
@@ -3751,7 +3615,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "CUS-04"
+     "code": "CUS-03"
     }
    ],
    "buttons": [
@@ -3769,40 +3633,40 @@
      "code": "CUS-B01"
     },
     {
-     "id": "dealer/customers.b.x.all",
-     "label": "All",
+     "id": "dealer/customers.b.x.search",
+     "label": "Search",
      "kind": "button",
      "el": null,
      "href": null,
      "panel": "Customers",
-     "about": "Filter: All.",
-     "expect": "The list / numbers narrow to it; the active choice is highlighted; refresh keeps it.",
+     "about": "Runs the search with what is typed in the search fields.",
+     "expect": "Only matching rows show; the count updates; an empty search shows everything.",
      "status": "live",
      "access": null,
      "code": "CUS-B02"
     },
     {
-     "id": "dealer/customers.b.x.mine",
-     "label": "Mine",
+     "id": "dealer/customers.b.x.clear-filters",
+     "label": "Clear filters",
      "kind": "button",
      "el": null,
      "href": null,
      "panel": "Customers",
-     "about": "Filter: Mine.",
-     "expect": "The list / numbers narrow to it; the active choice is highlighted; refresh keeps it.",
+     "about": "Clear filters.",
+     "expect": "Works; no error message.",
      "status": "live",
      "access": null,
      "code": "CUS-B03"
     },
     {
-     "id": "dealer/customers.b.x.unassigned",
-     "label": "Unassigned",
+     "id": "dealer/customers.b.x.date-range",
+     "label": "Date Range",
      "kind": "button",
      "el": null,
      "href": null,
      "panel": "Customers",
-     "about": "Filter: Unassigned.",
-     "expect": "The list / numbers narrow to it; the active choice is highlighted; refresh keeps it.",
+     "about": "The date range component: presets and a custom range.",
+     "expect": "The list / numbers reload for the picked dates; the label shows the range.",
      "status": "live",
      "access": null,
      "code": "CUS-B04"
@@ -3821,58 +3685,6 @@
      "code": "CUS-B05"
     },
     {
-     "id": "dealer/customers.b.x.date-range",
-     "label": "Date Range",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Customer List",
-     "about": "The date range component: presets and a custom range.",
-     "expect": "The list / numbers reload for the picked dates; the label shows the range.",
-     "status": "live",
-     "access": null,
-     "code": "CUS-B06"
-    },
-    {
-     "id": "dealer/customers.b.x.search",
-     "label": "Search",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Customer List",
-     "about": "Runs the search with what is typed in the search fields.",
-     "expect": "Only matching rows show; the count updates; an empty search shows everything.",
-     "status": "live",
-     "access": null,
-     "code": "CUS-B07"
-    },
-    {
-     "id": "dealer/customers.b.x.clear",
-     "label": "Clear",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Customer List",
-     "about": "Empties the search / filters.",
-     "expect": "Every filter is back to its default and the full list shows.",
-     "status": "live",
-     "access": null,
-     "code": "CUS-B08"
-    },
-    {
-     "id": "dealer/customers.b.x.row-open-the-customer-s-profile",
-     "label": "Row: Open the customer's profile",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Customer List",
-     "about": "Open the customer's profile for that row only.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "CUS-B09"
-    },
-    {
      "id": "dealer/customers.b.x.page-buttons-previous-next-number",
      "label": "Page buttons (previous / next / number)",
      "kind": "link",
@@ -3883,7 +3695,7 @@
      "expect": "The next / previous page of rows shows; the page number is highlighted.",
      "status": "live",
      "access": null,
-     "code": "CUS-B10"
+     "code": "CUS-B06"
     },
     {
      "id": "dealer/customers.b.x.next",
@@ -3896,7 +3708,7 @@
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
-     "code": "CUS-B11"
+     "code": "CUS-B07"
     },
     {
      "id": "dealer/customers.b.x.go",
@@ -3909,7 +3721,85 @@
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
+     "code": "CUS-B08"
+    },
+    {
+     "id": "dealer/customers.b.in-the-window-menu-that-date-range-opens.page-buttons-previous-next-number",
+     "label": "Page buttons (previous / next / number)",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Customers · in the window / menu that 'Date Range' opens",
+     "about": "Pages through a long list. (in the window / menu that 'Date Range' opens)",
+     "expect": "The next / previous page of rows shows; the page number is highlighted.",
+     "status": "live",
+     "access": null,
+     "code": "CUS-B09"
+    },
+    {
+     "id": "dealer/customers.b.in-the-window-menu-that-date-range-opens.apply",
+     "label": "Apply",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Customers · in the window / menu that 'Date Range' opens",
+     "about": "Applies the picked dates / filters. (in the window / menu that 'Date Range' opens)",
+     "expect": "The page reloads its data for them; the picker closes.",
+     "status": "live",
+     "access": null,
+     "code": "CUS-B10"
+    },
+    {
+     "id": "dealer/customers.b.in-the-window-menu-that-date-range-opens.clear",
+     "label": "Clear",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Customers · in the window / menu that 'Date Range' opens",
+     "about": "Empties the search / filters. (in the window / menu that 'Date Range' opens)",
+     "expect": "Every filter is back to its default and the full list shows.",
+     "status": "live",
+     "access": null,
+     "code": "CUS-B11"
+    },
+    {
+     "id": "dealer/customers.b.in-the-window-menu-that-add-customer-opens.page-buttons-previous-next-number",
+     "label": "Page buttons (previous / next / number)",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Customers · in the window / menu that 'Add Customer' opens",
+     "about": "Pages through a long list. (in the window / menu that 'Add Customer' opens)",
+     "expect": "The next / previous page of rows shows; the page number is highlighted.",
+     "status": "live",
+     "access": null,
      "code": "CUS-B12"
+    },
+    {
+     "id": "dealer/customers.b.in-the-window-menu-that-add-customer-opens.apply",
+     "label": "Apply",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Customers · in the window / menu that 'Add Customer' opens",
+     "about": "Applies the picked dates / filters. (in the window / menu that 'Add Customer' opens)",
+     "expect": "The page reloads its data for them; the picker closes.",
+     "status": "live",
+     "access": null,
+     "code": "CUS-B13"
+    },
+    {
+     "id": "dealer/customers.b.in-the-window-menu-that-add-customer-opens.clear",
+     "label": "Clear",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Customers · in the window / menu that 'Add Customer' opens",
+     "about": "Empties the search / filters. (in the window / menu that 'Add Customer' opens)",
+     "expect": "Every filter is back to its default and the full list shows.",
+     "status": "live",
+     "access": null,
+     "code": "CUS-B14"
     },
     {
      "id": "dealer/customers.b.in-the-window-menu-that-add-customer-opens.close",
@@ -3922,7 +3812,7 @@
      "expect": "The window closes without saving anything.",
      "status": "live",
      "access": null,
-     "code": "CUS-B13"
+     "code": "CUS-B15"
     },
     {
      "id": "dealer/customers.b.in-the-window-menu-that-add-customer-opens.save-customer",
@@ -3935,7 +3825,7 @@
      "expect": "Saves; a success message shows and the value stays after a refresh; a wrong value is refused with a message.",
      "status": "live",
      "access": null,
-     "code": "CUS-B14"
+     "code": "CUS-B16"
     },
     {
      "id": "dealer/customers.b.in-the-window-menu-that-add-customer-opens.cancel",
@@ -3948,77 +3838,56 @@
      "expect": "The window closes without saving anything.",
      "status": "live",
      "access": null,
-     "code": "CUS-B15"
-    },
-    {
-     "id": "dealer/customers.b.in-the-window-menu-that-date-range-opens.page-buttons-previous-next-number",
-     "label": "Page buttons (previous / next / number)",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Customer List · in the window / menu that 'Date Range' opens",
-     "about": "Pages through a long list. (in the window / menu that 'Date Range' opens)",
-     "expect": "The next / previous page of rows shows; the page number is highlighted.",
-     "status": "live",
-     "access": null,
-     "code": "CUS-B16"
-    },
-    {
-     "id": "dealer/customers.b.in-the-window-menu-that-date-range-opens.apply",
-     "label": "Apply",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Customer List · in the window / menu that 'Date Range' opens",
-     "about": "Applies the picked dates / filters. (in the window / menu that 'Date Range' opens)",
-     "expect": "The page reloads its data for them; the picker closes.",
-     "status": "live",
-     "access": null,
      "code": "CUS-B17"
-    },
-    {
-     "id": "dealer/customers.b.in-the-window-menu-that-date-range-opens.clear",
-     "label": "Clear",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Customer List · in the window / menu that 'Date Range' opens",
-     "about": "Empties the search / filters. (in the window / menu that 'Date Range' opens)",
-     "expect": "Every filter is back to its default and the full list shows.",
-     "status": "live",
-     "access": null,
-     "code": "CUS-B18"
     }
    ],
    "fields": [
     {
-     "label": "Sort customers",
-     "kind": "select",
+     "label": "Name",
+     "kind": "input:text",
      "panel": "Customers",
      "tip": ""
     },
     {
-     "label": "Search name, phone or email",
-     "kind": "input:search",
-     "panel": "Customer List",
+     "label": "Last name",
+     "kind": "input:text",
+     "panel": "Customers",
      "tip": ""
     },
     {
-     "label": "Source",
-     "kind": "select",
-     "panel": "Customer List",
+     "label": "Email",
+     "kind": "input:text",
+     "panel": "Customers",
      "tip": ""
     },
     {
-     "label": "Assigned to",
+     "label": "Phone",
+     "kind": "input:text",
+     "panel": "Customers",
+     "tip": ""
+    },
+    {
+     "label": "(no label)",
      "kind": "select",
-     "panel": "Customer List",
+     "panel": "Customers",
      "tip": ""
     },
     {
      "label": "Page",
      "kind": "input:number",
      "panel": "Customer List",
+     "tip": ""
+    },
+    {
+     "label": "(no label)",
+     "kind": "select",
+     "panel": "Customers · in the window / menu that 'Date Range' opens",
+     "tip": ""
+    },
+    {
+     "label": "(no label)",
+     "kind": "select",
+     "panel": "Customers · in the window / menu that 'Add Customer' opens",
      "tip": ""
     },
     {
@@ -4068,12 +3937,6 @@
      "kind": "input:text",
      "panel": "Add New Customer · in the window / menu that 'Add Customer' opens",
      "tip": ""
-    },
-    {
-     "label": "(no label)",
-     "kind": "select",
-     "panel": "Customer List · in the window / menu that 'Date Range' opens",
-     "tip": ""
     }
    ],
    "panels": [
@@ -4082,16 +3945,16 @@
    ],
    "parts": [
     {
-     "key": "dealer/customers::Add Customer",
-     "via": "Button 'Add Customer'",
-     "buttons": 3,
-     "fields": 8
-    },
-    {
      "key": "dealer/customers::Date Range",
      "via": "Button 'Date Range'",
      "buttons": 3,
      "fields": 1
+    },
+    {
+     "key": "dealer/customers::Add Customer",
+     "via": "Button 'Add Customer'",
+     "buttons": 6,
+     "fields": 9
     }
    ],
    "code": "CUS"
@@ -4108,68 +3971,16 @@
    "skipped": null,
    "features": [
     {
-     "id": "dealer/customers/[id].f.layout",
-     "title": "Two columns like the Leads page",
+     "id": "dealer/customers/[id].f.tabs",
+     "title": "Every tab of the profile",
      "steps": [
-      "Open a customer from Customers.",
-      "Look at the list on the left; use All / Mine / Unassigned and the search box; page through it.",
-      "Click another customer in the list: their Profile opens.",
-      "Press the « button on the list, then Show customers at the top; reload."
+      "Open each tab: Overview, Leads, Trade In, Documents, Wish List, Value and the others shown."
      ],
-     "expect": "Left: the customer list drawn like the Leads list - coloured avatar with who wrote last, name, newest message, time, waiting time, unread count, hot mark. Right: that customer, on Profile. Previous / Next and Back to Customers at the top. « folds the list away (the customer takes the full width), Show customers brings it back; the choice is kept after a reload.",
+     "expect": "Each tab shows that customer's data only; no error; Previous / Next at the top walk the customer list.",
      "status": "live",
      "auto": [],
      "access": null,
      "code": "CUP-01"
-    },
-    {
-     "id": "dealer/customers/[id].f.leads",
-     "title": "Leads: two parts like the Leads page",
-     "steps": [
-      "Press Leads in the bar.",
-      "Click each lead in the list on the left of it; use Prev / Next on the lead.",
-      "Use Call, Add note, Update status; open More: Reminder, Appointment, Log a call made from another phone, Other task.",
-      "Reply by text and by email in the message box.",
-      "Read the milestones under the actions: each step its own icon and colour with its date, the time taken between steps above the arrows.",
-      "Press the Owner tag, pick a test staff member, then Undo.",
-      "Scroll a long conversation up to its top.",
-      "Press Opportunity: mark hot, switch Active, add a vehicle of interest, read showroom visits and reminders; close it.",
-      "Press Lead profile: read the lead's phone and email, Edit, Manager override, AI Assistant.",
-      "Press New lead.",
-      "Press Show customers, then « on the customer list."
-     ],
-     "expect": "The customer list folds away; the customer's leads are listed on the left like the Leads page list (L1, L2... avatar, status, vehicle and department, last message, time, waiting, unread, hot); the newest lead opens on the right exactly as on the Leads page, the lead's facts as named tags under the name, always shown (Up type, Department, Source, Sub-source - None when empty, Campaign when set, Owner, AI type, Vehicle wanted); the actions bar as on the Leads page with More, Opportunity and Lead profile, then the journey with the Next step right under it (red when none is planned); under the actions, always on screen, the lead's milestones with dates (Received, First response, Customer replied, Appointment set, Showroom visit, Sold); the conversation right under that, fitting the screen: only the thread scrolls and older messages load by themselves at its top, without jumping. The Owner tag reassigns the lead (Assign Leads permission) with Undo; the change shows in Activity with who did it. Each lead in the list also shows its source, sub-source and owner. Opportunity slides out from the right with the number, owner, Hot, age, showroom visits, vehicles of interest, reminders, Active and View ADF. Lead profile slides out with the lead's phone and email, Edit, its menu, Manager override, booking and the AI Assistant. Leads stays lit. New lead opens the lead form filled with the customer's name, phone and email. Show customers brings the customer list back beside them. A customer with no lead shows Call and Send a message.",
-     "status": "live",
-     "auto": [],
-     "access": null,
-     "code": "CUP-02"
-    },
-    {
-     "id": "dealer/customers/[id].f.tabs",
-     "title": "Bar: Profile, Leads, Activity, Tasks, Appointments, Sales, Service, Vehicles, Trade-in",
-     "steps": [
-      "Press each item in the bar.",
-      "Reload the page on a section."
-     ],
-     "expect": "Only that section shows, with that customer's data; counts beside the names (Tasks red when one is overdue); a reload stays on it. Profile: name (edit), where they came from, customer since, last activity, Assigned to, newest lead facts, Contact, Preferences, More details, Customer value, dealer (DMS) details. Activity: a timeline - search, opportunity, period and Staff / AI / Customer in one toolbar, the kind chips with counts, then per day a rail of coloured icons, each entry a card (what happened, time, the detail, who and which opportunity as tags); a click opens the full detail and date.",
-     "status": "live",
-     "auto": [],
-     "access": null,
-     "code": "CUP-03"
-    },
-    {
-     "id": "dealer/customers/[id].f.header-tools",
-     "title": "Export to form and Actions",
-     "steps": [
-      "Press Export to form and pick a form.",
-      "Open Actions: Print, Merge, Google, Facebook, LinkedIn.",
-      "On Profile change Assigned to on a test customer."
-     ],
-     "expect": "Each opens as before (web searches in a new tab); the assignment saves and moves the customer's leads.",
-     "status": "live",
-     "auto": [],
-     "access": null,
-     "code": "CUP-04"
     },
     {
      "id": "dealer/customers/[id].f.edit",
@@ -4181,20 +3992,20 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "CUP-05"
+     "code": "CUP-02"
     },
     {
      "id": "dealer/customers/[id].f.call-text",
      "title": "Call and message from the profile",
      "steps": [
-      "Open a test customer's lead and press Call; send a test text from the message box.",
-      "On a test customer with no lead, open Profile and press Call / Send a message."
+      "Press Call (on a test customer).",
+      "Send a test SMS / email."
      ],
-     "expect": "Call opens the phone and asks how it went; the message shows in the conversation and in Recent Activity; with no lead, Send a message starts a lead with the first message.",
+     "expect": "Call opens the phone; the message appears in Recent Activity.",
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "CUP-06"
+     "code": "CUP-03"
     },
     {
      "id": "dealer/customers/[id].f.possible-match",
@@ -4209,7 +4020,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "CUP-07"
+     "code": "CUP-04"
     },
     {
      "id": "dealer/customers/[id].f.export-form",
@@ -4222,7 +4033,7 @@
      "status": "live",
      "auto": [],
      "access": null,
-     "code": "CUP-08"
+     "code": "CUP-05"
     },
     {
      "id": "dealer/customers/[id].t.G-005",
@@ -4236,7 +4047,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "CUP-09"
+     "code": "CUP-06"
     },
     {
      "id": "dealer/customers/[id].t.G-007",
@@ -4250,7 +4061,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "CUP-10"
+     "code": "CUP-07"
     },
     {
      "id": "dealer/customers/[id].t.G-026",
@@ -4264,7 +4075,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "CUP-11"
+     "code": "CUP-08"
     },
     {
      "id": "dealer/customers/[id].t.G-059",
@@ -4278,7 +4089,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "CUP-12"
+     "code": "CUP-09"
     },
     {
      "id": "dealer/customers/[id].t.G-061",
@@ -4292,7 +4103,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "CUP-13"
+     "code": "CUP-10"
     },
     {
      "id": "dealer/customers/[id].t.G-062",
@@ -4306,7 +4117,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "CUP-14"
+     "code": "CUP-11"
     },
     {
      "id": "dealer/customers/[id].t.G-063",
@@ -4320,7 +4131,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "CUP-15"
+     "code": "CUP-12"
     },
     {
      "id": "dealer/customers/[id].t.G-066",
@@ -4334,7 +4145,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "CUP-16"
+     "code": "CUP-13"
     },
     {
      "id": "dealer/customers/[id].t.M-10.8",
@@ -4345,7 +4156,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "CUP-17"
+     "code": "CUP-14"
     },
     {
      "id": "dealer/customers/[id].t.M-10.9",
@@ -4356,7 +4167,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "CUP-18"
+     "code": "CUP-15"
     },
     {
      "id": "dealer/customers/[id].t.M25-01",
@@ -4370,7 +4181,7 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "CUP-19"
+     "code": "CUP-16"
     },
     {
      "id": "dealer/customers/[id].t.M25-02",
@@ -4384,49 +4195,10 @@
      "status": "live",
      "access": null,
      "auto": [],
-     "code": "CUP-20"
+     "code": "CUP-17"
     }
    ],
    "buttons": [
-    {
-     "id": "dealer/customers/[id].b.x.react-aria9553120454-r-3",
-     "label": "Export to form",
-     "kind": "button",
-     "el": "#react-aria9553120454-_r_3_",
-     "href": null,
-     "panel": "Customer Details",
-     "about": "Export to form.",
-     "expect": "A file downloads with the same data as on screen.",
-     "status": "live",
-     "access": null,
-     "code": "CUP-B01"
-    },
-    {
-     "id": "dealer/customers/[id].b.x.customer-actions",
-     "label": "Actions",
-     "kind": "button",
-     "el": "#customer-actions",
-     "href": null,
-     "panel": "Customer Details",
-     "about": "Opens the Actions menu.",
-     "expect": "The menu opens with its items; Escape closes it.",
-     "status": "live",
-     "access": null,
-     "code": "CUP-B02"
-    },
-    {
-     "id": "dealer/customers/[id].b.x.back-to-customers",
-     "label": "Back to Customers",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Customer Details",
-     "about": "Back to Customers.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "CUP-B03"
-    },
     {
      "id": "dealer/customers/[id].b.x.previous-customer",
      "label": "Previous Customer",
@@ -4438,7 +4210,7 @@
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
-     "code": "CUP-B04"
+     "code": "CUP-B01"
     },
     {
      "id": "dealer/customers/[id].b.x.next-customer",
@@ -4451,59 +4223,202 @@
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
-     "code": "CUP-B05"
+     "code": "CUP-B02"
     },
     {
-     "id": "dealer/customers/[id].b.x.hide-the-customer-list",
-     "label": "Hide the customer list",
+     "id": "dealer/customers/[id].b.x.aa-aguilar-alma-19142241000",
+     "label": "AA Aguilar, Alma +19142241000",
      "kind": "button",
      "el": null,
      "href": null,
      "panel": "Customer Details",
-     "about": "Hide the customer list.",
+     "about": "AA Aguilar, Alma +19142241000.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B03"
+    },
+    {
+     "id": "dealer/customers/[id].b.x.pm-pipitone-michael-19142241001",
+     "label": "PM Pipitone, Michael +19142241001",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Customer Details",
+     "about": "PM Pipitone, Michael +19142241001.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B04"
+    },
+    {
+     "id": "dealer/customers/[id].b.x.lr-lazu-roberto-19142241002",
+     "label": "LR Lazu, Roberto +19142241002",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Customer Details",
+     "about": "LR Lazu, Roberto +19142241002.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B05"
+    },
+    {
+     "id": "dealer/customers/[id].b.x.lg-lopreato-gregory-19142241003",
+     "label": "LG Lopreato, Gregory +19142241003",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Customer Details",
+     "about": "LG Lopreato, Gregory +19142241003.",
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
      "code": "CUP-B06"
     },
     {
-     "id": "dealer/customers/[id].b.x.all",
-     "label": "All",
+     "id": "dealer/customers/[id].b.x.ks-kave-shannikai-19142241004",
+     "label": "KS Kave, Shannikai +19142241004",
      "kind": "button",
      "el": null,
      "href": null,
      "panel": "Customer Details",
-     "about": "Filter: All.",
-     "expect": "The list / numbers narrow to it; the active choice is highlighted; refresh keeps it.",
+     "about": "KS Kave, Shannikai +19142241004.",
+     "expect": "Works; no error message.",
      "status": "live",
      "access": null,
      "code": "CUP-B07"
     },
     {
-     "id": "dealer/customers/[id].b.x.mine",
-     "label": "Mine",
+     "id": "dealer/customers/[id].b.x.om-osias-mercedes-19142241005",
+     "label": "OM Osias, Mercedes +19142241005",
      "kind": "button",
      "el": null,
      "href": null,
      "panel": "Customer Details",
-     "about": "Filter: Mine.",
-     "expect": "The list / numbers narrow to it; the active choice is highlighted; refresh keeps it.",
+     "about": "OM Osias, Mercedes +19142241005.",
+     "expect": "Works; no error message.",
      "status": "live",
      "access": null,
      "code": "CUP-B08"
     },
     {
-     "id": "dealer/customers/[id].b.x.unassigned",
-     "label": "Unassigned",
+     "id": "dealer/customers/[id].b.x.hp-hill-phillip-19142241006",
+     "label": "HP Hill, Phillip +19142241006",
      "kind": "button",
      "el": null,
      "href": null,
      "panel": "Customer Details",
-     "about": "Filter: Unassigned.",
-     "expect": "The list / numbers narrow to it; the active choice is highlighted; refresh keeps it.",
+     "about": "HP Hill, Phillip +19142241006.",
+     "expect": "Works; no error message.",
      "status": "live",
      "access": null,
      "code": "CUP-B09"
+    },
+    {
+     "id": "dealer/customers/[id].b.x.tm-taylor-monique-19142241007",
+     "label": "TM Taylor, Monique +19142241007",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Customer Details",
+     "about": "TM Taylor, Monique +19142241007.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B10"
+    },
+    {
+     "id": "dealer/customers/[id].b.x.bd-brooks-dana-19142241008",
+     "label": "BD Brooks, Dana +19142241008",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Customer Details",
+     "about": "BD Brooks, Dana +19142241008.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B11"
+    },
+    {
+     "id": "dealer/customers/[id].b.x.ol-ortega-luis-19142241009",
+     "label": "OL Ortega, Luis +19142241009",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Customer Details",
+     "about": "OL Ortega, Luis +19142241009.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B12"
+    },
+    {
+     "id": "dealer/customers/[id].b.x.np-nair-priya-19142241010",
+     "label": "NP Nair, Priya +19142241010",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Customer Details",
+     "about": "NP Nair, Priya +19142241010.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B13"
+    },
+    {
+     "id": "dealer/customers/[id].b.x.fo-fitz-owen-19142241011",
+     "label": "FO Fitz, Owen +19142241011",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Customer Details",
+     "about": "FO Fitz, Owen +19142241011.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B14"
+    },
+    {
+     "id": "dealer/customers/[id].b.x.mk-mills-kara-19142241012",
+     "label": "MK Mills, Kara +19142241012",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Customer Details",
+     "about": "MK Mills, Kara +19142241012.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B15"
+    },
+    {
+     "id": "dealer/customers/[id].b.x.rt-reyes-tom-19142241013",
+     "label": "RT Reyes, Tom +19142241013",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Customer Details",
+     "about": "RT Reyes, Tom +19142241013.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B16"
+    },
+    {
+     "id": "dealer/customers/[id].b.x.ci-chen-ivy-19142241014",
+     "label": "CI Chen, Ivy +19142241014",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Customer Details",
+     "about": "CI Chen, Ivy +19142241014.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B17"
     },
     {
      "id": "dealer/customers/[id].b.x.previous-page",
@@ -4516,7 +4431,7 @@
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
-     "code": "CUP-B10"
+     "code": "CUP-B18"
     },
     {
      "id": "dealer/customers/[id].b.x.next-page",
@@ -4529,20 +4444,137 @@
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
-     "code": "CUP-B11"
+     "code": "CUP-B19"
     },
     {
-     "id": "dealer/customers/[id].b.x.profile",
-     "label": "Profile",
+     "id": "dealer/customers/[id].b.x.back-to-customers",
+     "label": "Back to Customers",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Customer Details",
+     "about": "Back to Customers.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B20"
+    },
+    {
+     "id": "dealer/customers/[id].b.x.edit-first-middle-and-last-name",
+     "label": "Edit first, middle and last name",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Customer Details",
+     "about": "Edit first, middle and last name.",
+     "expect": "The edit form opens with the current values; saving keeps the change after a refresh.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B21"
+    },
+    {
+     "id": "dealer/customers/[id].b.x.call-19142241000.tel-19142241000",
+     "label": "Call +19142241000",
+     "kind": "link",
+     "el": null,
+     "href": "tel:+19142241000",
+     "panel": "Customer Details",
+     "about": "Goes to tel:+19142241000.",
+     "expect": "That page opens in the same tab with the right data; the browser Back button returns here.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B22"
+    },
+    {
+     "id": "dealer/customers/[id].b.x.text",
+     "label": "Text",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Customer Details",
+     "about": "Text.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B23"
+    },
+    {
+     "id": "dealer/customers/[id].b.x.react-aria9996607002-r-5",
+     "label": "Forms",
+     "kind": "button",
+     "el": "#react-aria9996607002-_r_5_",
+     "href": null,
+     "panel": "Customer Details",
+     "about": "Forms.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B24"
+    },
+    {
+     "id": "dealer/customers/[id].b.x.print",
+     "label": "Print",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Customer Details",
+     "about": "Opens the browser print view of this page.",
+     "expect": "The print preview shows the page's data without menus.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B25"
+    },
+    {
+     "id": "dealer/customers/[id].b.x.google.https-www-google-com-search-q-alma-20aguilar",
+     "label": "Google",
+     "kind": "link",
+     "el": null,
+     "href": "https://www.google.com/search?q=Alma%20Aguilar",
+     "panel": "Customer Details",
+     "about": "Opens https://www.google.com/search?q=Alma%20Aguilar.",
+     "expect": "The page opens (in a new tab for outside sites).",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B26"
+    },
+    {
+     "id": "dealer/customers/[id].b.x.facebook.https-www-facebook-com-search-top-q-alma-20aguilar",
+     "label": "Facebook",
+     "kind": "link",
+     "el": null,
+     "href": "https://www.facebook.com/search/top?q=Alma%20Aguilar",
+     "panel": "Customer Details",
+     "about": "Opens https://www.facebook.com/search/top?q=Alma%20Aguilar.",
+     "expect": "The page opens (in a new tab for outside sites).",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B27"
+    },
+    {
+     "id": "dealer/customers/[id].b.x.linkedin.https-www-linkedin-com-search-results-all-keywords-alma-20ag",
+     "label": "LinkedIn",
+     "kind": "link",
+     "el": null,
+     "href": "https://www.linkedin.com/search/results/all/?keywords=Alma%20Aguilar",
+     "panel": "Customer Details",
+     "about": "Opens https://www.linkedin.com/search/results/all/?keywords=Alma%20Aguilar.",
+     "expect": "The page opens (in a new tab for outside sites).",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B28"
+    },
+    {
+     "id": "dealer/customers/[id].b.x.overview",
+     "label": "Overview",
      "kind": "tab",
      "el": null,
      "href": null,
      "panel": "Customer Details",
-     "about": "Tab: shows the 'Profile' part of Customer profile (Customer 360).",
+     "about": "Tab: shows the 'Overview' part of Customer profile (Customer 360).",
      "expect": "That part shows; the other tabs' contents hide; no error message.",
      "status": "live",
      "access": null,
-     "code": "CUP-B12"
+     "code": "CUP-B29"
     },
     {
      "id": "dealer/customers/[id].b.x.leads",
@@ -4555,33 +4587,7 @@
      "expect": "That part shows; the other tabs' contents hide; no error message.",
      "status": "live",
      "access": null,
-     "code": "CUP-B13"
-    },
-    {
-     "id": "dealer/customers/[id].b.x.activity",
-     "label": "Activity",
-     "kind": "tab",
-     "el": null,
-     "href": null,
-     "panel": "Customer Details",
-     "about": "Tab: shows the 'Activity' part of Customer profile (Customer 360).",
-     "expect": "That part shows; the other tabs' contents hide; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "CUP-B14"
-    },
-    {
-     "id": "dealer/customers/[id].b.x.tasks",
-     "label": "Tasks",
-     "kind": "tab",
-     "el": null,
-     "href": null,
-     "panel": "Customer Details",
-     "about": "Tab: shows the 'Tasks' part of Customer profile (Customer 360).",
-     "expect": "That part shows; the other tabs' contents hide; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "CUP-B15"
+     "code": "CUP-B30"
     },
     {
      "id": "dealer/customers/[id].b.x.appts",
@@ -4594,7 +4600,7 @@
      "expect": "That part shows; the other tabs' contents hide; no error message.",
      "status": "live",
      "access": null,
-     "code": "CUP-B16"
+     "code": "CUP-B31"
     },
     {
      "id": "dealer/customers/[id].b.x.sales",
@@ -4607,7 +4613,7 @@
      "expect": "That part shows; the other tabs' contents hide; no error message.",
      "status": "live",
      "access": null,
-     "code": "CUP-B17"
+     "code": "CUP-B32"
     },
     {
      "id": "dealer/customers/[id].b.x.service",
@@ -4620,7 +4626,7 @@
      "expect": "That part shows; the other tabs' contents hide; no error message.",
      "status": "live",
      "access": null,
-     "code": "CUP-B18"
+     "code": "CUP-B33"
     },
     {
      "id": "dealer/customers/[id].b.x.vehicles",
@@ -4633,7 +4639,7 @@
      "expect": "That part shows; the other tabs' contents hide; no error message.",
      "status": "live",
      "access": null,
-     "code": "CUP-B19"
+     "code": "CUP-B34"
     },
     {
      "id": "dealer/customers/[id].b.x.trade-in",
@@ -4646,20 +4652,7 @@
      "expect": "That part shows; the other tabs' contents hide; no error message.",
      "status": "live",
      "access": null,
-     "code": "CUP-B20"
-    },
-    {
-     "id": "dealer/customers/[id].b.x.edit-first-middle-and-last-name",
-     "label": "Edit first, middle and last name",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Profile",
-     "about": "Edit first, middle and last name.",
-     "expect": "The edit form opens with the current values; saving keeps the change after a refresh.",
-     "status": "live",
-     "access": null,
-     "code": "CUP-B21"
+     "code": "CUP-B35"
     },
     {
      "id": "dealer/customers/[id].b.x.contact",
@@ -4667,77 +4660,12 @@
      "kind": "button",
      "el": null,
      "href": null,
-     "panel": "Profile",
+     "panel": "Customer Details",
      "about": "CONTACT.",
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
-     "code": "CUP-B22"
-    },
-    {
-     "id": "dealer/customers/[id].b.x.change-217-555-8045",
-     "label": "Change (217) 555-8045",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "CONTACT",
-     "about": "Change (217) 555-8045.",
-     "expect": "The edit form opens with the current values; saving keeps the change after a refresh.",
-     "status": "live",
-     "access": null,
-     "code": "CUP-B23"
-    },
-    {
-     "id": "dealer/customers/[id].b.x.remove-217-555-8045",
-     "label": "Remove (217) 555-8045",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "CONTACT",
-     "about": "Remove (217) 555-8045.",
-     "expect": "Asks to confirm first; confirming removes it; cancelling keeps it. Test on test data only.",
-     "status": "live",
-     "access": null,
-     "code": "CUP-B24"
-    },
-    {
-     "id": "dealer/customers/[id].b.x.add-a-phone",
-     "label": "Add a phone",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "CONTACT",
-     "about": "Add a phone.",
-     "expect": "A form opens; required fields are checked; Save adds it and it shows in the list; Cancel adds nothing.",
-     "status": "live",
-     "access": null,
-     "code": "CUP-B25"
-    },
-    {
-     "id": "dealer/customers/[id].b.x.add-an-email",
-     "label": "Add an email",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "CONTACT",
-     "about": "Add an email.",
-     "expect": "A form opens; required fields are checked; Save adds it and it shows in the list; Cancel adds nothing.",
-     "status": "live",
-     "access": null,
-     "code": "CUP-B26"
-    },
-    {
-     "id": "dealer/customers/[id].b.x.add-an-address",
-     "label": "Add an address",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "CONTACT",
-     "about": "Add an address.",
-     "expect": "A form opens; required fields are checked; Save adds it and it shows in the list; Cancel adds nothing.",
-     "status": "live",
-     "access": null,
-     "code": "CUP-B27"
+     "code": "CUP-B36"
     },
     {
      "id": "dealer/customers/[id].b.x.preferences",
@@ -4745,64 +4673,12 @@
      "kind": "button",
      "el": null,
      "href": null,
-     "panel": "CONTACT",
+     "panel": "CONTACT +19142241000 · alma@example.com",
      "about": "PREFERENCES.",
      "expect": "Works; no error message.",
      "status": "live",
      "access": null,
-     "code": "CUP-B28"
-    },
-    {
-     "id": "dealer/customers/[id].b.x.edit-preferred-contact",
-     "label": "Edit Preferred contact",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "PREFERENCES",
-     "about": "Edit Preferred contact.",
-     "expect": "The edit form opens with the current values; saving keeps the change after a refresh.",
-     "status": "live",
-     "access": null,
-     "code": "CUP-B29"
-    },
-    {
-     "id": "dealer/customers/[id].b.x.edit-follow-up-by",
-     "label": "Edit Follow-up by",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "PREFERENCES",
-     "about": "Edit Follow-up by.",
-     "expect": "The edit form opens with the current values; saving keeps the change after a refresh.",
-     "status": "live",
-     "access": null,
-     "code": "CUP-B30"
-    },
-    {
-     "id": "dealer/customers/[id].b.x.edit-language",
-     "label": "Edit Language",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "PREFERENCES",
-     "about": "Edit Language.",
-     "expect": "The edit form opens with the current values; saving keeps the change after a refresh.",
-     "status": "live",
-     "access": null,
-     "code": "CUP-B31"
-    },
-    {
-     "id": "dealer/customers/[id].b.x.more-details",
-     "label": "MORE DETAILS",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "PREFERENCES",
-     "about": "MORE DETAILS.",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "CUP-B32"
+     "code": "CUP-B37"
     },
     {
      "id": "dealer/customers/[id].b.x.customer-value",
@@ -4810,205 +4686,540 @@
      "kind": "button",
      "el": null,
      "href": null,
-     "panel": "MORE DETAILS",
+     "panel": "PREFERENCES Contact: Not set · Follow-up: Not set · Language",
      "about": "CUSTOMER VALUE.",
      "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "CUP-B33"
-    },
-    {
-     "id": "dealer/customers/[id].b.after-pressing-mine.add-trade-in",
-     "label": "Add Trade In",
-     "kind": "button",
-     "el": null,
-     "href": null,
-     "panel": "Trade In · after pressing 'Mine'",
-     "about": "Add Trade In. (after pressing 'Mine')",
-     "expect": "A form opens; required fields are checked; Save adds it and it shows in the list; Cancel adds nothing.",
-     "status": "live",
-     "access": null,
-     "code": "CUP-B34"
-    },
-    {
-     "id": "dealer/customers/[id].b.in-the-window-menu-that-actions-opens.print",
-     "label": "Print",
-     "kind": "link",
-     "el": null,
-     "href": null,
-     "panel": "Customer Details · in the window / menu that 'Actions' opens",
-     "about": "Opens the browser print view of this page. (in the window / menu that 'Actions' opens)",
-     "expect": "The print preview shows the page's data without menus.",
-     "status": "live",
-     "access": null,
-     "code": "CUP-B35"
-    },
-    {
-     "id": "dealer/customers/[id].b.in-the-window-menu-that-actions-opens.merge",
-     "label": "Merge",
-     "kind": "link",
-     "el": null,
-     "href": null,
-     "panel": "Customer Details · in the window / menu that 'Actions' opens",
-     "about": "Merge. (in the window / menu that 'Actions' opens)",
-     "expect": "Works; no error message.",
-     "status": "live",
-     "access": null,
-     "code": "CUP-B36"
-    },
-    {
-     "id": "dealer/customers/[id].b.in-the-window-menu-that-actions-opens.google.https-www-google-com-search-q-carla-20reyes",
-     "label": "Google",
-     "kind": "link",
-     "el": null,
-     "href": "https://www.google.com/search?q=Carla%20Reyes",
-     "panel": "Customer Details · in the window / menu that 'Actions' opens",
-     "about": "Opens https://www.google.com/search?q=Carla%20Reyes. (in the window / menu that 'Actions' opens)",
-     "expect": "The page opens (in a new tab for outside sites).",
-     "status": "live",
-     "access": null,
-     "code": "CUP-B37"
-    },
-    {
-     "id": "dealer/customers/[id].b.in-the-window-menu-that-actions-opens.facebook.https-www-facebook-com-search-top-q-carla-20reyes",
-     "label": "Facebook",
-     "kind": "link",
-     "el": null,
-     "href": "https://www.facebook.com/search/top?q=Carla%20Reyes",
-     "panel": "Customer Details · in the window / menu that 'Actions' opens",
-     "about": "Opens https://www.facebook.com/search/top?q=Carla%20Reyes. (in the window / menu that 'Actions' opens)",
-     "expect": "The page opens (in a new tab for outside sites).",
      "status": "live",
      "access": null,
      "code": "CUP-B38"
     },
     {
-     "id": "dealer/customers/[id].b.in-the-window-menu-that-actions-opens.linkedin.https-www-linkedin-com-search-results-all-keywords-carla-20r",
-     "label": "LinkedIn",
-     "kind": "link",
+     "id": "dealer/customers/[id].b.x.add-task",
+     "label": "Add task",
+     "kind": "button",
      "el": null,
-     "href": "https://www.linkedin.com/search/results/all/?keywords=Carla%20Reyes",
-     "panel": "Customer Details · in the window / menu that 'Actions' opens",
-     "about": "Opens https://www.linkedin.com/search/results/all/?keywords=Carla%20Reyes. (in the window / menu that 'Actions' opens)",
-     "expect": "The page opens (in a new tab for outside sites).",
+     "href": null,
+     "panel": "CUSTOMER VALUE Sales $0.00 · Service $0.00",
+     "about": "Add task.",
+     "expect": "A form opens; required fields are checked; Save adds it and it shows in the list; Cancel adds nothing.",
      "status": "live",
      "access": null,
      "code": "CUP-B39"
     },
     {
-     "id": "dealer/customers/[id].b.in-the-window-menu-that-edit-first-middle-and-last-name-open.close",
-     "label": "Close",
+     "id": "dealer/customers/[id].b.x.all",
+     "label": "All",
      "kind": "button",
      "el": null,
      "href": null,
-     "panel": "Add a task · in the window / menu that 'Edit first, middle and last name' opens",
-     "about": "Close. (in the window / menu that 'Edit first, middle and last name' opens)",
-     "expect": "The window closes without saving anything.",
+     "panel": "Recent Activity",
+     "about": "Filter: All.",
+     "expect": "The list / numbers narrow to it; the active choice is highlighted; refresh keeps it.",
      "status": "live",
      "access": null,
      "code": "CUP-B40"
     },
     {
-     "id": "dealer/customers/[id].b.in-the-window-menu-that-edit-first-middle-and-last-name-open.cancel",
-     "label": "Cancel",
+     "id": "dealer/customers/[id].b.x.staff",
+     "label": "Staff",
      "kind": "button",
      "el": null,
      "href": null,
-     "panel": "Add a task · in the window / menu that 'Edit first, middle and last name' opens",
-     "about": "Cancel. (in the window / menu that 'Edit first, middle and last name' opens)",
-     "expect": "The window closes without saving anything.",
+     "panel": "Recent Activity",
+     "about": "Staff.",
+     "expect": "Works; no error message.",
      "status": "live",
      "access": null,
      "code": "CUP-B41"
     },
     {
-     "id": "dealer/customers/[id].b.in-the-window-menu-that-edit-first-middle-and-last-name-open.add-task",
+     "id": "dealer/customers/[id].b.x.ai",
+     "label": "AI",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Recent Activity",
+     "about": "AI.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B42"
+    },
+    {
+     "id": "dealer/customers/[id].b.x.customer",
+     "label": "Customer",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Recent Activity",
+     "about": "Customer.",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B43"
+    },
+    {
+     "id": "dealer/customers/[id].b.after-pressing-contact.change-19142241000",
+     "label": "Change +19142241000",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "CONTACT · after pressing 'CONTACT'",
+     "about": "Change +19142241000. (after pressing 'CONTACT')",
+     "expect": "The edit form opens with the current values; saving keeps the change after a refresh.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B44"
+    },
+    {
+     "id": "dealer/customers/[id].b.after-pressing-contact.remove-19142241000",
+     "label": "Remove +19142241000",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "CONTACT · after pressing 'CONTACT'",
+     "about": "Remove +19142241000. (after pressing 'CONTACT')",
+     "expect": "Asks to confirm first; confirming removes it; cancelling keeps it. Test on test data only.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B45"
+    },
+    {
+     "id": "dealer/customers/[id].b.after-pressing-contact.add-a-phone",
+     "label": "Add a phone",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "CONTACT · after pressing 'CONTACT'",
+     "about": "Add a phone. (after pressing 'CONTACT')",
+     "expect": "A form opens; required fields are checked; Save adds it and it shows in the list; Cancel adds nothing.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B46"
+    },
+    {
+     "id": "dealer/customers/[id].b.after-pressing-contact.add-an-email",
+     "label": "Add an email",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "CONTACT · after pressing 'CONTACT'",
+     "about": "Add an email. (after pressing 'CONTACT')",
+     "expect": "A form opens; required fields are checked; Save adds it and it shows in the list; Cancel adds nothing.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B47"
+    },
+    {
+     "id": "dealer/customers/[id].b.after-pressing-contact.add-an-address",
+     "label": "Add an address",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "CONTACT · after pressing 'CONTACT'",
+     "about": "Add an address. (after pressing 'CONTACT')",
+     "expect": "A form opens; required fields are checked; Save adds it and it shows in the list; Cancel adds nothing.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B48"
+    },
+    {
+     "id": "dealer/customers/[id].b.after-pressing-contact.add-trade-in",
+     "label": "Add Trade In",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Trade In · after pressing 'CONTACT'",
+     "about": "Add Trade In. (after pressing 'CONTACT')",
+     "expect": "A form opens; required fields are checked; Save adds it and it shows in the list; Cancel adds nothing.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B49"
+    },
+    {
+     "id": "dealer/customers/[id].b.after-pressing-preferences.change-19142241000",
+     "label": "Change +19142241000",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "CONTACT · after pressing 'PREFERENCES'",
+     "about": "Change +19142241000. (after pressing 'PREFERENCES')",
+     "expect": "The edit form opens with the current values; saving keeps the change after a refresh.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B50"
+    },
+    {
+     "id": "dealer/customers/[id].b.after-pressing-preferences.remove-19142241000",
+     "label": "Remove +19142241000",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "CONTACT · after pressing 'PREFERENCES'",
+     "about": "Remove +19142241000. (after pressing 'PREFERENCES')",
+     "expect": "Asks to confirm first; confirming removes it; cancelling keeps it. Test on test data only.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B51"
+    },
+    {
+     "id": "dealer/customers/[id].b.after-pressing-preferences.add-a-phone",
+     "label": "Add a phone",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "CONTACT · after pressing 'PREFERENCES'",
+     "about": "Add a phone. (after pressing 'PREFERENCES')",
+     "expect": "A form opens; required fields are checked; Save adds it and it shows in the list; Cancel adds nothing.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B52"
+    },
+    {
+     "id": "dealer/customers/[id].b.after-pressing-preferences.add-an-email",
+     "label": "Add an email",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "CONTACT · after pressing 'PREFERENCES'",
+     "about": "Add an email. (after pressing 'PREFERENCES')",
+     "expect": "A form opens; required fields are checked; Save adds it and it shows in the list; Cancel adds nothing.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B53"
+    },
+    {
+     "id": "dealer/customers/[id].b.after-pressing-preferences.add-an-address",
+     "label": "Add an address",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "CONTACT · after pressing 'PREFERENCES'",
+     "about": "Add an address. (after pressing 'PREFERENCES')",
+     "expect": "A form opens; required fields are checked; Save adds it and it shows in the list; Cancel adds nothing.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B54"
+    },
+    {
+     "id": "dealer/customers/[id].b.after-pressing-preferences.edit-preferred-contact",
+     "label": "Edit Preferred contact",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "PREFERENCES · after pressing 'PREFERENCES'",
+     "about": "Edit Preferred contact. (after pressing 'PREFERENCES')",
+     "expect": "The edit form opens with the current values; saving keeps the change after a refresh.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B55"
+    },
+    {
+     "id": "dealer/customers/[id].b.after-pressing-preferences.edit-follow-up-by",
+     "label": "Edit Follow-up by",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "PREFERENCES · after pressing 'PREFERENCES'",
+     "about": "Edit Follow-up by. (after pressing 'PREFERENCES')",
+     "expect": "The edit form opens with the current values; saving keeps the change after a refresh.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B56"
+    },
+    {
+     "id": "dealer/customers/[id].b.after-pressing-preferences.edit-language",
+     "label": "Edit Language",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "PREFERENCES · after pressing 'PREFERENCES'",
+     "about": "Edit Language. (after pressing 'PREFERENCES')",
+     "expect": "The edit form opens with the current values; saving keeps the change after a refresh.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B57"
+    },
+    {
+     "id": "dealer/customers/[id].b.after-pressing-preferences.more-details",
+     "label": "MORE DETAILS",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "PREFERENCES · after pressing 'PREFERENCES'",
+     "about": "MORE DETAILS. (after pressing 'PREFERENCES')",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B58"
+    },
+    {
+     "id": "dealer/customers/[id].b.after-pressing-customer-value.change-19142241000",
+     "label": "Change +19142241000",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "CONTACT · after pressing 'CUSTOMER VALUE'",
+     "about": "Change +19142241000. (after pressing 'CUSTOMER VALUE')",
+     "expect": "The edit form opens with the current values; saving keeps the change after a refresh.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B59"
+    },
+    {
+     "id": "dealer/customers/[id].b.after-pressing-customer-value.remove-19142241000",
+     "label": "Remove +19142241000",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "CONTACT · after pressing 'CUSTOMER VALUE'",
+     "about": "Remove +19142241000. (after pressing 'CUSTOMER VALUE')",
+     "expect": "Asks to confirm first; confirming removes it; cancelling keeps it. Test on test data only.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B60"
+    },
+    {
+     "id": "dealer/customers/[id].b.after-pressing-customer-value.add-a-phone",
+     "label": "Add a phone",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "CONTACT · after pressing 'CUSTOMER VALUE'",
+     "about": "Add a phone. (after pressing 'CUSTOMER VALUE')",
+     "expect": "A form opens; required fields are checked; Save adds it and it shows in the list; Cancel adds nothing.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B61"
+    },
+    {
+     "id": "dealer/customers/[id].b.after-pressing-customer-value.add-an-email",
+     "label": "Add an email",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "CONTACT · after pressing 'CUSTOMER VALUE'",
+     "about": "Add an email. (after pressing 'CUSTOMER VALUE')",
+     "expect": "A form opens; required fields are checked; Save adds it and it shows in the list; Cancel adds nothing.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B62"
+    },
+    {
+     "id": "dealer/customers/[id].b.after-pressing-customer-value.add-an-address",
+     "label": "Add an address",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "CONTACT · after pressing 'CUSTOMER VALUE'",
+     "about": "Add an address. (after pressing 'CUSTOMER VALUE')",
+     "expect": "A form opens; required fields are checked; Save adds it and it shows in the list; Cancel adds nothing.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B63"
+    },
+    {
+     "id": "dealer/customers/[id].b.after-pressing-customer-value.edit-preferred-contact",
+     "label": "Edit Preferred contact",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "PREFERENCES · after pressing 'CUSTOMER VALUE'",
+     "about": "Edit Preferred contact. (after pressing 'CUSTOMER VALUE')",
+     "expect": "The edit form opens with the current values; saving keeps the change after a refresh.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B64"
+    },
+    {
+     "id": "dealer/customers/[id].b.after-pressing-customer-value.edit-follow-up-by",
+     "label": "Edit Follow-up by",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "PREFERENCES · after pressing 'CUSTOMER VALUE'",
+     "about": "Edit Follow-up by. (after pressing 'CUSTOMER VALUE')",
+     "expect": "The edit form opens with the current values; saving keeps the change after a refresh.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B65"
+    },
+    {
+     "id": "dealer/customers/[id].b.after-pressing-customer-value.edit-language",
+     "label": "Edit Language",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "PREFERENCES · after pressing 'CUSTOMER VALUE'",
+     "about": "Edit Language. (after pressing 'CUSTOMER VALUE')",
+     "expect": "The edit form opens with the current values; saving keeps the change after a refresh.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B66"
+    },
+    {
+     "id": "dealer/customers/[id].b.after-pressing-customer-value.more-details",
+     "label": "MORE DETAILS",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "PREFERENCES · after pressing 'CUSTOMER VALUE'",
+     "about": "MORE DETAILS. (after pressing 'CUSTOMER VALUE')",
+     "expect": "Works; no error message.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B67"
+    },
+    {
+     "id": "dealer/customers/[id].b.in-the-window-menu-that-add-task-opens.close",
+     "label": "Close",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Add a task · in the window / menu that 'Add task' opens",
+     "about": "Close. (in the window / menu that 'Add task' opens)",
+     "expect": "The window closes without saving anything.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B68"
+    },
+    {
+     "id": "dealer/customers/[id].b.in-the-window-menu-that-add-task-opens.cancel",
+     "label": "Cancel",
+     "kind": "button",
+     "el": null,
+     "href": null,
+     "panel": "Add a task · in the window / menu that 'Add task' opens",
+     "about": "Cancel. (in the window / menu that 'Add task' opens)",
+     "expect": "The window closes without saving anything.",
+     "status": "live",
+     "access": null,
+     "code": "CUP-B69"
+    },
+    {
+     "id": "dealer/customers/[id].b.in-the-window-menu-that-add-task-opens.add-task",
      "label": "Add task",
      "kind": "button",
      "el": null,
      "href": null,
-     "panel": "Add a task · in the window / menu that 'Edit first, middle and last name' opens",
-     "about": "Add task. (in the window / menu that 'Edit first, middle and last name' opens)",
+     "panel": "Add a task · in the window / menu that 'Add task' opens",
+     "about": "Add task. (in the window / menu that 'Add task' opens)",
      "expect": "A form opens; required fields are checked; Save adds it and it shows in the list; Cancel adds nothing.",
      "status": "live",
      "access": null,
-     "code": "CUP-B42"
+     "code": "CUP-B70"
     }
    ],
    "fields": [
     {
      "label": "Search customers by name, phone or email",
-     "kind": "input:search",
+     "kind": "input:text",
      "panel": "Customer Details",
      "tip": ""
     },
     {
      "label": "Assigned to Unassigned Sam Sales Maya Manager",
      "kind": "select",
-     "panel": "Profile",
+     "panel": "Customer Details",
+     "tip": ""
+    },
+    {
+     "label": "Search recent activity",
+     "kind": "input:text",
+     "panel": "Recent Activity",
+     "tip": ""
+    },
+    {
+     "label": "Period",
+     "kind": "select",
+     "panel": "Recent Activity",
      "tip": ""
     },
     {
      "label": "phone type",
      "kind": "select",
-     "panel": "CONTACT",
+     "panel": "CONTACT · after pressing 'CONTACT'",
      "tip": ""
     },
     {
      "label": "email type",
      "kind": "select",
-     "panel": "CONTACT",
+     "panel": "CONTACT · after pressing 'CONTACT'",
      "tip": ""
     },
     {
-     "label": "Trade-ins of which lead",
+     "label": "phone type",
      "kind": "select",
-     "panel": "Trade In · after pressing 'Mine'",
+     "panel": "CONTACT · after pressing 'PREFERENCES'",
+     "tip": ""
+    },
+    {
+     "label": "email type",
+     "kind": "select",
+     "panel": "CONTACT · after pressing 'PREFERENCES'",
+     "tip": ""
+    },
+    {
+     "label": "phone type",
+     "kind": "select",
+     "panel": "CONTACT · after pressing 'CUSTOMER VALUE'",
+     "tip": ""
+    },
+    {
+     "label": "email type",
+     "kind": "select",
+     "panel": "CONTACT · after pressing 'CUSTOMER VALUE'",
      "tip": ""
     },
     {
      "label": "e.g. Call to confirm the trade-in",
      "kind": "input:text",
-     "panel": "Add a task · in the window / menu that 'Edit first, middle and last name' opens",
+     "panel": "Add a task · in the window / menu that 'Add task' opens",
      "tip": ""
     },
     {
      "label": "(no label)",
      "kind": "input:datetime-local",
-     "panel": "Add a task · in the window / menu that 'Edit first, middle and last name' opens",
+     "panel": "Add a task · in the window / menu that 'Add task' opens",
      "tip": ""
     },
     {
      "label": "(no label)",
      "kind": "select",
-     "panel": "Add a task · in the window / menu that 'Edit first, middle and last name' opens",
+     "panel": "Add a task · in the window / menu that 'Add task' opens",
      "tip": ""
     }
    ],
    "panels": [
     "Customer Details",
-    "Profile",
-    "CONTACT",
-    "PREFERENCES",
-    "MORE DETAILS",
-    "CUSTOMER VALUE"
+    "CONTACT +19142241000 · alma@example.com",
+    "PREFERENCES Contact: Not set · Follow-up: Not set · Language",
+    "CUSTOMER VALUE Sales $0.00 · Service $0.00",
+    "Overview",
+    "Recent Activity"
    ],
    "parts": [
     {
-     "key": "dealer/customers/[id]~Mine",
-     "via": "Show 'Mine'",
-     "buttons": 1,
-     "fields": 1
+     "key": "dealer/customers/[id]~CONTACT",
+     "via": "Show 'CONTACT'",
+     "buttons": 6,
+     "fields": 2
     },
     {
-     "key": "dealer/customers/[id]::Actions",
-     "via": "Button 'Actions'",
-     "buttons": 5,
-     "fields": 0
+     "key": "dealer/customers/[id]~PREFERENCES",
+     "via": "Show 'PREFERENCES'",
+     "buttons": 9,
+     "fields": 2
     },
     {
-     "key": "dealer/customers/[id]::Edit first, middle and last name",
-     "via": "Button 'Edit first, middle and last name'",
+     "key": "dealer/customers/[id]~CUSTOMER VALUE",
+     "via": "Show 'CUSTOMER VALUE'",
+     "buttons": 9,
+     "fields": 2
+    },
+    {
+     "key": "dealer/customers/[id]::Add task",
+     "via": "Button 'Add task'",
      "buttons": 3,
      "fields": 3
     }

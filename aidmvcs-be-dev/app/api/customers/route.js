@@ -15,22 +15,10 @@ import {
   buildSourceQuery,
   CUSTOMER_SOURCE_VALUES,
 } from "@lib/customerListing";
-import { getOriginBadge } from "./[id]/360/assemble.js";
-import { attachInboxPreview } from "@lib/leadInbox";
-import { logActivity } from "@lib/activityLog";
 
 function jsonError(message, status) {
   return NextResponse.json({ message }, { status });
 }
-
-// The list's Sort (27 Nov 2026); without one, last-name searches stay in last-name order, everything else newest
-// activity first (as before).
-const SORTS = {
-  updated: { updatedAt: -1, createdAt: -1 },
-  last_name: { last_name: 1, first_name: 1, middle_name: 1 },
-  created_desc: { createdAt: -1, _id: -1 },
-  created_asc: { createdAt: 1, _id: 1 },
-};
 
 const EMAIL_FORMAT_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PHONE_DIGITS = 10;
@@ -48,7 +36,7 @@ async function loadAuthenticatedUser(req) {
   }
   if (!decoded?.userId || !mongoose.isValidObjectId(decoded.userId)) return null;
 
-  return User.findById(decoded.userId).select("_id type parent_id vendor_id name");
+  return User.findById(decoded.userId).select("_id type parent_id vendor_id");
 }
 
 export async function GET(req) {
@@ -113,15 +101,6 @@ export async function GET(req) {
       query.$and = [...(query.$and || []), ...buildSourceQuery(source, leadCustomerIds, matchIds)];
     }
 
-    // Whose customers (27 Nov 2026, the list works like the Leads list): "me", "none" or a staff member's id.
-    const assignedTo = url.searchParams.get("assigned_to")?.trim();
-    if (assignedTo === "me") query.assigned_to = currentUser._id;
-    else if (assignedTo === "none") query.assigned_to = { $in: [null] };
-    else if (assignedTo) {
-      if (!mongoose.isValidObjectId(assignedTo)) return jsonError("assigned_to is invalid", 400);
-      query.assigned_to = new mongoose.Types.ObjectId(assignedTo);
-    }
-
     const startDate = url.searchParams.get("startDate");
     const endDate = url.searchParams.get("endDate");
     if (startDate && endDate) {
@@ -144,7 +123,7 @@ export async function GET(req) {
     const skip = (page - 1) * limit;
     const [customers, totalItems] = await Promise.all([
       Customer.find(query)
-        .sort(SORTS[url.searchParams.get("sort")] || (lastName ? SORTS.last_name : SORTS.updated))
+        .sort(lastName ? { last_name: 1, first_name: 1, middle_name: 1 } : { updatedAt: -1, createdAt: -1 })
         .skip(skip)
         .limit(limit)
         .lean(),
@@ -161,29 +140,7 @@ export async function GET(req) {
     const customersWithLeadCount = customers.map((customer) => ({
       ...customer,
       lead_count: leadCountByCustomerId.get(String(customer._id)) || 0,
-      origin_badge: getOriginBadge(customer, { hasLinkedLeads: leadCountByCustomerId.has(String(customer._id)) }),
     }));
-
-    // ?preview=1 (the list beside a customer's profile, as an inbox like the Leads page, 28 Nov 2026): the newest
-    // message over all of the customer's leads, how many of the customer's messages are unread, and whether a lead is hot.
-    if (url.searchParams.get("preview") === "1" && customers.length > 0) {
-      const theirLeads = await Lead.find({ customer_id: { $in: customers.map((c) => c._id) } })
-        .select("_id customer_id hot").lean();
-      await attachInboxPreview(theirLeads).catch(() => null);
-      const byCustomer = new Map();
-      for (const lead of theirLeads) {
-        const key = String(lead.customer_id);
-        const box = byCustomer.get(key) || { last: null, unread: 0, hot: false };
-        const last = lead.inbox?.last;
-        if (last && (!box.last || new Date(last.at || 0) > new Date(box.last.at || 0))) box.last = last;
-        box.unread += lead.inbox?.unread || 0;
-        box.hot = box.hot || lead.hot === true;
-        byCustomer.set(key, box);
-      }
-      for (const customer of customersWithLeadCount) {
-        customer.inbox = byCustomer.get(String(customer._id)) || { last: null, unread: 0, hot: false };
-      }
-    }
 
     const totalPages = Math.ceil(totalItems / limit);
     return NextResponse.json({
@@ -291,10 +248,6 @@ export async function POST(req) {
       await Customer.deleteOne({ _id: savedCustomer._id });
       return jsonError("A customer with this email or phone number already exists", 409);
     }
-
-    // Who added the customer by hand goes on their timeline (the user, 28 Nov 2026: a track record of every change).
-    await logActivity({ dealer_id: dealerId, customer_id: savedCustomer._id, actor_type: "staff", actor_id: currentUser._id,
-      actor_name: currentUser.name || null, action: "customer_created", detail: name });
 
     return NextResponse.json({ data: savedCustomer }, { status: 201 });
   } catch (error) {

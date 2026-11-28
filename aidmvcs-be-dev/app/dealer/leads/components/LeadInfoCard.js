@@ -113,36 +113,18 @@ function LeadPlan({ lead, timezone }) {
 
 // The lead's next step alone (the Leads inbox's top band shows it on screen, the user 27 Nov 2026), with the AI type
 // and vehicle wanted beside it; same data as LeadPlan.
-// The lead's plan (next step, AI type, vehicle wanted) from the AI service; null until it answers (or with no lead).
-export function useLeadPlan(lead) {
+export function LeadNextStep({ lead, timezone }) {
   const [plan, setPlan] = useState(null);
   const id = lead?._id;
   const dealerId = lead?.dealer_id;
   useEffect(() => {
-    setPlan(null);
     if (!id) return undefined;
     let live = true;
+    setPlan(null);
     fetch(`/api/dealer-ai/actions?tab=lead&lead_id=${id}${dealerId ? `&dealer_id=${encodeURIComponent(dealerId)}` : ""}`, { headers: auth() })
       .then((r) => (r.ok ? r.json() : null)).then((d) => { if (live) setPlan(d); }).catch(() => {});
     return () => { live = false; };
   }, [id, dealerId, lead?.fe_lead_status]);
-  return plan;
-}
-
-// The next step as one line (customer profile: under the lead's journey).
-export function NextStepLine({ plan, timezone }) {
-  if (!plan) return null;
-  const next = plan.next_step;
-  return (
-    <div className={`journey_next${next ? "" : " none"}`}>
-      <i className={`fa-solid ${next?.who === "AI" ? "fa-robot" : next ? "fa-list-check" : "fa-road-barrier"}`} aria-hidden="true" />
-      <span><strong>Next:</strong> {next ? `${next.text}${next.at ? `, ${formatTimestamp(next.at, timezone)}` : ""}${next.who && next.who !== "AI" ? ` (${next.who})` : ""}` : "None planned"}</span>
-    </div>
-  );
-}
-
-export function LeadNextStep({ lead, timezone }) {
-  const plan = useLeadPlan(lead);
   if (!plan) return null;
   const next = plan.next_step;
   return (
