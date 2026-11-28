@@ -4,10 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Alert, Button, Modal } from "react-bootstrap";
 import { useUser } from "../../../context/UserContext";
-import CustomerHeader, { CustomerIdentity, CustomerInfoCards, PROFILE_TABS, primaryContact } from "./CustomerHeader";
-import CallButton from "../../../components/CallButton";
-import CustomerLeadList, { NoLeads } from "./CustomerLeadCards";
-import "./customerProfile.css";
+import CustomerHeader, { primaryContact } from "./CustomerHeader";
 import OverviewTab from "./OverviewTab";
 import DmsDetails, { LeaseBar } from "./DmsDetails";
 import OpenTasks from "./OpenTasks";
@@ -19,11 +16,9 @@ import AppointmentsTab from "./AppointmentsTab";
 import VehiclesTab from "./VehiclesTab";
 import TradeInTab from "./TradeInTab";
 import LeadForm from "../../../leads/components/LeadForm";
+import EmailReplyModal from "../../../leads/components/EmailReplyModal";
 
-// The right side of a customer's page (28 Nov 2026): the bar (Profile, Activity, Tasks, Appointments, Sales, Service,
-// Vehicles, Trade-in, Forms, Actions), then either one lead (picked in the list on the left, as on the Leads page) or the
-// section picked in the bar. view = "lead:<id>" or a section key; onShow(view) changes it.
-export default function CustomerDetail({ customerId, leads = [], view = null, onShow, onLeadsChanged, newLeadAsk = 0, toolsTarget = null, onCustomer }) {
+export default function CustomerDetail({ customerId }) {
   const { user, dealerParent, loadingParent } = useUser();
   const activeEntity = dealerParent || (user?.parent_id ? null : user);
   const router = useRouter();
@@ -31,7 +26,14 @@ export default function CustomerDetail({ customerId, leads = [], view = null, on
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  useEffect(() => { setData(null); }, [customerId]); // another customer: never show the last one while loading
+  // ?tab=leads&lead=<id> opens a lead's conversation here (the Dashboard's Customer Replied list, 25 Nov 2026).
+  const [urlParams] = useState(() => (typeof window === "undefined" ? new URLSearchParams() : new URLSearchParams(window.location.search)));
+  const [activeTab, setActiveTab] = useState(urlParams.get("tab") || "overview");
+  // Text / Email from the profile's toolbar (Bibi, 25 Nov 2026: "Text is not working" - it only switched tabs).
+  const [replyTo, setReplyTo] = useState(null); // { lead, channel }
+  // Mirrors the `editLead` convention from app/dealer/leads/page.js: an object
+  // pre-fills LeadForm, and LeadForm itself calls this setter with null when
+  // it's done (submitted or cancelled) to close.
   const [messageLead, setMessageLead] = useState(null);
   // Same convention: setEditCustomer({}) opens the create form (not used here,
   // see CustomerList.js), setEditCustomer(customer) opens it pre-filled to edit.
@@ -54,22 +56,6 @@ export default function CustomerDetail({ customerId, leads = [], view = null, on
   useEffect(() => {
     fetchStaffList();
   }, [fetchStaffList]);
-
-  // A new lead for this customer ("New lead" under the customer in the list, or Send a message on Profile when they
-  // have none): the lead form, pre-filled with the customer's name, phone and email.
-  const handleSendMessage = useCallback(() => {
-    const c = data?.customer;
-    if (!c) return;
-    const first = leads?.[0];
-    setMessageLead(first ? { name: first.name || c.name || "", email: first.email || "", phone: first.phone || "" } : {
-      name: c.name || "",
-      email: primaryContact(c.emails)?.value || "",
-      phone: primaryContact(c.phones)?.value || "",
-      source: "dealervault",
-    });
-  }, [data, leads]);
-  useEffect(() => { if (data?.customer) onCustomer?.(data.customer); }, [data, onCustomer]);
-  useEffect(() => { if (newLeadAsk) handleSendMessage(); }, [newLeadAsk]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchCustomer360 = useCallback(async () => {
     if (loadingParent || !activeEntity?.id || !customerId) return;
@@ -94,8 +80,7 @@ export default function CustomerDetail({ customerId, leads = [], view = null, on
     fetchCustomer360();
   }, [fetchCustomer360]);
 
-  // Only the first load covers the page; a reload after a change (owner, task...) keeps the screen as it is.
-  if (loadingParent || (loading && !data)) {
+  if (loadingParent || loading) {
     return <div className="w_card text-center py-4">Loading customer...</div>;
   }
 
@@ -112,17 +97,39 @@ export default function CustomerDetail({ customerId, leads = [], view = null, on
 
   if (!data) return null;
 
-  const { customer, value_snapshot, overview, activity, deals, repair_orders, appointments, all_appointments, vehicles, leads: summaryLeads, dms, open_tasks: openTasks } = data;
+  const { customer, value_snapshot, overview, activity, deals, repair_orders, appointments, all_appointments, vehicles, leads, dms, open_tasks: openTasks } = data;
 
+  // A customer with an existing Lead already has a reachable conversation
+  // under "Leads & Communications" (ViewConversations' own SMS/Email Reply
+  // button) - just land there. Only a customer with zero leads needs the
+  // create-lead-and-send-first-message flow (LeadForm, pre-filled).
   // Counts on the tabs and the toolbar (17 Nov 2026, BB: "Sales (4) · Appts (2)" at a glance).
-  const counts = { leads: summaryLeads?.length || 0, sales: deals?.length || 0, service: repair_orders?.length || 0,
-    appointments: all_appointments?.length || 0, vehicles: vehicles?.length || 0, tasks: openTasks?.length || 0 };
-  const tasksLate = (openTasks || []).filter((t) => t.missed).length;
-  const changed = () => { fetchCustomer360(); onLeadsChanged?.(); };
+  const counts = { leads: leads?.length || 0, sales: deals?.length || 0, service: repair_orders?.length || 0,
+    appointments: all_appointments?.length || 0, vehicles: vehicles?.length || 0 };
+  const tabTitle = (icon, label, n) => (
+    <span className="cp_tab"><i className={icon} />{label}{n ? <span className="cp_tab_count">{n}</span> : null}</span>
+  );
+
+  const handleSendMessage = () => {
+    if ((leads?.length || 0) > 0) {
+      // The newest lead's thread, the same reply window as the Leads page; it goes to the customer's number / email.
+      const lead = leads[0];
+      const phone = primaryContact(customer.phones)?.value;
+      const email = primaryContact(customer.emails)?.value;
+      setReplyTo({ lead: { ...lead, phone: lead.phone || phone, email: lead.email || email }, channel: phone ? "sms" : "email" });
+    } else {
+      setMessageLead({
+        name: customer.name || "",
+        email: primaryContact(customer.emails)?.value || "",
+        phone: primaryContact(customer.phones)?.value || "",
+        source: "dealervault",
+      });
+    }
+  };
 
   const handleMessageLeadChange = (value) => {
     setMessageLead(value);
-    if (!value) { fetchCustomer360(); setTimeout(() => onLeadsChanged?.(), 3000); } // picks up the new lead, if any
+    if (!value) fetchCustomer360(); // picks up the newly created lead, if any
   };
 
 
@@ -141,46 +148,14 @@ export default function CustomerDetail({ customerId, leads = [], view = null, on
     }
   };
 
-  const customerPhone = primaryContact(customer.phones)?.value;
-  const views = {
-    profile: () => (
-      <>
-        <CustomerIdentity customer={customer} valueSnapshot={value_snapshot} dmsPerson={dms?.person} dealerId={customer.dealer_id}
-          onChanged={fetchCustomer360} staffList={staffList} onAssignmentChange={handleAssignmentChange} />
-        {(summaryLeads?.length || 0) === 0 && (leads?.length || 0) === 0 && (
-          // No lead yet: call the customer or start the first conversation here.
-          <div className="w_card mb-3 d-flex flex-wrap align-items-center gap-2">
-            <span className="text-muted me-auto">No leads for this customer yet.</span>
-            {customerPhone && <CallButton phone={customerPhone} dealerId={customer.dealer_id} size="sm" />}
-            <Button size="sm" variant="custom" onClick={handleSendMessage} disabled={!customerPhone && !primaryContact(customer.emails)}>
-              <i className="fa-solid fa-paper-plane me-1" />Send a message
-            </Button>
-          </div>
-        )}
-        <CustomerInfoCards customer={customer} valueSnapshot={value_snapshot} dealerId={customer.dealer_id}
-          onChanged={fetchCustomer360} latestLead={leads?.[0] || summaryLeads?.[0]} />
-        <DmsDetails dms={dms} />
-      </>
-    ),
-    activity: () => <OverviewTab overview={overview} activity={activity || []} />,
-    tasks: () => (
-      <OpenTasks tasks={openTasks} dealerId={activeEntity?.id} onChanged={changed} leads={summaryLeads || []} staffList={staffList}
-        customerName={[customer.first_name, customer.last_name].filter(Boolean).join(" ")} />
-    ),
-    sales: () => <SalesTab deals={deals} />,
-    service: () => <ServiceTab repairOrders={repair_orders} appointments={appointments} />,
-    appointments: () => <AppointmentsTab appointments={all_appointments} bookings={data?.bookings || []} />,
-    vehicles: () => <VehiclesTab vehicles={vehicles} leads={summaryLeads} customerId={customerId} dealerId={customer.dealer_id} onChanged={changed} />,
-    tradeins: () => <TradeInTab customerId={customerId} />,
-  };
-  // Leads: "leads" opens the newest lead, "lead:<id>" that lead.
-  const onLeads = view === "leads" || view?.startsWith("lead:");
-  const openLead = onLeads ? ((leads || []).find((l) => view.startsWith("lead:") && String(l._id) === view.slice(5)) || leads?.[0] || null) : null;
-  const shown = onLeads ? "leads" : (view in views ? view : "profile");
-  const shownTab = PROFILE_TABS.find(([key]) => key === shown);
-
   return (
     <div className="cust_profile">
+      <div className="d-flex align-items-center justify-content-end mb-3">
+        <Button variant="custom" size="sm" onClick={() => router.push("/dealer/customers")}>
+          <i className="fa-solid fa-arrow-left me-2" />Back to Customers
+        </Button>
+      </div>
+
       {assignmentError && (
         <Alert variant="danger" dismissible onClose={() => setAssignmentError(null)}>
           {assignmentError}
@@ -189,35 +164,58 @@ export default function CustomerDetail({ customerId, leads = [], view = null, on
 
       <PossibleMatch customerId={customerId} dealerId={customer.dealer_id} />
       <LeaseBar dms={dms} />
-      <CustomerHeader customer={customer} dealerId={customer.dealer_id} onChanged={changed} counts={counts}
-        tasksLate={tasksLate} onOpenTab={onShow} activeTab={shown} toolsTarget={toolsTarget} />
+      <CustomerHeader
+        customer={customer}
+        valueSnapshot={value_snapshot}
+        onSendMessage={handleSendMessage}
+        onChanged={fetchCustomer360}
+        staffList={staffList}
+        onAssignmentChange={handleAssignmentChange}
+        // G-059: a call from the profile is logged on the customer's newest lead.
+        callLeadId={leads?.[0]?._id}
+        latestLead={leads?.[0]}
+        dmsPerson={dms?.person}
+        dealerId={customer.dealer_id}
+        counts={counts}
+        onOpenTab={setActiveTab}
+        activeTab={activeTab}
+      />
 
-      {shown === "leads" ? (
-        openLead ? (
-          // Two parts, as on the Leads page: the customer's leads | the open lead (the Leads page's lead screen, with
-          // its milestones, visits and vehicles of interest under the actions).
-          <div className="row gx-3">
-            <div className="col-xxl-3 col-lg-4 col-12 inbox_side mb-3">
-              <CustomerLeadList leads={leads} activeId={openLead._id} onOpen={(leadId) => onShow(`lead:${leadId}`)}
-                onNew={handleSendMessage} timezone={activeEntity?.dealer_account_information?.time_zone} />
-            </div>
-            <div className="col-xxl-9 col-lg-8 col-12">
-              <LeadsTab lead={openLead} leads={leads} onShow={onShow} onChanged={changed} />
-            </div>
-          </div>
-        ) : (
-          <NoLeads customerPhone={customerPhone} dealerId={customer.dealer_id} onNew={handleSendMessage} />
-        )
-      ) : (
-        <section className="cp_view" key={shown}>
-          <h3 className="cp_view_title"><i className={shownTab[2]} aria-hidden="true" />{shownTab[1]}</h3>
-          {views[shown]()}
-        </section>
+      <OpenTasks tasks={openTasks} dealerId={activeEntity?.id} onChanged={fetchCustomer360} leads={leads || []} staffList={staffList}
+        customerName={[customer.first_name, customer.last_name].filter(Boolean).join(" ")} />
+      {replyTo && (
+        <EmailReplyModal lead={replyTo.lead} dealer_id={replyTo.lead.dealer_id || customer.dealer_id}
+          communicationType={replyTo.channel} selectedConversation={{ lead_id: replyTo.lead._id }}
+          onClose={() => setReplyTo(null)} onReplySuccess={fetchCustomer360} />
       )}
+      <DmsDetails dms={dms} />
+
+      {/* 25 Nov 2026: no tab row - the OPEN buttons in the toolbar above pick what shows here, one section at a time. */}
+      {(() => {
+        const views = {
+          overview: ["fa-duotone fa-clock-rotate-left", "Overview", () => <OverviewTab overview={overview} activity={activity || []} />],
+          leads: ["fa-duotone fa-comments", "Leads & Communications", () => (
+            <LeadsTab customerId={customerId} onChanged={fetchCustomer360} initialLeadId={urlParams.get("lead")} />)],
+          sales: ["fa-duotone fa-key", "Sales", () => <SalesTab deals={deals} />],
+          service: ["fa-duotone fa-screwdriver-wrench", "Service", () => <ServiceTab repairOrders={repair_orders} appointments={appointments} />],
+          appointments: ["fa-duotone fa-calendar-days", "Appointments", () => (
+            <AppointmentsTab appointments={all_appointments} bookings={data?.bookings || []} />)],
+          vehicles: ["fa-duotone fa-car-side", "Vehicles", () => (
+            <VehiclesTab vehicles={vehicles} leads={leads} customerId={customerId} dealerId={customer.dealer_id} onChanged={fetchCustomer360} />)],
+          tradeins: ["fa-duotone fa-right-left", "Trade In", () => <TradeInTab customerId={customerId} />],
+        };
+        const [icon, label, render] = views[activeTab] || views.overview;
+        return (
+          <section className="cp_view" key={activeTab in views ? activeTab : "overview"}>
+            <h3 className="cp_view_title"><i className={icon} aria-hidden="true" />{label}</h3>
+            {render()}
+          </section>
+        );
+      })()}
 
       <Modal show={!!messageLead} onHide={() => handleMessageLeadChange(null)} centered>
         <Modal.Header closeButton>
-          <Modal.Title>{leads?.length ? "New lead for this customer" : "Send a message"}</Modal.Title>
+          <Modal.Title>Send a message</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           {messageLead && <LeadForm editLead={messageLead} setEditLead={handleMessageLeadChange} />}

@@ -90,7 +90,6 @@ export function staffEntry(a) {
     : a.action === "vehicle_of_interest_added" ? `added ${a.to} to the vehicles of interest`
     : a.action === "vehicle_of_interest_removed" ? `removed ${a.to} from the vehicles of interest`
     : a.action === "name_updated_by_ai" ? `updated the name${a.from ? ` from ${a.from}` : ""} to ${a.to}${a.detail ? ` (${a.detail})` : ""}`
-    : a.action === "lead_deleted" ? "deleted the lead" : a.action === "customer_created" ? "added the customer by hand"
     : a.action.replace(/_/g, " ");
   return { type: "activity", kind: a.action, actor: a.actor_type, who: a.actor_name || null, detail: a.detail || null, at: a.at, lead_id: a.lead_id,
     text: `${who} ${what}${a.detail ? ` (${short(a.detail, 100)})` : ""}` };
